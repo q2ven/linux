@@ -76,11 +76,11 @@ static int ena_create_io_tx_queues_in_range(struct ena_adapter *adapter,
 					    int first_index, int count);
 
 /* Increase a stat by cnt while holding syncp seqlock on 32bit machines */
-static void ena_increase_stat(u64 *statp, u64 cnt,
+static void ena_increase_stat(u64_stats_t *statp, u64 cnt,
 			      struct u64_stats_sync *syncp)
 {
 	u64_stats_update_begin(syncp);
-	(*statp) += cnt;
+	u64_stats_add(statp, cnt);
 	u64_stats_update_end(syncp);
 }
 
@@ -171,8 +171,8 @@ static int ena_xmit_common(struct net_device *dev,
 	}
 
 	u64_stats_update_begin(&ring->syncp);
-	ring->tx_stats.cnt++;
-	ring->tx_stats.bytes += bytes;
+	u64_stats_inc(&ring->tx_stats.cnt);
+	u64_stats_add(&ring->tx_stats.bytes, bytes);
 	u64_stats_update_end(&ring->syncp);
 
 	tx_info->tx_descs = nb_hw_desc;
@@ -224,10 +224,11 @@ static int ena_xdp_io_poll(struct napi_struct *napi, int budget)
 	}
 
 	u64_stats_update_begin(&xdp_ring->syncp);
-	xdp_ring->tx_stats.napi_comp += napi_comp_call;
-	xdp_ring->tx_stats.tx_poll++;
+	u64_stats_add(&xdp_ring->tx_stats.napi_comp, napi_comp_call);
+	u64_stats_inc(&xdp_ring->tx_stats.tx_poll);
 	u64_stats_update_end(&xdp_ring->syncp);
-	xdp_ring->tx_stats.last_napi_jiffies = jiffies;
+
+	WRITE_ONCE(xdp_ring->tx_stats.last_napi_jiffies, jiffies);
 
 	return ret;
 }
@@ -378,7 +379,7 @@ static int ena_xdp_execute(struct ena_ring *rx_ring, struct xdp_buff *xdp)
 	struct ena_ring *xdp_ring;
 	u32 verdict = XDP_PASS;
 	struct xdp_frame *xdpf;
-	u64 *xdp_stat;
+	u64_stats_t *xdp_stat;
 
 	xdp_prog = READ_ONCE(rx_ring->xdp_bpf_prog);
 
@@ -1742,9 +1743,9 @@ static int ena_clean_rx_irq(struct ena_ring *rx_ring, struct napi_struct *napi,
 	work_done = budget - res_budget;
 	rx_ring->per_napi_packets += work_done;
 	u64_stats_update_begin(&rx_ring->syncp);
-	rx_ring->rx_stats.bytes += total_len;
-	rx_ring->rx_stats.cnt += work_done;
-	rx_ring->rx_stats.rx_copybreak_pkt += rx_copybreak_pkt;
+	u64_stats_add(&rx_ring->rx_stats.bytes, total_len);
+	u64_stats_add(&rx_ring->rx_stats.cnt, work_done);
+	u64_stats_add(&rx_ring->rx_stats.rx_copybreak_pkt, rx_copybreak_pkt);
 	u64_stats_update_end(&rx_ring->syncp);
 
 	rx_ring->next_to_clean = next_to_clean;
@@ -1795,16 +1796,22 @@ static void ena_adjust_adaptive_rx_intr_moderation(struct ena_napi *ena_napi)
 {
 	struct dim_sample dim_sample;
 	struct ena_ring *rx_ring = ena_napi->rx_ring;
+	unsigned int start;
+	u64 packets, bytes;
 
 	if (!rx_ring->per_napi_packets)
 		return;
 
 	rx_ring->non_empty_napi_events++;
 
+	do {
+		start = u64_stats_fetch_begin_irq(&rx_ring->syncp);
+		packets = u64_stats_read(&rx_ring->rx_stats.cnt);
+		bytes = u64_stats_read(&rx_ring->rx_stats.bytes);
+	} while (u64_stats_fetch_retry_irq(&rx_ring->syncp, start));
+
 	dim_update_sample(rx_ring->non_empty_napi_events,
-			  rx_ring->rx_stats.cnt,
-			  rx_ring->rx_stats.bytes,
-			  &dim_sample);
+			  packets, bytes, &dim_sample);
 
 	net_dim(&ena_napi->dim, dim_sample);
 
@@ -1998,11 +2005,11 @@ static int ena_io_poll(struct napi_struct *napi, int budget)
 	}
 
 	u64_stats_update_begin(&tx_ring->syncp);
-	tx_ring->tx_stats.napi_comp += napi_comp_call;
-	tx_ring->tx_stats.tx_poll++;
+	u64_stats_add(&tx_ring->tx_stats.napi_comp, napi_comp_call);
+	u64_stats_inc(&tx_ring->tx_stats.tx_poll);
 	u64_stats_update_end(&tx_ring->syncp);
 
-	tx_ring->tx_stats.last_napi_jiffies = jiffies;
+	WRITE_ONCE(tx_ring->tx_stats.last_napi_jiffies, jiffies);
 
 	return ret;
 }
@@ -3271,8 +3278,8 @@ static void ena_get_stats64(struct net_device *netdev,
 
 		do {
 			start = u64_stats_fetch_begin_irq(&tx_ring->syncp);
-			packets = tx_ring->tx_stats.cnt;
-			bytes = tx_ring->tx_stats.bytes;
+			packets = u64_stats_read(&tx_ring->tx_stats.cnt);
+			bytes = u64_stats_read(&tx_ring->tx_stats.bytes);
 		} while (u64_stats_fetch_retry_irq(&tx_ring->syncp, start));
 
 		stats->tx_packets += packets;
@@ -3282,8 +3289,8 @@ static void ena_get_stats64(struct net_device *netdev,
 
 		do {
 			start = u64_stats_fetch_begin_irq(&rx_ring->syncp);
-			packets = rx_ring->rx_stats.cnt;
-			bytes = rx_ring->rx_stats.bytes;
+			packets = u64_stats_read(&rx_ring->rx_stats.cnt);
+			bytes = u64_stats_read(&rx_ring->rx_stats.bytes);
 		} while (u64_stats_fetch_retry_irq(&rx_ring->syncp, start));
 
 		stats->rx_packets += packets;
@@ -3292,8 +3299,8 @@ static void ena_get_stats64(struct net_device *netdev,
 
 	do {
 		start = u64_stats_fetch_begin_irq(&adapter->syncp);
-		rx_drops = adapter->dev_stats.rx_drops;
-		tx_drops = adapter->dev_stats.tx_drops;
+		rx_drops = u64_stats_read(&adapter->dev_stats.rx_drops);
+		tx_drops = u64_stats_read(&adapter->dev_stats.tx_drops);
 	} while (u64_stats_fetch_retry_irq(&adapter->syncp, start));
 
 	stats->rx_dropped = rx_drops;
@@ -3741,7 +3748,7 @@ static int check_missing_comp_in_tx_queue(struct ena_adapter *adapter,
 
 		if (unlikely(is_tx_comp_time_expired)) {
 			if (!tx_buf->print_once) {
-				time_since_last_napi = jiffies_to_usecs(jiffies - tx_ring->tx_stats.last_napi_jiffies);
+				time_since_last_napi = jiffies_to_usecs(jiffies - READ_ONCE(tx_ring->tx_stats.last_napi_jiffies));
 				missing_tx_comp_to = jiffies_to_msecs(adapter->missing_tx_completion_to);
 				netif_notice(adapter, tx_err, adapter->netdev,
 					     "Found a Tx that wasn't completed on time, qid %d, index %d. %u usecs have passed since last napi execution. Missing Tx timeout value %u msecs\n",
@@ -4608,8 +4615,8 @@ static void ena_keep_alive_wd(void *adapter_data,
 	/* These stats are accumulated by the device, so the counters indicate
 	 * all drops since last reset.
 	 */
-	adapter->dev_stats.rx_drops = rx_drops;
-	adapter->dev_stats.tx_drops = tx_drops;
+	u64_stats_set(&adapter->dev_stats.rx_drops, rx_drops);
+	u64_stats_set(&adapter->dev_stats.tx_drops, tx_drops);
 	u64_stats_update_end(&adapter->syncp);
 }
 

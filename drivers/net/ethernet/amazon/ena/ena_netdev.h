@@ -180,44 +180,44 @@ struct ena_rx_buffer {
 } ____cacheline_aligned;
 
 struct ena_stats_tx {
-	u64 cnt;
-	u64 bytes;
-	u64 queue_stop;
-	u64 prepare_ctx_err;
-	u64 queue_wakeup;
-	u64 dma_mapping_err;
-	u64 linearize;
-	u64 linearize_failed;
-	u64 napi_comp;
-	u64 tx_poll;
-	u64 doorbells;
-	u64 bad_req_id;
-	u64 llq_buffer_copy;
-	u64 missed_tx;
-	u64 unmask_interrupt;
+	u64_stats_t cnt;
+	u64_stats_t bytes;
+	u64_stats_t queue_stop;
+	u64_stats_t prepare_ctx_err;
+	u64_stats_t queue_wakeup;
+	u64_stats_t dma_mapping_err;
+	u64_stats_t linearize;
+	u64_stats_t linearize_failed;
+	u64_stats_t napi_comp;
+	u64_stats_t tx_poll;
+	u64_stats_t doorbells;
+	u64_stats_t bad_req_id;
+	u64_stats_t llq_buffer_copy;
+	u64_stats_t missed_tx;
+	u64_stats_t unmask_interrupt;
 	u64 last_napi_jiffies;
 };
 
 struct ena_stats_rx {
-	u64 cnt;
-	u64 bytes;
-	u64 rx_copybreak_pkt;
-	u64 csum_good;
-	u64 refil_partial;
-	u64 csum_bad;
-	u64 page_alloc_fail;
-	u64 skb_alloc_fail;
-	u64 dma_mapping_err;
-	u64 bad_desc_num;
-	u64 bad_req_id;
-	u64 empty_rx_ring;
-	u64 csum_unchecked;
-	u64 xdp_aborted;
-	u64 xdp_drop;
-	u64 xdp_pass;
-	u64 xdp_tx;
-	u64 xdp_invalid;
-	u64 xdp_redirect;
+	u64_stats_t cnt;
+	u64_stats_t bytes;
+	u64_stats_t rx_copybreak_pkt;
+	u64_stats_t csum_good;
+	u64_stats_t refil_partial;
+	u64_stats_t csum_bad;
+	u64_stats_t page_alloc_fail;
+	u64_stats_t skb_alloc_fail;
+	u64_stats_t dma_mapping_err;
+	u64_stats_t bad_desc_num;
+	u64_stats_t bad_req_id;
+	u64_stats_t empty_rx_ring;
+	u64_stats_t csum_unchecked;
+	u64_stats_t xdp_aborted;
+	u64_stats_t xdp_drop;
+	u64_stats_t xdp_pass;
+	u64_stats_t xdp_tx;
+	u64_stats_t xdp_invalid;
+	u64_stats_t xdp_redirect;
 };
 
 struct ena_ring {
@@ -284,15 +284,15 @@ struct ena_ring {
 } ____cacheline_aligned;
 
 struct ena_stats_dev {
-	u64 tx_timeout;
-	u64 suspend;
-	u64 resume;
-	u64 wd_expired;
-	u64 interface_up;
-	u64 interface_down;
-	u64 admin_q_pause;
-	u64 rx_drops;
-	u64 tx_drops;
+	u64_stats_t tx_timeout;
+	u64_stats_t suspend;
+	u64_stats_t resume;
+	u64_stats_t wd_expired;
+	u64_stats_t interface_up;
+	u64_stats_t interface_down;
+	u64_stats_t admin_q_pause;
+	u64_stats_t rx_drops;
+	u64_stats_t tx_drops;
 };
 
 enum ena_flags_t {
