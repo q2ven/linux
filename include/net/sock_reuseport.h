@@ -16,6 +16,7 @@ struct sock_reuseport {
 	u16			max_socks;		/* length of socks */
 	u16			num_socks;		/* elements in socks */
 	u16			num_closed_socks;	/* closed elements in socks */
+	u16			incoming_cpu;
 	/* The last synq overflow event timestamp of this
 	 * reuse->socks[] group.
 	 */
@@ -28,6 +29,7 @@ struct sock_reuseport {
 	struct sock		*socks[];	/* array of sock pointers */
 };
 
+void reuseport_incoming_cpu_update(struct sock *sk, int val);
 extern int reuseport_alloc(struct sock *sk, bool bind_inany);
 extern int reuseport_add_sock(struct sock *sk, struct sock *sk2,
 			      bool bind_inany);

@@ -1436,7 +1436,10 @@ set_sndbuf:
 		break;
 		}
 	case SO_INCOMING_CPU:
-		WRITE_ONCE(sk->sk_incoming_cpu, val);
+		if (rcu_access_pointer(sk->sk_reuseport_cb))
+			reuseport_incoming_cpu_update(sk, val);
+		else
+			WRITE_ONCE(sk->sk_incoming_cpu, val);
 		break;
 
 	case SO_CNX_ADVICE:
