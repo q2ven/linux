@@ -1687,6 +1687,33 @@ tls_decrypt_device(struct sock *sk, struct msghdr *msg,
 	return 1;
 }
 
+static int tls_check_pending_rekey(struct sock *sk, struct sk_buff *skb)
+{
+	const struct tls_msg *tlm = tls_msg(skb);
+	const struct strp_msg *rxm = strp_msg(skb);
+
+	if (tlm->control == TLS_RECORD_TYPE_HANDSHAKE) {
+		char hs_type;
+		int err;
+
+		if (rxm->full_len < 1)
+			return -EINVAL;
+
+		err = skb_copy_bits(skb, rxm->offset, &hs_type, 1);
+		if (err < 0)
+			return err;
+
+		if (hs_type == TLS_HANDSHAKE_KEYUPDATE) {
+			struct tls_context *ctx = tls_get_ctx(sk);
+			struct tls_sw_context_rx *rx_ctx = ctx->priv_ctx_rx;
+
+			rx_ctx->key_update_pending = true;
+		}
+	}
+
+	return 0;
+}
+
 static int tls_rx_one_record(struct sock *sk, struct msghdr *msg,
 			     struct tls_decrypt_arg *darg)
 {
@@ -1705,6 +1732,10 @@ static int tls_rx_one_record(struct sock *sk, struct msghdr *msg,
 	rxm->offset += prot->prepend_size;
 	rxm->full_len -= prot->overhead_size;
 	tls_advance_record_sn(sk, prot, &tls_ctx->rx);
+
+	err = tls_check_pending_rekey(sk, darg->skb);
+	if (err < 0)
+		return err;
 
 	return 0;
 }
@@ -1957,6 +1988,12 @@ int tls_sw_recvmsg(struct sock *sk,
 		struct tls_decrypt_arg darg;
 		int to_decrypt, chunk;
 
+		/* a rekey is pending, let userspace deal with it */
+		if (unlikely(ctx->key_update_pending)) {
+			err = -EKEYEXPIRED;
+			break;
+		}
+
 		err = tls_rx_rec_wait(sk, psock, flags & MSG_DONTWAIT,
 				      released);
 		if (err <= 0) {
@@ -2140,6 +2177,12 @@ ssize_t tls_sw_splice_read(struct socket *sock,  loff_t *ppos,
 	err = tls_rx_reader_lock(sk, ctx, flags & SPLICE_F_NONBLOCK);
 	if (err < 0)
 		return err;
+
+	/* a rekey is pending, let userspace deal with it */
+	if (unlikely(ctx->key_update_pending)) {
+		err = -EKEYEXPIRED;
+		goto splice_read_end;
+	}
 
 	if (!skb_queue_empty(&ctx->rx_list)) {
 		skb = __skb_dequeue(&ctx->rx_list);
@@ -2524,6 +2567,7 @@ int tls_set_sw_offload(struct sock *sk, int tx)
 		skb_queue_head_init(&sw_ctx_rx->rx_list);
 		skb_queue_head_init(&sw_ctx_rx->async_hold);
 		aead = &sw_ctx_rx->aead_recv;
+		sw_ctx_rx->key_update_pending = false;
 	}
 
 	switch (crypto_info->cipher_type) {
