@@ -4,6 +4,15 @@
 #include <linux/module.h>
 #include <net/sock.h>
 #include <net/tcp.h>
+#include <net/transp_v6.h>
+
+enum {
+	BGPV4,
+	BGPV6,
+	BGP_NUM_PROTS,
+};
+
+static struct proto bgp_prots[BGP_NUM_PROTS];
 
 static int bgp_ulp_init(struct sock *sk)
 {
@@ -21,8 +30,16 @@ static struct tcp_ulp_ops bgp_ulp_ops __read_mostly = {
 	.init		= bgp_ulp_init,
 };
 
+static void __init bgp_build_prots(void)
+{
+	bgp_prots[BGPV4] = tcp_prot;
+	bgp_prots[BGPV6] = tcpv6_prot;
+}
+
 static int __init bgp_init(void)
 {
+	bgp_build_prots();
+
 	tcp_register_ulp(&bgp_ulp_ops);
 
 	return 0;
