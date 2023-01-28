@@ -27,6 +27,9 @@ static int bgp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 	for_each_cmsghdr(cmsg, msg) {
 		if (!CMSG_OK(msg, cmsg))
 			goto out;
+
+		if (cmsg->cmsg_level != SOL_BGP)
+			continue;
 	}
 
 out:
