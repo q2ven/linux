@@ -16,6 +16,23 @@ enum {
 
 static struct proto bgp_prots[BGP_NUM_PROTS];
 
+static int bgp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
+{
+	int copied = 0, rc = -EINVAL;
+	struct cmsghdr *cmsg;
+
+	if (unlikely(!msg->msg_controllen))
+		goto out;
+
+	for_each_cmsghdr(cmsg, msg) {
+		if (!CMSG_OK(msg, cmsg))
+			goto out;
+	}
+
+out:
+	return copied > 0 ? copied : rc;
+}
+
 static void bgp_close(struct sock *sk, long timeout)
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
@@ -87,6 +104,7 @@ static struct tcp_ulp_ops bgp_ulp_ops __read_mostly = {
 static void __init bgp_build_prot(struct proto *prot)
 {
 	prot->close = bgp_close;
+	prot->sendmsg = bgp_sendmsg;
 }
 
 static void __init bgp_build_prots(void)
