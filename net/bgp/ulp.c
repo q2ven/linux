@@ -2,6 +2,7 @@
 /* Copyright Amazon.com Inc. or its affiliates. */
 
 #include <linux/module.h>
+#include <linux/bgp.h>
 #include <net/sock.h>
 #include <net/tcp.h>
 #include <net/transp_v6.h>
@@ -15,6 +16,20 @@ enum {
 };
 
 static struct proto bgp_prots[BGP_NUM_PROTS];
+
+static int bgp_send_open(struct sock *sk, struct cmsghdr *cmsg, int *copied)
+{
+	lock_sock(sk);
+
+	if (ctx->state != BGP_CONNECT) {
+		release_sock(sk);
+		return -EINVAL;
+	}
+
+	release_sock(sk);
+
+	return 0;
+}
 
 static int bgp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 {
@@ -30,6 +45,14 @@ static int bgp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 
 		if (cmsg->cmsg_level != SOL_BGP)
 			continue;
+
+		switch (cmsg->cmsg_type) {
+		case BGP_OPEN:
+			rc = bgp_send_open(sk, cmsg, &copied);
+			break;
+		default:
+			goto out;
+		}
 	}
 
 out:
