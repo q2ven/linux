@@ -17,8 +17,37 @@ enum {
 
 static struct proto bgp_prots[BGP_NUM_PROTS];
 
+static int bgp_validate_open(struct bgp_msg_open *bgpmsg)
+{
+	if (bgpmsg->version != BGP_VERSION_4)
+		return -EOPNOTSUPP;
+
+	if (bgpmsg->as == BGP_AS_TRANS)
+		return -EOPNOTSUPP;
+
+	if (bgpmsg->hold_time && bgpmsg->hold_time < 3)
+		return -EINVAL;
+
+	if (bgpmsg->opt_len)
+		return -EOPNOTSUPP;
+
+	return 0;
+}
+
 static int bgp_send_open(struct sock *sk, struct cmsghdr *cmsg, int *copied)
 {
+	struct bgp_context *ctx = bgp_get_ctx(sk);
+	struct bgp_msg_open *bgpmsg;
+	int err;
+
+	if (cmsg->cmsg_len < CMSG_LEN(sizeof(struct bgp_msg_open)))
+		return -EINVAL;
+
+	bgpmsg = CMSG_DATA(cmsg);
+	err = bgp_validate_open(bgpmsg);
+	if (err)
+		return err;
+
 	lock_sock(sk);
 
 	if (ctx->state != BGP_CONNECT) {
