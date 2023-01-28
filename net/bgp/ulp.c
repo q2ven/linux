@@ -44,6 +44,7 @@ struct bgp_context *bgp_ctx_create(struct sock *sk)
 
 	ctx->sk = sk;
 	ctx->sk_proto = sk->sk_prot;
+	ctx->state = BGP_CONNECT;
 
 	switch (sk->sk_family) {
 	case AF_INET:
