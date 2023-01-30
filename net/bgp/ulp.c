@@ -72,6 +72,10 @@ static int bgp_send_open(struct sock *sk, struct cmsghdr *cmsg, int *copied)
 
 	copied += do_tcp_sendpages(sk, page, 0, 16 + 3 + sizeof(*bgpmsg), 0);
 
+	/* TODO: do_tcp_sendpages() can fail */
+
+	ctx->state = BGP_OPEN_SENT;
+
 	release_sock(sk);
 
 	put_page(page);
