@@ -79,7 +79,7 @@ static int bgp_send_open(struct sock *sk, struct cmsghdr *cmsg, int *copied)
 	return 0;
 }
 
-static int bgp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
+static int bgp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 {
 	int copied = 0, rc = -EINVAL;
 	struct cmsghdr *cmsg;
