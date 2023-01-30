@@ -38,7 +38,9 @@ static int bgp_send_open(struct sock *sk, struct cmsghdr *cmsg, int *copied)
 {
 	struct bgp_context *ctx = bgp_get_ctx(sk);
 	struct bgp_msg_open *bgpmsg;
+	struct page *page;
 	int err;
+	u8 *to;
 
 	if (cmsg->cmsg_len < CMSG_LEN(sizeof(struct bgp_msg_open)))
 		return -EINVAL;
@@ -48,6 +50,19 @@ static int bgp_send_open(struct sock *sk, struct cmsghdr *cmsg, int *copied)
 	if (err)
 		return err;
 
+	page = alloc_pages(GFP_KERNEL, get_order(cmsg->cmsg_len));
+	if (!page)
+		return -ENOMEM;
+
+	to = page_address(page);
+	memset(to, 0xFF, 16);
+	to += 16;
+	*(u16 *)to = htons(16 + 3 + sizeof(*bgpmsg));
+	to += 2;
+	*to = BGP_OPEN;
+	to += 1;
+	memcpy(to, bgpmsg, sizeof(*bgpmsg));
+
 	lock_sock(sk);
 
 	if (ctx->state != BGP_CONNECT) {
@@ -55,7 +70,11 @@ static int bgp_send_open(struct sock *sk, struct cmsghdr *cmsg, int *copied)
 		return -EINVAL;
 	}
 
+	copied += do_tcp_sendpages(sk, page, 0, 16 + 3 + sizeof(*bgpmsg), 0);
+
 	release_sock(sk);
+
+	put_page(page);
 
 	return 0;
 }
