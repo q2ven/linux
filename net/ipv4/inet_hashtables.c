@@ -804,6 +804,14 @@ void inet_unhash(struct sock *sk)
 }
 EXPORT_SYMBOL_GPL(inet_unhash);
 
+static bool __inet_bind2_bucket_match(const struct inet_bind2_bucket *tb,
+				      const struct net *net,
+				      unsigned short port, int l3mdev)
+{
+	return net_eq(ib2_net(tb), net) && tb->port == port &&
+		tb->l3mdev == l3mdev;
+}
+
 static bool inet_bind2_bucket_match(const struct inet_bind2_bucket *tb,
 				    const struct net *net, unsigned short port,
 				    int l3mdev, const struct sock *sk)
@@ -813,13 +821,12 @@ static bool inet_bind2_bucket_match(const struct inet_bind2_bucket *tb,
 		return false;
 
 	if (sk->sk_family == AF_INET6)
-		return net_eq(ib2_net(tb), net) && tb->port == port &&
-			tb->l3mdev == l3mdev &&
+		return __inet_bind2_bucket_match(tb, net, port, l3mdev) &&
 			ipv6_addr_equal(&tb->v6_rcv_saddr, &sk->sk_v6_rcv_saddr);
 	else
 #endif
-		return net_eq(ib2_net(tb), net) && tb->port == port &&
-			tb->l3mdev == l3mdev && tb->rcv_saddr == sk->sk_rcv_saddr;
+		return __inet_bind2_bucket_match(tb, net, port, l3mdev) &&
+			tb->rcv_saddr == sk->sk_rcv_saddr;
 }
 
 bool inet_bind2_bucket_match_addr_any(const struct inet_bind2_bucket *tb, const struct net *net,
@@ -828,21 +835,19 @@ bool inet_bind2_bucket_match_addr_any(const struct inet_bind2_bucket *tb, const 
 #if IS_ENABLED(CONFIG_IPV6)
 	if (sk->sk_family != tb->family) {
 		if (sk->sk_family == AF_INET)
-			return net_eq(ib2_net(tb), net) && tb->port == port &&
-				tb->l3mdev == l3mdev &&
+			return __inet_bind2_bucket_match(tb, net, port, l3mdev) &&
 				ipv6_addr_equal(&tb->v6_rcv_saddr, &in6addr_any);
 
 		return false;
 	}
 
 	if (sk->sk_family == AF_INET6)
-		return net_eq(ib2_net(tb), net) && tb->port == port &&
-			tb->l3mdev == l3mdev &&
+		return __inet_bind2_bucket_match(tb, net, port, l3mdev) &&
 			ipv6_addr_equal(&tb->v6_rcv_saddr, &in6addr_any);
 	else
 #endif
-		return net_eq(ib2_net(tb), net) && tb->port == port &&
-			tb->l3mdev == l3mdev && tb->rcv_saddr == 0;
+		return __inet_bind2_bucket_match(tb, net, port, l3mdev) &&
+			tb->rcv_saddr == 0;
 }
 
 /* The socket's bhash2 hashbucket spinlock must be held when this is called */
