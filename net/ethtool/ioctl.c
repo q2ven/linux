@@ -3232,20 +3232,19 @@ ethtool_rx_flow_rule_create(const struct ethtool_rx_flow_spec_input *input)
 
 		v6_spec = &fs->h_u.tcp_ip6_spec;
 		v6_m_spec = &fs->m_u.tcp_ip6_spec;
-		if (memcmp(v6_m_spec->ip6src, &in6addr_any, sizeof(in6addr_any))) {
+		if (!ipv6_addr_any(v6_m_spec->ip6src)) {
 			memcpy(&match->key.ipv6.src, v6_spec->ip6src,
 			       sizeof(match->key.ipv6.src));
 			memcpy(&match->mask.ipv6.src, v6_m_spec->ip6src,
 			       sizeof(match->mask.ipv6.src));
 		}
-		if (memcmp(v6_m_spec->ip6dst, &in6addr_any, sizeof(in6addr_any))) {
+		if (!ipv6_addr_any(v6_m_spec->ip6dst)) {
 			memcpy(&match->key.ipv6.dst, v6_spec->ip6dst,
 			       sizeof(match->key.ipv6.dst));
 			memcpy(&match->mask.ipv6.dst, v6_m_spec->ip6dst,
 			       sizeof(match->mask.ipv6.dst));
 		}
-		if (memcmp(v6_m_spec->ip6src, &in6addr_any, sizeof(in6addr_any)) ||
-		    memcmp(v6_m_spec->ip6dst, &in6addr_any, sizeof(in6addr_any))) {
+		if (!ipv6_addr_any(v6_m_spec->ip6src) || !ipv6_addr_any(v6_m_spec->ip6dst) {
 			match->dissector.used_keys |=
 				BIT(FLOW_DISSECTOR_KEY_IPV6_ADDRS);
 			match->dissector.offset[FLOW_DISSECTOR_KEY_IPV6_ADDRS] =

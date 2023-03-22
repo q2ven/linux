@@ -836,14 +836,14 @@ bool inet_bind2_bucket_match_addr_any(const struct inet_bind2_bucket *tb, const 
 	if (sk->sk_family != tb->family) {
 		if (sk->sk_family == AF_INET)
 			return __inet_bind2_bucket_match(tb, net, port, l3mdev) &&
-				ipv6_addr_equal(&tb->v6_rcv_saddr, &in6addr_any);
+				ipv6_addr_any(&tb->v6_rcv_saddr);
 
 		return false;
 	}
 
 	if (sk->sk_family == AF_INET6)
 		return __inet_bind2_bucket_match(tb, net, port, l3mdev) &&
-			ipv6_addr_equal(&tb->v6_rcv_saddr, &in6addr_any);
+			ipv6_addr_any(&tb->v6_rcv_saddr);
 	else
 #endif
 		return __inet_bind2_bucket_match(tb, net, port, l3mdev) &&

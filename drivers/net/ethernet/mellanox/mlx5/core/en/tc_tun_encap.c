@@ -105,8 +105,8 @@ int mlx5e_tc_set_attr_rx_tun(struct mlx5e_tc_flow *flow,
 				     outer_headers.src_ipv4_src_ipv6.ipv6_layout.ipv6);
 		memcpy(&tun_attr->dst_ip.v6, daddr, ipv6_size);
 		memcpy(&tun_attr->src_ip.v6, saddr, ipv6_size);
-		if (!memcmp(&tun_attr->dst_ip.v6, &in6addr_any, sizeof(in6addr_any)) ||
-		    !memcmp(&tun_attr->src_ip.v6, &in6addr_any, sizeof(in6addr_any)))
+		if (ipv6_addr_any(&tun_attr->dst_ip.v6) ||
+		    ipv6_addr_any(&tun_attr->src_ip.v6))
 			return 0;
 	}
 #endif
