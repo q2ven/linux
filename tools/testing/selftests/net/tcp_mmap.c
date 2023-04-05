@@ -168,7 +168,7 @@ void *child_thread(void *arg)
 	double throughput;
 	struct rusage ru;
 	size_t buffer_sz;
-	int lu, fd;
+	int lu = 0, fd;
 
 	fd = (int)(unsigned long)arg;
 
