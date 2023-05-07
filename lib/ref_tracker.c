@@ -5,6 +5,7 @@
 #include <linux/export.h>
 #include <linux/list_sort.h>
 #include <linux/ref_tracker.h>
+#include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/stacktrace.h>
 #include <linux/stackdepot.h>
@@ -17,6 +18,7 @@ struct ref_tracker {
 	bool			dead;
 	depot_stack_handle_t	alloc_stack_handle;
 	depot_stack_handle_t	free_stack_handle;
+	char			comm[TASK_COMM_LEN];
 };
 
 struct ref_tracker_dir_stats {
@@ -25,6 +27,7 @@ struct ref_tracker_dir_stats {
 	struct {
 		depot_stack_handle_t stack_handle;
 		unsigned int count;
+		char comm[TASK_COMM_LEN];
 	} stacks[];
 };
 
@@ -54,6 +57,7 @@ ref_tracker_get_stats(struct ref_tracker_dir *dir, unsigned int limit)
 		if (i >= stats->count) {
 			stats->stacks[i].stack_handle = stack;
 			stats->stacks[i].count = 0;
+			memcpy(stats->stacks[i].comm, tracker->comm, TASK_COMM_LEN);
 			++stats->count;
 		}
 		++stats->stacks[i].count;
@@ -107,7 +111,8 @@ __ref_tracker_dir_pr_ostream(struct ref_tracker_dir *dir,
 		stack = stats->stacks[i].stack_handle;
 		if (sbuf && !stack_depot_snprint(stack, sbuf, STACK_BUF_SIZE, 4))
 			sbuf[0] = 0;
-		pr_ostream(s, "%s@%pK has %d/%d users at\n%s\n", dir->name, dir,
+		pr_ostream(s, "%s@%pK was allocated by %s and has %d/%d users at\n%s\n",
+			   dir->name, dir, stats->stacks[i].comm,
 			   stats->stacks[i].count, stats->total, sbuf);
 		skipped -= stats->stacks[i].count;
 	}
@@ -208,6 +213,8 @@ int ref_tracker_alloc(struct ref_tracker_dir *dir,
 	}
 	nr_entries = stack_trace_save(entries, ARRAY_SIZE(entries), 1);
 	tracker->alloc_stack_handle = stack_depot_save(entries, nr_entries, gfp);
+	if (in_task())
+		get_task_comm(tracker->comm, current);
 
 	spin_lock_irqsave(&dir->lock, flags);
 	list_add(&tracker->head, &dir->list);
@@ -244,7 +251,7 @@ int ref_tracker_free(struct ref_tracker_dir *dir,
 	if (tracker->dead) {
 		pr_err("reference already released.\n");
 		if (tracker->alloc_stack_handle) {
-			pr_err("allocated in:\n");
+			pr_err("allocated by %s in:\n", tracker->comm);
 			stack_depot_print(tracker->alloc_stack_handle);
 		}
 		if (tracker->free_stack_handle) {
