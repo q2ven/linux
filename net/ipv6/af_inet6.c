@@ -43,7 +43,6 @@
 #include <net/ip.h>
 #include <net/ipv6.h>
 #include <net/udp.h>
-#include <net/udplite.h>
 #include <net/tcp.h>
 #include <net/ping.h>
 #include <net/protocol.h>
@@ -1096,13 +1095,9 @@ static int __init inet6_init(void)
 	if (err)
 		goto out_unregister_tcp_proto;
 
-	err = proto_register(&udplitev6_prot, 1);
-	if (err)
-		goto out_unregister_udp_proto;
-
 	err = proto_register(&rawv6_prot, 1);
 	if (err)
-		goto out_unregister_udplite_proto;
+		goto out_unregister_udp_proto;
 
 	err = proto_register(&pingv6_prot, 1);
 	if (err)
@@ -1153,8 +1148,6 @@ static int __init inet6_init(void)
 	err = -ENOMEM;
 	if (raw6_proc_init())
 		goto proc_raw6_fail;
-	if (udplite6_proc_init())
-		goto proc_udplite6_fail;
 	if (ipv6_misc_proc_init())
 		goto proc_misc6_fail;
 	if (if6_proc_init())
@@ -1189,10 +1182,6 @@ static int __init inet6_init(void)
 	err = udpv6_init();
 	if (err)
 		goto udpv6_fail;
-
-	err = udplitev6_init();
-	if (err)
-		goto udplitev6_fail;
 
 	err = udpv6_offload_init();
 	if (err)
@@ -1264,8 +1253,6 @@ ipv6_packet_fail:
 tcpv6_fail:
 	udpv6_offload_exit();
 udpv6_offload_fail:
-	udplitev6_exit();
-udplitev6_fail:
 	udpv6_exit();
 udpv6_fail:
 	ipv6_frag_exit();
@@ -1287,8 +1274,6 @@ ip6_route_fail:
 proc_if6_fail:
 	ipv6_misc_proc_exit();
 proc_misc6_fail:
-	udplite6_proc_exit();
-proc_udplite6_fail:
 	raw6_proc_exit();
 proc_raw6_fail:
 #endif
@@ -1312,8 +1297,6 @@ out_unregister_ping_proto:
 	proto_unregister(&pingv6_prot);
 out_unregister_raw_proto:
 	proto_unregister(&rawv6_prot);
-out_unregister_udplite_proto:
-	proto_unregister(&udplitev6_prot);
 out_unregister_udp_proto:
 	proto_unregister(&udpv6_prot);
 out_unregister_tcp_proto:
