@@ -906,9 +906,6 @@ static int __net_init ipv6_init_mibs(struct net *net)
 	net->mib.udp_stats_in6 = alloc_percpu(struct udp_mib);
 	if (!net->mib.udp_stats_in6)
 		return -ENOMEM;
-	net->mib.udplite_stats_in6 = alloc_percpu(struct udp_mib);
-	if (!net->mib.udplite_stats_in6)
-		goto err_udplite_mib;
 	net->mib.ipv6_statistics = alloc_percpu(struct ipstats_mib);
 	if (!net->mib.ipv6_statistics)
 		goto err_ip_mib;
@@ -934,8 +931,6 @@ err_icmpmsg_mib:
 err_icmp_mib:
 	free_percpu(net->mib.ipv6_statistics);
 err_ip_mib:
-	free_percpu(net->mib.udplite_stats_in6);
-err_udplite_mib:
 	free_percpu(net->mib.udp_stats_in6);
 	return -ENOMEM;
 }
@@ -943,7 +938,6 @@ err_udplite_mib:
 static void ipv6_cleanup_mibs(struct net *net)
 {
 	free_percpu(net->mib.udp_stats_in6);
-	free_percpu(net->mib.udplite_stats_in6);
 	free_percpu(net->mib.ipv6_statistics);
 	free_percpu(net->mib.icmpv6_statistics);
 	kfree(net->mib.icmpv6msg_statistics);

@@ -35,7 +35,6 @@
 #include <net/mptcp.h>
 #include <net/proto_memory.h>
 #include <net/udp.h>
-#include <net/udplite.h>
 #include <linux/bottom_half.h>
 #include <linux/inetdevice.h>
 #include <linux/proc_fs.h>
@@ -438,18 +437,6 @@ static int snmp_seq_show_tcp_udp(struct seq_file *seq, void *v)
 	for (i = 0; snmp4_udp_list[i].name; i++)
 		seq_printf(seq, " %s", snmp4_udp_list[i].name);
 	seq_puts(seq, "\nUdp:");
-	for (i = 0; snmp4_udp_list[i].name; i++)
-		seq_printf(seq, " %lu", buff[i]);
-
-	memset(buff, 0, TCPUDP_MIB_MAX * sizeof(unsigned long));
-
-	/* the UDP and UDP-Lite MIBs are the same */
-	seq_puts(seq, "\nUdpLite:");
-	snmp_get_cpu_field_batch(buff, snmp4_udp_list,
-				 net->mib.udplite_statistics);
-	for (i = 0; snmp4_udp_list[i].name; i++)
-		seq_printf(seq, " %s", snmp4_udp_list[i].name);
-	seq_puts(seq, "\nUdpLite:");
 	for (i = 0; snmp4_udp_list[i].name; i++)
 		seq_printf(seq, " %lu", buff[i]);
 
