@@ -104,7 +104,7 @@ struct udp_table {
 	unsigned int		log;
 };
 extern struct udp_table udp_table;
-void udp_table_init(struct udp_table *, const char *);
+
 static inline struct udp_hslot *udp_hashslot(struct udp_table *table,
 					     const struct net *net,
 					     unsigned int num)
@@ -294,7 +294,7 @@ static inline void udp_lib_init_sock(struct sock *sk)
 	set_bit(SOCK_CUSTOM_SOCKOPT, &sk->sk_socket->flags);
 }
 
-/* hash routines shared between UDPv4/6 and UDP-Litev4/6 */
+/* hash routines shared between UDPv4/6 */
 static inline int udp_lib_hash(struct sock *sk)
 {
 	BUG();
