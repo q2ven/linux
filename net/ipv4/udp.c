@@ -115,7 +115,6 @@
 #include <net/sock_reuseport.h>
 #include <net/addrconf.h>
 #include <net/udp.h>
-#include <net/udplite.h>
 #include <net/udp_tunnel.h>
 #include <net/gro.h>
 #if IS_ENABLED(CONFIG_IPV6)
@@ -1066,14 +1065,12 @@ EXPORT_SYMBOL(udp_set_csum);
 static int udp_send_skb(struct sk_buff *skb, struct flowi4 *fl4,
 			struct inet_cork *cork)
 {
-	int err, len, datalen, is_udplite;
 	struct sock *sk = skb->sk;
 	struct inet_sock *inet;
+	int err, len, datalen;
 	struct udphdr *uh;
-	__wsum csum = 0;
 
 	inet = inet_sk(sk);
-	is_udplite = IS_UDPLITE(sk);
 	len = skb->len - skb_transport_offset(skb);
 	datalen = len - sizeof(*uh);
 
@@ -1102,7 +1099,8 @@ static int udp_send_skb(struct sk_buff *skb, struct flowi4 *fl4,
 			kfree_skb(skb);
 			return -EINVAL;
 		}
-		if (is_udplite || dst_xfrm(skb_dst(skb))) {
+
+		if (dst_xfrm(skb_dst(skb))) {
 			kfree_skb(skb);
 			return -EIO;
 		}
@@ -1118,26 +1116,18 @@ static int udp_send_skb(struct sk_buff *skb, struct flowi4 *fl4,
 		}
 	}
 
-	if (is_udplite)  				 /*     UDP-Lite      */
-		csum = udplite_csum(skb);
-
-	else if (sk->sk_no_check_tx) {			 /* UDP csum off */
-
+	if (sk->sk_no_check_tx) {			 /* UDP csum off */
 		skb->ip_summed = CHECKSUM_NONE;
 		goto send;
-
 	} else if (skb->ip_summed == CHECKSUM_PARTIAL) { /* UDP hardware csum */
 csum_partial:
-
 		udp4_hwcsum(skb, fl4->saddr, fl4->daddr);
 		goto send;
-
-	} else
-		csum = udp_csum(skb);
+	}
 
 	/* add protocol-dependent pseudo-header */
 	uh->check = csum_tcpudp_magic(fl4->saddr, fl4->daddr, len,
-				      sk->sk_protocol, csum);
+				      sk->sk_protocol, udp_csum(skb));
 	if (uh->check == 0)
 		uh->check = CSUM_MANGLED_0;
 
@@ -1219,12 +1209,10 @@ EXPORT_SYMBOL_GPL(udp_cmsg_send);
 
 int udp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 {
-	int (*getfrag)(void *, char *, int, int, int, struct sk_buff *);
 	DECLARE_SOCKADDR(struct sockaddr_in *, usin, msg->msg_name);
 	struct inet_sock *inet = inet_sk(sk);
 	struct udp_sock *up = udp_sk(sk);
 	struct ip_options_data opt_copy;
-	int is_udplite = IS_UDPLITE(sk);
 	__be32 daddr, faddr, saddr;
 	struct rtable *rt = NULL;
 	struct flowi4 fl4_stack;
@@ -1251,7 +1239,6 @@ int udp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 		return -EOPNOTSUPP;
 
 	corkreq = udp_test_bit(CORK, sk) || msg->msg_flags & MSG_MORE;
-	getfrag = is_udplite ? udplite_getfrag : ip_generic_getfrag;
 
 	fl4 = &inet->cork.fl.u.ip4;
 	if (READ_ONCE(up->pending)) {
@@ -1427,7 +1414,7 @@ back_from_confirm:
 	if (!corkreq) {
 		struct inet_cork cork;
 
-		skb = ip_make_skb(sk, fl4, getfrag, msg, ulen,
+		skb = ip_make_skb(sk, fl4, ip_generic_getfrag, msg, ulen,
 				  sizeof(struct udphdr), &ipc, &rt,
 				  &cork, msg->msg_flags);
 		err = PTR_ERR(skb);
@@ -1458,7 +1445,7 @@ back_from_confirm:
 
 do_append_data:
 	up->len += ulen;
-	err = ip_append_data(sk, fl4, getfrag, msg, ulen,
+	err = ip_append_data(sk, fl4, ip_generic_getfrag, msg, ulen,
 			     sizeof(struct udphdr), &ipc, &rt,
 			     corkreq ? msg->msg_flags|MSG_MORE : msg->msg_flags);
 	if (err)
@@ -1972,7 +1959,6 @@ int udp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int flags,
 	DECLARE_SOCKADDR(struct sockaddr_in *, sin, msg->msg_name);
 	int off, err, peeking = flags & MSG_PEEK;
 	struct inet_sock *inet = inet_sk(sk);
-	int is_udplite = IS_UDPLITE(sk);
 	struct net *net = sock_net(sk);
 	bool checksum_valid = false;
 	unsigned int ulen, copied;
@@ -1994,14 +1980,10 @@ try_again:
 	else if (copied < ulen)
 		msg->msg_flags |= MSG_TRUNC;
 
-	/*
-	 * If checksum is needed at all, try to do it while copying the
-	 * data.  If the data is truncated, or if we only want a partial
-	 * coverage checksum (UDP-Lite), do it before the copy.
+	/* If checksum is needed at all, try to do it while copying the
+	 * data.  If the data is truncated, do it before the copy.
 	 */
-
-	if (copied < ulen || peeking ||
-	    (is_udplite && UDP_SKB_CB(skb)->partial_cov)) {
+	if (copied < ulen || peeking) {
 		checksum_valid = udp_skb_csum_unnecessary(skb) ||
 				!__udp_lib_checksum_complete(skb);
 		if (!checksum_valid)
@@ -2467,20 +2449,6 @@ static inline int udp4_csum_init(struct sk_buff *skb, struct udphdr *uh,
 {
 	int err;
 
-	UDP_SKB_CB(skb)->partial_cov = 0;
-	UDP_SKB_CB(skb)->cscov = skb->len;
-
-	if (proto == IPPROTO_UDPLITE) {
-		err = udplite_checksum_init(skb, uh);
-		if (err)
-			return err;
-
-		if (UDP_SKB_CB(skb)->partial_cov) {
-			skb->csum = inet_compute_pseudo(skb, proto);
-			return 0;
-		}
-	}
-
 	/* Note, we are only interested in != 0 or == 0, thus the
 	 * force to int.
 	 */
@@ -2512,7 +2480,7 @@ static int udp_unicast_rcv_skb(struct sock *sk, struct sk_buff *skb,
 {
 	int ret;
 
-	if (inet_get_convert_csum(sk) && uh->check && !IS_UDPLITE(sk))
+	if (inet_get_convert_csum(sk) && uh->check)
 		skb_checksum_try_convert(skb, IPPROTO_UDP, inet_compute_pseudo);
 
 	ret = udp_queue_rcv_skb(sk, skb);
