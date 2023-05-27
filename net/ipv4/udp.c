@@ -2522,10 +2522,12 @@ static int __udp4_lib_rcv(struct sk_buff *skb, struct udp_table *udptable)
 	if (ulen > skb->len)
 		goto short_packet;
 
-	if (ulen < sizeof(*uh) || pskb_trim_rcsum(skb, ulen))
-		goto short_packet;
+	if (ulen < sizeof(*uh)) {
+		if (pskb_trim_rcsum(skb, ulen))
+			goto short_packet;
 
-	uh = udp_hdr(skb);
+		uh = udp_hdr(skb);
+	}
 
 	if (udp4_csum_init(skb, uh))
 		goto csum_error;

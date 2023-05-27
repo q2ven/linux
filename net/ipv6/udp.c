@@ -1042,23 +1042,27 @@ static int __udp6_lib_rcv(struct sk_buff *skb, struct udp_table *udptable)
 	uh = udp_hdr(skb);
 
 	ulen = ntohs(uh->len);
-	if (ulen > skb->len)
-		goto short_packet;
-
-	/* Check for jumbo payload */
-	if (ulen == 0)
-		ulen = skb->len;
-
-	if (ulen < sizeof(*uh))
-		goto short_packet;
-
-	if (ulen < skb->len) {
-		if (pskb_trim_rcsum(skb, ulen))
+	if (ulen) {
+		if (ulen > skb->len)
 			goto short_packet;
 
-		saddr = &ipv6_hdr(skb)->saddr;
-		daddr = &ipv6_hdr(skb)->daddr;
-		uh = udp_hdr(skb);
+		if (ulen < sizeof(*uh))
+			goto short_packet;
+
+		if (ulen < skb->len) {
+			if (pskb_trim_rcsum(skb, ulen))
+				goto short_packet;
+
+			saddr = &ipv6_hdr(skb)->saddr;
+			daddr = &ipv6_hdr(skb)->daddr;
+			uh = udp_hdr(skb);
+		}
+	} else {
+		/* jumbo payload */
+		ulen = skb->len;
+
+		if (ulen < sizeof(*uh))
+			goto short_packet;
 	}
 
 	if (udp6_csum_init(skb, uh))
