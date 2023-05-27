@@ -231,8 +231,7 @@ rescore:
 static struct sock *udp6_lib_lookup4(const struct net *net,
 				     const struct in6_addr *saddr, __be16 sport,
 				     const struct in6_addr *daddr,
-				     unsigned int hnum, int dif, int sdif,
-				     struct udp_table *udptable)
+				     unsigned int hnum, int dif, int sdif)
 {
 	return NULL;
 }
@@ -299,9 +298,9 @@ static void udp6_hash4(struct sock *sk)
 struct sock *__udp6_lib_lookup(const struct net *net,
 			       const struct in6_addr *saddr, __be16 sport,
 			       const struct in6_addr *daddr, __be16 dport,
-			       int dif, int sdif, struct udp_table *udptable,
-			       struct sk_buff *skb)
+			       int dif, int sdif, struct sk_buff *skb)
 {
+	struct udp_table *udptable = net->ipv4.udp_table;
 	unsigned short hnum = ntohs(dport);
 	struct udp_hslot *hslot2;
 	struct sock *result, *sk;
@@ -327,7 +326,7 @@ struct sock *__udp6_lib_lookup(const struct net *net,
 	/* Lookup redirect from BPF */
 	if (static_branch_unlikely(&bpf_sk_lookup_enabled) &&
 	    udptable == net->ipv4.udp_table) {
-		sk = inet6_lookup_run_sk_lookup(net, IPPROTO_UDP, skb, sizeof(struct udphdr),
+		sk = inet6_lookup_run_sk_lookup(net, skb, sizeof(struct udphdr),
 						saddr, sport, daddr, hnum, dif,
 						udp6_ehashfn);
 		if (sk) {
@@ -355,14 +354,13 @@ done:
 EXPORT_SYMBOL_GPL(__udp6_lib_lookup);
 
 static struct sock *__udp6_lib_lookup_skb(struct sk_buff *skb,
-					  __be16 sport, __be16 dport,
-					  struct udp_table *udptable)
+					  __be16 sport, __be16 dport)
 {
 	const struct ipv6hdr *iph = ipv6_hdr(skb);
 
 	return __udp6_lib_lookup(dev_net(skb->dev), &iph->saddr, sport,
 				 &iph->daddr, dport, inet6_iif(skb),
-				 inet6_sdif(skb), udptable, skb);
+				 inet6_sdif(skb), skb);
 }
 
 struct sock *udp6_lib_lookup_skb(const struct sk_buff *skb,
@@ -377,7 +375,7 @@ struct sock *udp6_lib_lookup_skb(const struct sk_buff *skb,
 
 	return __udp6_lib_lookup(net, &iph->saddr, sport,
 				 &iph->daddr, dport, iif,
-				 sdif, net->ipv4.udp_table, NULL);
+				 sdif, NULL);
 }
 
 /* Must be called under rcu_read_lock().
@@ -389,8 +387,7 @@ struct sock *udp6_lib_lookup(const struct net *net, const struct in6_addr *saddr
 {
 	struct sock *sk;
 
-	sk =  __udp6_lib_lookup(net, saddr, sport, daddr, dport,
-				dif, 0, net->ipv4.udp_table, NULL);
+	sk =  __udp6_lib_lookup(net, saddr, sport, daddr, dport, dif, 0, NULL);
 	if (sk && !refcount_inc_not_zero(&sk->sk_refcnt))
 		sk = NULL;
 	return sk;
@@ -591,7 +588,6 @@ static int __udp6_lib_err_encap_no_sk(struct sk_buff *skb,
 static struct sock *__udp6_lib_err_encap(struct net *net,
 					 const struct ipv6hdr *hdr, int offset,
 					 struct udphdr *uh,
-					 struct udp_table *udptable,
 					 struct sock *sk,
 					 struct sk_buff *skb,
 					 struct inet6_skb_parm *opt,
@@ -621,8 +617,7 @@ static struct sock *__udp6_lib_err_encap(struct net *net,
 	}
 
 	sk = __udp6_lib_lookup(net, &hdr->daddr, uh->source,
-			       &hdr->saddr, uh->dest,
-			       inet6_iif(skb), 0, udptable, skb);
+			       &hdr->saddr, uh->dest, inet6_iif(skb), 0, skb);
 	if (sk) {
 		up = udp_sk(sk);
 
@@ -643,9 +638,8 @@ out:
 	return sk;
 }
 
-static int __udp6_lib_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
-			  u8 type, u8 code, int offset, __be32 info,
-			  struct udp_table *udptable)
+static int udpv6_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
+		     u8 type, u8 code, int offset, __be32 info)
 {
 	struct ipv6_pinfo *np;
 	const struct ipv6hdr *hdr = (const struct ipv6hdr *)skb->data;
@@ -659,14 +653,13 @@ static int __udp6_lib_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
 	struct net *net = dev_net(skb->dev);
 
 	sk = __udp6_lib_lookup(net, daddr, uh->dest, saddr, uh->source,
-			       inet6_iif(skb), inet6_sdif(skb), udptable, NULL);
+			       inet6_iif(skb), inet6_sdif(skb), NULL);
 
 	if (!sk || READ_ONCE(udp_sk(sk)->encap_type)) {
 		/* No socket for error: try tunnels before discarding */
 		if (static_branch_unlikely(&udpv6_encap_needed_key)) {
 			sk = __udp6_lib_err_encap(net, hdr, offset, uh,
-						  udptable, sk, skb,
-						  opt, type, code, info);
+						  sk, skb, opt, type, code, info);
 			if (!sk)
 				return 0;
 		} else
@@ -755,14 +748,6 @@ static int __udpv6_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 	}
 
 	return 0;
-}
-
-static __inline__ int udpv6_err(struct sk_buff *skb,
-				struct inet6_skb_parm *opt, u8 type,
-				u8 code, int offset, __be32 info)
-{
-	return __udp6_lib_err(skb, opt, type, code, offset, info,
-			      dev_net(skb->dev)->ipv4.udp_table);
 }
 
 static int udpv6_queue_rcv_one_skb(struct sock *sk, struct sk_buff *skb)
@@ -899,9 +884,9 @@ static void udp6_csum_zero_error(struct sk_buff *skb)
  */
 static int __udp6_lib_mcast_deliver(struct net *net, struct sk_buff *skb,
 				    const struct in6_addr *saddr,
-				    const struct in6_addr *daddr,
-				    struct udp_table *udptable)
+				    const struct in6_addr *daddr)
 {
+	struct udp_table *udptable = net->ipv4.udp_table;
 	int dif = inet6_iif(skb), sdif = inet6_sdif(skb);
 	unsigned int offset, hash2 = 0, hash2_any = 0;
 	const struct udphdr *uh = udp_hdr(skb);
@@ -1097,11 +1082,10 @@ static int __udp6_lib_rcv(struct sk_buff *skb, struct udp_table *udptable)
 	 *	Multicast receive code
 	 */
 	if (ipv6_addr_is_multicast(daddr))
-		return __udp6_lib_mcast_deliver(net, skb,
-						saddr, daddr, udptable);
+		return __udp6_lib_mcast_deliver(net, skb, saddr, daddr);
 
 	/* Unicast */
-	sk = __udp6_lib_lookup_skb(skb, uh->source, uh->dest, udptable);
+	sk = __udp6_lib_lookup_skb(skb, uh->source, uh->dest);
 	if (sk) {
 		if (!uh->check && !udp_get_no_check6_rx(sk))
 			goto report_csum_error;
