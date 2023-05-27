@@ -63,15 +63,6 @@ static inline __wsum udplite_csum(struct sk_buff *skb)
 	const struct sock *sk = skb->sk;
 	int len = skb->len - off;
 
-	if (udp_test_bit(UDPLITE_SEND_CC, sk)) {
-		u16 pcslen = READ_ONCE(udp_sk(sk)->pcslen);
-
-		if (pcslen < len) {
-			if (pcslen > 0)
-				len = pcslen;
-			udp_hdr(skb)->len = htons(pcslen);
-		}
-	}
 	skb->ip_summed = CHECKSUM_NONE;     /* no HW support for checksumming */
 
 	return skb_checksum(skb, off, len, 0);
