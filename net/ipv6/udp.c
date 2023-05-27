@@ -415,14 +415,14 @@ static int udp6_skb_len(struct sk_buff *skb)
 int udpv6_recvmsg(struct sock *sk, struct msghdr *msg, size_t len,
 		  int flags, int *addr_len)
 {
+	int off, err, peeking = flags & MSG_PEEK;
 	struct ipv6_pinfo *np = inet6_sk(sk);
 	struct inet_sock *inet = inet_sk(sk);
-	struct sk_buff *skb;
-	unsigned int ulen, copied;
-	int off, err, peeking = flags & MSG_PEEK;
 	int is_udplite = IS_UDPLITE(sk);
 	struct udp_mib __percpu *mib;
 	bool checksum_valid = false;
+	unsigned int ulen, copied;
+	struct sk_buff *skb;
 	int is_udp4;
 
 	if (flags & MSG_ERRQUEUE)
@@ -927,16 +927,19 @@ static int __udp6_lib_mcast_deliver(struct net *net, struct sk_buff *skb,
 		const struct in6_addr *saddr, const struct in6_addr *daddr,
 		struct udp_table *udptable, int proto)
 {
-	struct sock *sk, *first = NULL;
+	int dif = inet6_iif(skb), sdif = inet6_sdif(skb);
+	unsigned int offset, hash2 = 0, hash2_any = 0;
 	const struct udphdr *uh = udp_hdr(skb);
 	unsigned short hnum = ntohs(uh->dest);
-	struct udp_hslot *hslot = udp_hashslot(udptable, net, hnum);
-	unsigned int offset = offsetof(typeof(*sk), sk_node);
-	unsigned int hash2 = 0, hash2_any = 0, use_hash2 = (hslot->count > 10);
-	int dif = inet6_iif(skb);
-	int sdif = inet6_sdif(skb);
+	struct sock *sk, *first = NULL;
 	struct hlist_node *node;
+	struct udp_hslot *hslot;
 	struct sk_buff *nskb;
+	bool use_hash2;
+
+	hslot = udp_hashslot(udptable, net, hnum);
+	offset = offsetof(typeof(*sk), sk_node);
+	use_hash2 = hslot->count > 10;
 
 	if (use_hash2) {
 		hash2_any = ipv6_portaddr_hash(net, &in6addr_any, hnum) &
@@ -1317,14 +1320,14 @@ static void udp6_hwcsum_outgoing(struct sock *sk, struct sk_buff *skb,
 static int udp_v6_send_skb(struct sk_buff *skb, struct flowi6 *fl6,
 			   struct inet_cork *cork)
 {
+	int err, len, datalen, is_udplite;
 	struct sock *sk = skb->sk;
 	struct udphdr *uh;
-	int err = 0;
-	int is_udplite = IS_UDPLITE(sk);
 	__wsum csum = 0;
-	int offset = skb_transport_offset(skb);
-	int len = skb->len - offset;
-	int datalen = len - sizeof(*uh);
+
+	is_udplite = IS_UDPLITE(sk);
+	len = skb->len - skb_transport_offset(skb);
+	datalen = len - sizeof(*uh);
 
 	/*
 	 * Create a UDP header
@@ -1423,26 +1426,26 @@ out:
 
 int udpv6_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 {
-	struct ipv6_txoptions opt_space;
-	struct udp_sock *up = udp_sk(sk);
+	int (*getfrag)(void *, char *, int, int, int, struct sk_buff *);
+	DECLARE_SOCKADDR(struct sockaddr_in6 *, sin6, msg->msg_name);
+	struct ipv6_txoptions *opt_to_free = NULL;
+	struct in6_addr *daddr, *final_p, final;
+	struct ip6_flowlabel *flowlabel = NULL;
 	struct inet_sock *inet = inet_sk(sk);
 	struct ipv6_pinfo *np = inet6_sk(sk);
-	DECLARE_SOCKADDR(struct sockaddr_in6 *, sin6, msg->msg_name);
-	struct in6_addr *daddr, *final_p, final;
 	struct ipv6_txoptions *opt = NULL;
-	struct ipv6_txoptions *opt_to_free = NULL;
-	struct ip6_flowlabel *flowlabel = NULL;
-	struct inet_cork_full cork;
-	struct flowi6 *fl6 = &cork.fl.u.ip6;
-	struct dst_entry *dst;
-	struct ipcm6_cookie ipc6;
+	struct udp_sock *up = udp_sk(sk);
+	struct ipv6_txoptions opt_space;
 	int addr_len = msg->msg_namelen;
-	bool connected = false;
-	int ulen = len;
-	int corkreq = udp_test_bit(CORK, sk) || msg->msg_flags & MSG_MORE;
-	int err;
 	int is_udplite = IS_UDPLITE(sk);
-	int (*getfrag)(void *, char *, int, int, int, struct sk_buff *);
+	struct inet_cork_full cork;
+	struct ipcm6_cookie ipc6;
+	bool connected = false;
+	struct dst_entry *dst;
+	struct flowi6 *fl6;
+	int ulen = len;
+	int corkreq;
+	int err;
 
 	ipcm6_init(&ipc6);
 	ipc6.gso_size = READ_ONCE(up->gso_size);
@@ -1503,6 +1506,9 @@ do_udp_sendmsg:
 	   */
 	if (len > INT_MAX - sizeof(struct udphdr))
 		return -EMSGSIZE;
+
+	corkreq = udp_test_bit(CORK, sk) || msg->msg_flags & MSG_MORE;
+	fl6 = &cork.fl.u.ip6;
 
 	getfrag  =  is_udplite ?  udplite_getfrag : ip_generic_getfrag;
 	if (READ_ONCE(up->pending)) {

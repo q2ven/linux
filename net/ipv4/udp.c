@@ -1064,15 +1064,16 @@ EXPORT_SYMBOL(udp_set_csum);
 static int udp_send_skb(struct sk_buff *skb, struct flowi4 *fl4,
 			struct inet_cork *cork)
 {
+	int err, len, datalen, is_udplite;
 	struct sock *sk = skb->sk;
-	struct inet_sock *inet = inet_sk(sk);
+	struct inet_sock *inet;
 	struct udphdr *uh;
-	int err;
-	int is_udplite = IS_UDPLITE(sk);
-	int offset = skb_transport_offset(skb);
-	int len = skb->len - offset;
-	int datalen = len - sizeof(*uh);
 	__wsum csum = 0;
+
+	inet = inet_sk(sk);
+	is_udplite = IS_UDPLITE(sk);
+	len = skb->len - skb_transport_offset(skb);
+	datalen = len - sizeof(*uh);
 
 	/*
 	 * Create a UDP header
@@ -1216,25 +1217,26 @@ EXPORT_SYMBOL_GPL(udp_cmsg_send);
 
 int udp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 {
+	int (*getfrag)(void *, char *, int, int, int, struct sk_buff *);
+	DECLARE_SOCKADDR(struct sockaddr_in *, usin, msg->msg_name);
 	struct inet_sock *inet = inet_sk(sk);
 	struct udp_sock *up = udp_sk(sk);
-	DECLARE_SOCKADDR(struct sockaddr_in *, usin, msg->msg_name);
-	struct flowi4 fl4_stack;
-	struct flowi4 *fl4;
-	int ulen = len;
-	struct ipcm_cookie ipc;
-	struct rtable *rt = NULL;
-	int free = 0;
-	int connected = 0;
+	struct ip_options_data opt_copy;
+	int is_udplite = IS_UDPLITE(sk);
 	__be32 daddr, faddr, saddr;
+	struct rtable *rt = NULL;
+	struct flowi4 fl4_stack;
+	struct ipcm_cookie ipc;
+	struct sk_buff *skb;
+	struct flowi4 *fl4;
+	int connected = 0;
+	int ulen = len;
 	u8 tos, scope;
 	__be16 dport;
-	int err, is_udplite = IS_UDPLITE(sk);
-	int corkreq = udp_test_bit(CORK, sk) || msg->msg_flags & MSG_MORE;
-	int (*getfrag)(void *, char *, int, int, int, struct sk_buff *);
-	struct sk_buff *skb;
-	struct ip_options_data opt_copy;
 	int uc_index;
+	int free = 0;
+	int corkreq;
+	int err;
 
 	if (len > 0xFFFF)
 		return -EMSGSIZE;
@@ -1246,6 +1248,7 @@ int udp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 	if (msg->msg_flags & MSG_OOB) /* Mirror BSD error message compatibility */
 		return -EOPNOTSUPP;
 
+	corkreq = udp_test_bit(CORK, sk) || msg->msg_flags & MSG_MORE;
 	getfrag = is_udplite ? udplite_getfrag : ip_generic_getfrag;
 
 	fl4 = &inet->cork.fl.u.ip4;
@@ -1966,13 +1969,13 @@ EXPORT_SYMBOL(udp_read_skb);
 int udp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int flags,
 		int *addr_len)
 {
-	struct inet_sock *inet = inet_sk(sk);
 	DECLARE_SOCKADDR(struct sockaddr_in *, sin, msg->msg_name);
-	struct sk_buff *skb;
-	unsigned int ulen, copied;
 	int off, err, peeking = flags & MSG_PEEK;
+	struct inet_sock *inet = inet_sk(sk);
 	int is_udplite = IS_UDPLITE(sk);
 	bool checksum_valid = false;
+	unsigned int ulen, copied;
+	struct sk_buff *skb;
 
 	if (flags & MSG_ERRQUEUE)
 		return ip_recv_error(sk, msg, len, addr_len);
@@ -2139,9 +2142,9 @@ void udp_lib_unhash(struct sock *sk)
 	if (sk_hashed(sk)) {
 		struct udp_table *udptable = udp_get_table_prot(sk);
 		struct udp_hslot *hslot, *hslot2;
+		struct net *net = sock_net(sk);
 
-		hslot  = udp_hashslot(udptable, sock_net(sk),
-				      udp_sk(sk)->udp_port_hash);
+		hslot  = udp_hashslot(udptable, net, udp_sk(sk)->udp_port_hash);
 		hslot2 = udp_hashslot2(udptable, udp_sk(sk)->udp_portaddr_hash);
 
 		spin_lock_bh(&hslot->lock);
@@ -2150,7 +2153,7 @@ void udp_lib_unhash(struct sock *sk)
 		if (sk_del_node_init_rcu(sk)) {
 			hslot->count--;
 			inet_sk(sk)->inet_num = 0;
-			sock_prot_inuse_add(sock_net(sk), sk->sk_prot, -1);
+			sock_prot_inuse_add(net, sk->sk_prot, -1);
 
 			spin_lock(&hslot2->lock);
 			hlist_del_init_rcu(&udp_sk(sk)->udp_portaddr_node);
@@ -2172,6 +2175,7 @@ void udp_lib_rehash(struct sock *sk, u16 newhash, u16 newhash4)
 	if (sk_hashed(sk)) {
 		struct udp_table *udptable = udp_get_table_prot(sk);
 		struct udp_hslot *hslot, *hslot2, *nhslot2;
+		struct net *net = sock_net(sk);
 
 		hslot2 = udp_hashslot2(udptable, udp_sk(sk)->udp_portaddr_hash);
 		nhslot2 = udp_hashslot2(udptable, newhash);
@@ -2179,8 +2183,7 @@ void udp_lib_rehash(struct sock *sk, u16 newhash, u16 newhash4)
 
 		if (hslot2 != nhslot2 ||
 		    rcu_access_pointer(sk->sk_reuseport_cb)) {
-			hslot = udp_hashslot(udptable, sock_net(sk),
-					     udp_sk(sk)->udp_port_hash);
+			hslot = udp_hashslot(udptable, net, udp_sk(sk)->udp_port_hash);
 			/* we must lock primary chain too */
 			spin_lock_bh(&hslot->lock);
 			if (rcu_access_pointer(sk->sk_reuseport_cb))
@@ -2434,15 +2437,18 @@ static int __udp4_lib_mcast_deliver(struct net *net, struct sk_buff *skb,
 				    struct udp_table *udptable,
 				    int proto)
 {
-	struct sock *sk, *first = NULL;
+	int dif = skb->dev->ifindex, sdif = inet_sdif(skb);
+	unsigned int offset, hash2 = 0, hash2_any = 0;
 	unsigned short hnum = ntohs(uh->dest);
-	struct udp_hslot *hslot = udp_hashslot(udptable, net, hnum);
-	unsigned int hash2 = 0, hash2_any = 0, use_hash2 = (hslot->count > 10);
-	unsigned int offset = offsetof(typeof(*sk), sk_node);
-	int dif = skb->dev->ifindex;
-	int sdif = inet_sdif(skb);
+	struct sock *sk, *first = NULL;
 	struct hlist_node *node;
+	struct udp_hslot *hslot;
 	struct sk_buff *nskb;
+	bool use_hash2;
+
+	hslot = udp_hashslot(udptable, net, hnum);
+	offset = offsetof(typeof(*sk), sk_node);
+	use_hash2 = hslot->count > 10;
 
 	if (use_hash2) {
 		hash2_any = ipv4_portaddr_hash(net, htonl(INADDR_ANY), hnum) &
