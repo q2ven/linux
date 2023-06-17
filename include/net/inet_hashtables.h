@@ -395,17 +395,19 @@ static inline struct sock *__inet_lookup(struct net *net,
 					 const __be32 saddr, const __be16 sport,
 					 const __be32 daddr, const __be16 dport,
 					 const int dif, const int sdif,
-					 bool *refcounted)
+					 u8 *lookup_state)
 {
 	u16 hnum = ntohs(dport);
 	struct sock *sk;
 
 	sk = __inet_lookup_established(net, hashinfo, saddr, sport,
 				       daddr, hnum, dif, sdif);
-	*refcounted = true;
-	if (sk)
+	if (sk) {
+		*lookup_state = LOOKUP_REFCNT;
 		return sk;
-	*refcounted = false;
+	}
+
+	*lookup_state = LOOKUP_NO_REF;
 	return __inet_lookup_listener(net, hashinfo, skb, doff, saddr,
 				      sport, daddr, hnum, dif, sdif);
 }
@@ -418,12 +420,13 @@ static inline struct sock *inet_lookup(struct net *net,
 				       const int dif)
 {
 	struct sock *sk;
-	bool refcounted;
+	u8 lookup_state;
 
 	sk = __inet_lookup(net, hashinfo, skb, doff, saddr, sport, daddr,
-			   dport, dif, 0, &refcounted);
+			   dport, dif, 0, &lookup_state);
 
-	if (sk && !refcounted && !refcount_inc_not_zero(&sk->sk_refcnt))
+	if (sk && lookup_state == LOOKUP_NO_REF &&
+	    !refcount_inc_not_zero(&sk->sk_refcnt))
 		sk = NULL;
 	return sk;
 }
@@ -434,9 +437,9 @@ static inline struct sock *__inet_lookup_skb(struct inet_hashinfo *hashinfo,
 					     const __be16 sport,
 					     const __be16 dport,
 					     const int sdif,
-					     bool *refcounted)
+					     u8 *lookup_state)
 {
-	struct sock *sk = skb_steal_sock(skb, refcounted);
+	struct sock *sk = skb_steal_sock(skb, lookup_state);
 	const struct iphdr *iph = ip_hdr(skb);
 
 	if (sk)
@@ -445,7 +448,7 @@ static inline struct sock *__inet_lookup_skb(struct inet_hashinfo *hashinfo,
 	return __inet_lookup(dev_net(skb_dst(skb)->dev), hashinfo, skb,
 			     doff, iph->saddr, sport,
 			     iph->daddr, dport, inet_iif(skb), sdif,
-			     refcounted);
+			     lookup_state);
 }
 
 u32 inet6_ehashfn(const struct net *net,

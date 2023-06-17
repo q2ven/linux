@@ -2814,20 +2814,23 @@ sk_is_refcounted(struct sock *sk)
 	return !sk_fullsock(sk) || !sock_flag(sk, SOCK_RCU_FREE);
 }
 
+#define LOOKUP_NO_REF 0
+#define LOOKUP_REFCNT (1 << 0)
+
 /**
  * skb_steal_sock - steal a socket from an sk_buff
  * @skb: sk_buff to steal the socket from
  * @refcounted: is set to true if the socket is reference-counted
  */
 static inline struct sock *
-skb_steal_sock(struct sk_buff *skb, bool *refcounted)
+skb_steal_sock(struct sk_buff *skb, u8 *lookup_state)
 {
 	if (skb->sk) {
 		struct sock *sk = skb->sk;
 
-		*refcounted = true;
-		if (skb_sk_is_prefetched(skb))
-			*refcounted = sk_is_refcounted(sk);
+		*lookup_state = LOOKUP_REFCNT;
+		if (skb_sk_is_prefetched(skb) && !sk_is_refcounted(sk))
+			*lookup_state = LOOKUP_NO_REF;
 		skb->destructor = NULL;
 		skb->sk = NULL;
 		return sk;

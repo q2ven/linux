@@ -230,11 +230,12 @@ struct sock *inet6_lookup(struct net *net, struct inet_hashinfo *hashinfo,
 			  const int dif)
 {
 	struct sock *sk;
-	bool refcounted;
+	u8 lookup_state;
 
 	sk = __inet6_lookup(net, hashinfo, skb, doff, saddr, sport, daddr,
-			    ntohs(dport), dif, 0, &refcounted);
-	if (sk && !refcounted && !refcount_inc_not_zero(&sk->sk_refcnt))
+			    ntohs(dport), dif, 0, &lookup_state);
+	if (sk && lookup_state == LOOKUP_NO_REF &&
+	    !refcount_inc_not_zero(&sk->sk_refcnt))
 		sk = NULL;
 	return sk;
 }

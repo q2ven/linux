@@ -794,8 +794,8 @@ static int dccp_v4_rcv(struct sk_buff *skb)
 {
 	const struct dccp_hdr *dh;
 	const struct iphdr *iph;
-	bool refcounted;
 	struct sock *sk;
+	u8 lookup_state;
 	int min_cov;
 
 	/* Step 1: Check header basics */
@@ -832,7 +832,7 @@ static int dccp_v4_rcv(struct sk_buff *skb)
 
 lookup:
 	sk = __inet_lookup_skb(&dccp_hashinfo, skb, __dccp_hdr_len(dh),
-			       dh->dccph_sport, dh->dccph_dport, 0, &refcounted);
+			       dh->dccph_sport, dh->dccph_dport, 0, &lookup_state);
 	if (!sk) {
 		dccp_pr_debug("failed to look up flow ID in table and "
 			      "get corresponding socket\n");
@@ -861,7 +861,7 @@ lookup:
 			goto lookup;
 		}
 		sock_hold(sk);
-		refcounted = true;
+		lookup_state = LOOKUP_REFCNT;
 		nsk = dccp_check_req(sk, skb, req);
 		if (!nsk) {
 			reqsk_put(req);
@@ -896,7 +896,7 @@ lookup:
 		goto discard_and_relse;
 	nf_reset_ct(skb);
 
-	return __sk_receive_skb(sk, skb, 1, dh->dccph_doff * 4, refcounted);
+	return __sk_receive_skb(sk, skb, 1, dh->dccph_doff * 4, lookup_state & LOOKUP_REFCNT);
 
 no_dccp_socket:
 	if (!xfrm4_policy_check(NULL, XFRM_POLICY_IN, skb))
@@ -918,7 +918,7 @@ discard_it:
 	return 0;
 
 discard_and_relse:
-	if (refcounted)
+	if (lookup_state & LOOKUP_REFCNT)
 		sock_put(sk);
 	goto discard_it;
 }

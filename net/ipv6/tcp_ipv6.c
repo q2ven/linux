@@ -1594,8 +1594,8 @@ INDIRECT_CALLABLE_SCOPE int tcp_v6_rcv(struct sk_buff *skb)
 	int dif = inet6_iif(skb);
 	const struct tcphdr *th;
 	const struct ipv6hdr *hdr;
-	bool refcounted;
 	struct sock *sk;
+	u8 lookup_state;
 	int ret;
 	struct net *net = dev_net(skb->dev);
 
@@ -1629,7 +1629,7 @@ INDIRECT_CALLABLE_SCOPE int tcp_v6_rcv(struct sk_buff *skb)
 lookup:
 	sk = __inet6_lookup_skb(net->ipv4.tcp_death_row.hashinfo, skb, __tcp_hdrlen(th),
 				th->source, th->dest, inet6_iif(skb), sdif,
-				&refcounted);
+				&lookup_state);
 	if (!sk)
 		goto no_tcp_socket;
 
@@ -1668,7 +1668,7 @@ process:
 		} else {
 			sock_hold(sk);
 		}
-		refcounted = true;
+		lookup_state = LOOKUP_REFCNT;
 		nsk = NULL;
 		if (!tcp_filter(sk, skb)) {
 			th = (const struct tcphdr *)skb->data;
@@ -1753,7 +1753,7 @@ process:
 	}
 	bh_unlock_sock(sk);
 put_and_return:
-	if (refcounted)
+	if (lookup_state & LOOKUP_REFCNT)
 		sock_put(sk);
 	return ret ? -1 : 0;
 
@@ -1782,7 +1782,7 @@ discard_it:
 
 discard_and_relse:
 	sk_drops_add(sk, skb);
-	if (refcounted)
+	if (lookup_state & LOOKUP_REFCNT)
 		sock_put(sk);
 	goto discard_it;
 
@@ -1817,7 +1817,7 @@ do_time_wait:
 			inet_twsk_deschedule_put(tw);
 			sk = sk2;
 			tcp_v6_restore_cb(skb);
-			refcounted = false;
+			lookup_state = LOOKUP_NO_REF;
 			goto process;
 		}
 	}

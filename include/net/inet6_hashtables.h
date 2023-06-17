@@ -65,15 +65,18 @@ static inline struct sock *__inet6_lookup(struct net *net,
 					  const struct in6_addr *daddr,
 					  const u16 hnum,
 					  const int dif, const int sdif,
-					  bool *refcounted)
+					  u8 *lookup_state)
 {
 	struct sock *sk = __inet6_lookup_established(net, hashinfo, saddr,
 						     sport, daddr, hnum,
 						     dif, sdif);
-	*refcounted = true;
-	if (sk)
+
+	if (sk) {
+		*lookup_state = LOOKUP_REFCNT;
 		return sk;
-	*refcounted = false;
+	}
+
+	*lookup_state = LOOKUP_NO_REF;
 	return inet6_lookup_listener(net, hashinfo, skb, doff, saddr, sport,
 				     daddr, hnum, dif, sdif);
 }
@@ -83,9 +86,9 @@ static inline struct sock *__inet6_lookup_skb(struct inet_hashinfo *hashinfo,
 					      const __be16 sport,
 					      const __be16 dport,
 					      int iif, int sdif,
-					      bool *refcounted)
+					      u8 *lookup_state)
 {
-	struct sock *sk = skb_steal_sock(skb, refcounted);
+	struct sock *sk = skb_steal_sock(skb, lookup_state);
 
 	if (sk)
 		return sk;
@@ -93,7 +96,7 @@ static inline struct sock *__inet6_lookup_skb(struct inet_hashinfo *hashinfo,
 	return __inet6_lookup(dev_net(skb_dst(skb)->dev), hashinfo, skb,
 			      doff, &ipv6_hdr(skb)->saddr, sport,
 			      &ipv6_hdr(skb)->daddr, ntohs(dport),
-			      iif, sdif, refcounted);
+			      iif, sdif, lookup_state);
 }
 
 struct sock *inet6_lookup(struct net *net, struct inet_hashinfo *hashinfo,

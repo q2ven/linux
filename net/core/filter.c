@@ -6507,7 +6507,7 @@ static struct sock *sk_lookup(struct net *net, struct bpf_sock_tuple *tuple,
 			      int dif, int sdif, u8 family, u8 proto)
 {
 	struct inet_hashinfo *hinfo = net->ipv4.tcp_death_row.hashinfo;
-	bool refcounted = false;
+	u8 lookup_state = LOOKUP_NO_REF;
 	struct sock *sk = NULL;
 
 	if (family == AF_INET) {
@@ -6518,7 +6518,7 @@ static struct sock *sk_lookup(struct net *net, struct bpf_sock_tuple *tuple,
 			sk = __inet_lookup(net, hinfo, NULL, 0,
 					   src4, tuple->ipv4.sport,
 					   dst4, tuple->ipv4.dport,
-					   dif, sdif, &refcounted);
+					   dif, sdif, &lookup_state);
 		else
 			sk = __udp4_lib_lookup(net, src4, tuple->ipv4.sport,
 					       dst4, tuple->ipv4.dport,
@@ -6532,7 +6532,7 @@ static struct sock *sk_lookup(struct net *net, struct bpf_sock_tuple *tuple,
 			sk = __inet6_lookup(net, hinfo, NULL, 0,
 					    src6, tuple->ipv6.sport,
 					    dst6, ntohs(tuple->ipv6.dport),
-					    dif, sdif, &refcounted);
+					    dif, sdif, &lookup_state);
 		else if (likely(ipv6_bpf_stub))
 			sk = ipv6_bpf_stub->udp6_lib_lookup(net,
 							    src6, tuple->ipv6.sport,
@@ -6542,7 +6542,8 @@ static struct sock *sk_lookup(struct net *net, struct bpf_sock_tuple *tuple,
 #endif
 	}
 
-	if (unlikely(sk && !refcounted && !sock_flag(sk, SOCK_RCU_FREE))) {
+	if (unlikely(sk && lookup_state == LOOKUP_NO_REF &&
+		     !sock_flag(sk, SOCK_RCU_FREE))) {
 		WARN_ONCE(1, "Found non-RCU, unreferenced socket!");
 		sk = NULL;
 	}
