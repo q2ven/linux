@@ -21,8 +21,8 @@
 #include <net/netevent.h>
 
 static int tcp_retr1_max = 255;
-static int ip_local_port_range_min[] = { 1, 1 };
-static int ip_local_port_range_max[] = { 65535, 65535 };
+static int ip_local_port_range_min = 1;
+static int ip_local_port_range_max = 65535;
 static int tcp_adv_win_scale_min = -31;
 static int tcp_adv_win_scale_max = 31;
 static int tcp_app_win_max = 31;
