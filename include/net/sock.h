@@ -2832,7 +2832,7 @@ skb_steal_sock(struct sk_buff *skb, bool *refcounted)
 		skb->sk = NULL;
 		return sk;
 	}
-	*refcounted = false;
+
 	return NULL;
 }
 
