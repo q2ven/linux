@@ -89,6 +89,40 @@ found:
 }
 EXPORT_SYMBOL(__inet6_lookup_established);
 
+struct sock *__inet6_lookup_established_lock(struct net *net, struct inet_hashinfo *hashinfo,
+					     const struct in6_addr *saddr, const __be16 sport,
+					     const struct in6_addr *daddr, const u16 hnum,
+					     const int dif, const int sdif)
+{
+	const __portpair ports = INET_COMBINED_PORTS(sport, hnum);
+	const struct hlist_nulls_node *node;
+	struct inet_ehash_bucket *head;
+	unsigned int hash;
+	spinlock_t *lock;
+	struct sock *sk;
+
+	hash = inet6_ehashfn(net, daddr, hnum, saddr, sport);
+	head = inet_ehash_bucket(hashinfo, hash);
+	lock = inet_ehash_lockp(hashinfo, hash);
+
+	spin_lock(lock);
+	sk_nulls_for_each(sk, node, &head->chain) {
+		if (sk->sk_hash != hash)
+			continue;
+
+		if (unlikely(!inet6_match(net, sk, saddr, daddr, ports, dif, sdif)))
+			continue;
+
+		sock_hold(sk);
+		spin_unlock(lock);
+		return sk;
+	}
+	spin_unlock(lock);
+
+	return NULL;
+}
+EXPORT_SYMBOL(__inet6_lookup_established_lock);
+
 static inline int compute_score(struct sock *sk, struct net *net,
 				const unsigned short hnum,
 				const struct in6_addr *daddr,

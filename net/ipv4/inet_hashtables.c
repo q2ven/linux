@@ -514,6 +514,41 @@ found:
 }
 EXPORT_SYMBOL_GPL(__inet_lookup_established);
 
+struct sock *__inet_lookup_established_lock(struct net *net, struct inet_hashinfo *hashinfo,
+					    const __be32 saddr, const __be16 sport,
+					    const __be32 daddr, const u16 hnum,
+					    const int dif, const int sdif)
+{
+	const __portpair ports = INET_COMBINED_PORTS(sport, hnum);
+	INET_ADDR_COOKIE(acookie, saddr, daddr);
+	const struct hlist_nulls_node *node;
+	struct inet_ehash_bucket *head;
+	unsigned int hash;
+	spinlock_t *lock;
+	struct sock *sk;
+
+	hash = inet_ehashfn(net, daddr, hnum, saddr, sport);
+	head = inet_ehash_bucket(hashinfo, hash);
+	lock = inet_ehash_lockp(hashinfo, hash);
+
+	spin_lock(lock);
+	sk_nulls_for_each(sk, node, &head->chain) {
+		if (sk->sk_hash != hash)
+			continue;
+
+		if (unlikely(!inet_match(net, sk, acookie, ports, dif, sdif)))
+			continue;
+
+		sock_hold(sk);
+		spin_unlock(lock);
+		return sk;
+	}
+	spin_unlock(lock);
+
+	return NULL;
+}
+EXPORT_SYMBOL_GPL(__inet_lookup_established_lock);
+
 /* called with local bh disabled */
 static int __inet_check_established(struct inet_timewait_death_row *death_row,
 				    struct sock *sk, __u16 lport,

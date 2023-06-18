@@ -379,6 +379,12 @@ struct sock *__inet_lookup_established(struct net *net,
 				       const __be32 daddr, const u16 hnum,
 				       const int dif, const int sdif);
 
+struct sock *__inet_lookup_established_lock(struct net *net,
+					    struct inet_hashinfo *hashinfo,
+					    const __be32 saddr, const __be16 sport,
+					    const __be32 daddr, const u16 hnum,
+					    const int dif, const int sdif);
+
 static inline struct sock *
 	inet_lookup_established(struct net *net, struct inet_hashinfo *hashinfo,
 				const __be32 saddr, const __be16 sport,
@@ -402,9 +408,14 @@ static inline struct sock *__inet_lookup(struct net *net,
 
 	sk = __inet_lookup_established(net, hashinfo, saddr, sport,
 				       daddr, hnum, dif, sdif);
-	*refcounted = true;
-	if (sk)
+	if (!sk)
+		sk = __inet_lookup_established_lock(net, hashinfo, saddr, sport,
+						    daddr, hnum, dif, sdif);
+	if (sk) {
+		*refcounted = true;
 		return sk;
+	}
+
 	*refcounted = false;
 	return __inet_lookup_listener(net, hashinfo, skb, doff, saddr,
 				      sport, daddr, hnum, dif, sdif);
