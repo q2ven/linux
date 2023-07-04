@@ -751,3 +751,10 @@ config TCP_MD5SIG
 	  on the Internet.
 
 	  If unsure, say N.
+
+config UDP_OPTIONS
+	bool "UDP: Transport Options"
+	help
+	  draft-ietf-tsvwg-udp-options-22.txt
+
+	  If unsure, say N.
