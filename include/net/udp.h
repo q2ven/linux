@@ -533,4 +533,32 @@ struct proto *udp_bpf_get_proto(struct sock *sk, struct sk_psock *psock);
 int udp_bpf_update_proto(struct sock *sk, struct sk_psock *psock, bool restore);
 #endif
 
+static inline bool udp_has_options(struct sk_buff *skb, struct udphdr *uh, int proto)
+{
+#ifdef CONFIG_UDP_OPTIONS
+	/* Not supported.  Section 15. */
+	if (proto == IPPROTO_UDPLITE)
+		return false;
+
+	/* ip_local_deliver_finish() pulls network header,
+	 * so skb->len is UDP Length + Surplus area.
+	 *
+	 * uh->len > skb->len is checked in __udp4_lib_rcv(),
+	 * and uh->len <= skb->len is guaranteed here.
+	 */
+	if (skb->len - ntohs(uh->len))
+		return true;
+#endif
+	return false;
+}
+
+#ifdef CONFIG_UDP_OPTIONS
+int udp_parse_options(struct sk_buff *skb);
+#else
+static inline int udp_parse_options(struct sk_buff *skb)
+{
+	return 0;
+}
+#endif
+
 #endif	/* _UDP_H */

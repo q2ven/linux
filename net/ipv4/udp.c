@@ -2408,6 +2408,13 @@ int __udp4_lib_rcv(struct sk_buff *skb, struct udp_table *udptable,
 	if (udp4_csum_init(skb, uh, proto))
 		goto csum_error;
 
+	if (udp_has_options(skb, uh, proto)) {
+		if (udp_parse_options(skb))
+			goto drop;
+
+		uh = udp_hdr(skb);
+	}
+
 	sk = skb_steal_sock(skb, &refcounted);
 	if (sk) {
 		struct dst_entry *dst = skb_dst(skb);
