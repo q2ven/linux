@@ -2,11 +2,25 @@
 
 #include <net/udp.h>
 
+int udp_parse_ocs(const unsigned char *ptr, int left, struct udphdr *uh)
+{
+	u16 ocs;
+
+	if (left < 2)
+		return -EINVAL;
+
+	if (uh->check) {
+		ocs = *(u16 *)ptr;
+	}
+
+	return 2;
+}
+
 int udp_parse_options(struct sk_buff *skb)
 {
 	const unsigned char *ptr;
 	struct udphdr *uh;
-	int left;
+	int left, parsed;
 
 	if (!pskb_may_pull(skb, skb->len))
 		return -ENOMEM;
@@ -23,6 +37,13 @@ int udp_parse_options(struct sk_buff *skb)
 		ptr++;
 		left--;
 	}
+
+	parsed = udp_parse_ocs(ptr, left, uh);
+	if (parsed < 0)
+		goto skip;
+
+	ptr += parsed;
+	left -= parsed;
 
 skip:
 	return 0;
