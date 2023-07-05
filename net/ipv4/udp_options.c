@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <linux/crc32c.h>
 #include <net/udp.h>
 
 enum {
 	UDPOPT_EOL,			/* End of options */
 	UDPOPT_NOP,			/* Padding */
+	UDPOPT_APC,			/* Alternate payload checksum */
 };
 
 int udp_parse_ocs(const unsigned char *ptr, int left, struct udphdr *uh)
@@ -90,6 +92,32 @@ int udp_parse_opsize(const unsigned char *ptr, int left, u16 *opleft)
 	return parsed;
 }
 
+int udp_parse_apc(const unsigned char *ptr, u16 opleft, struct udphdr *uh)
+{
+	u32 crc;
+
+	/* UDP packets with incorrect APC checksums MUST be passed to the
+	 * application by default, e.g., with a flag indicating APC failure.
+	 *
+	 * Like all SAFE UDP options, APC needs to be silently ignored when
+	 * failing by default.
+	 *
+	 * UDP packets with unrecognized APC lengths MUST receive the same
+	 * treatment as UDP packets with incorrect APC checksums.
+	 *
+	 * What !?!?  Should we behave as if we parsed 4 bytes !?
+	 */
+	if (opleft != 4)
+		return -EINVAL;
+
+	crc = crc32c(0, uh + 1, ntohs(uh->len) - sizeof(*uh));
+	if (crc != *(u32 *)ptr) {
+		/* TODO: Tell user */
+	}
+
+	return 4;
+}
+
 int udp_parse_options(struct sk_buff *skb)
 {
 	const unsigned char *ptr;
@@ -146,9 +174,18 @@ int udp_parse_options(struct sk_buff *skb)
 		left -= parsed;
 
 		switch (opcode) {
+		case UDPOPT_APC:
+			parsed = udp_parse_apc(ptr, opleft, uh);
+			break;
 		default:
 			goto skip;
 		}
+
+		if (parsed < 0)
+			goto skip;
+
+		ptr += parsed;
+		left -= parsed;
 	}
 
 success:

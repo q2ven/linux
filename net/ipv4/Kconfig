@@ -754,6 +754,7 @@ config TCP_MD5SIG
 
 config UDP_OPTIONS
 	bool "UDP: Transport Options"
+	select LIBCRC32C
 	help
 	  draft-ietf-tsvwg-udp-options-22.txt
 
