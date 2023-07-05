@@ -21,6 +21,41 @@ int udp_parse_ocs(const unsigned char *ptr, int left, struct udphdr *uh)
 	return 2;
 }
 
+int udp_parse_nops(const unsigned char *ptr, int left)
+{
+	int parsed = 0;
+
+	while (left) {
+		if (*ptr != UDPOPT_NOP) {
+			/* NOPs SHOULD NOT be used as padding before
+			 * the EOL option.  See Section 9.1.
+			 */
+			if (unlikely(*ptr == UDPOPT_EOL))
+				return -EINVAL;
+			break;
+		}
+
+		parsed++;
+
+		/* More than seven consecutive NOPs might be DoS.
+		 * See Section 9.2.
+		 */
+		if (unlikely(parsed >= 7))
+			return -EINVAL;
+
+		/* NOPs SHOULD NOT be used as a substitute for EOL.
+		 * See Section 9.2.
+		 */
+		if (left == 1)
+			return -EINVAL;
+
+		ptr++;
+		left--;
+	}
+
+	return parsed;
+}
+
 int udp_parse_opsize(const unsigned char *ptr, int left, u16 *opleft)
 {
 	u16 opsize;
@@ -94,6 +129,12 @@ int udp_parse_options(struct sk_buff *skb)
 		case UDPOPT_EOL:
 			goto success;
 		case UDPOPT_NOP:
+			parsed = udp_parse_nops(ptr, left);
+			if (parsed < 0)
+				goto skip;
+
+			ptr += parsed;
+			left -= parsed;
 			continue;
 		}
 
