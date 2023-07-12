@@ -289,13 +289,14 @@ static int llc_ui_autobind(struct socket *sock, struct sockaddr_llc *addr)
 		goto out;
 	rc = -ENODEV;
 	if (sk->sk_bound_dev_if) {
-		dev = dev_get_by_index(&init_net, sk->sk_bound_dev_if);
+		dev = dev_get_by_index(sock_net(sk), sk->sk_bound_dev_if);
 		if (dev && addr->sllc_arphrd != dev->type) {
 			dev_put(dev);
 			dev = NULL;
 		}
-	} else
-		dev = dev_getfirstbyhwtype(&init_net, addr->sllc_arphrd);
+	} else {
+		dev = dev_getfirstbyhwtype(sock_net(sk), addr->sllc_arphrd);
+	}
 	if (!dev)
 		goto out;
 	rc = -EUSERS;
@@ -345,6 +346,7 @@ static int llc_ui_bind(struct socket *sock, struct sockaddr *uaddr, int addrlen)
 	struct net_device *dev = NULL;
 	struct llc_sap *sap;
 	int rc = -EINVAL;
+	struct net *net;
 
 	lock_sock(sk);
 	if (unlikely(!sock_flag(sk, SOCK_ZAPPED) || addrlen != sizeof(*addr)))
@@ -355,10 +357,12 @@ static int llc_ui_bind(struct socket *sock, struct sockaddr *uaddr, int addrlen)
 	if (unlikely(addr->sllc_family != AF_LLC || addr->sllc_arphrd != ARPHRD_ETHER))
 		goto out;
 	dprintk("%s: binding %02X\n", __func__, addr->sllc_sap);
+
+	net = sock_net(sk);
 	rc = -ENODEV;
 	rcu_read_lock();
 	if (sk->sk_bound_dev_if) {
-		dev = dev_get_by_index_rcu(&init_net, sk->sk_bound_dev_if);
+		dev = dev_get_by_index_rcu(net, sk->sk_bound_dev_if);
 		if (dev) {
 			if (is_zero_ether_addr(addr->sllc_mac))
 				memcpy(addr->sllc_mac, dev->dev_addr,
@@ -371,8 +375,7 @@ static int llc_ui_bind(struct socket *sock, struct sockaddr *uaddr, int addrlen)
 			}
 		}
 	} else {
-		dev = dev_getbyhwaddr_rcu(&init_net, addr->sllc_arphrd,
-					   addr->sllc_mac);
+		dev = dev_getbyhwaddr_rcu(net, addr->sllc_arphrd, addr->sllc_mac);
 	}
 	dev_hold(dev);
 	rcu_read_unlock();
