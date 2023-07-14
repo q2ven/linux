@@ -47,29 +47,20 @@ static struct ctl_table llc2_timeout_table[] = {
 };
 
 static struct ctl_table_header *llc2_timeout_header;
-static struct ctl_table_header *llc_station_header;
 
 int __init llc_sysctl_init(void)
 {
 	struct ctl_table empty[1] = {};
-	llc2_timeout_header = register_net_sysctl(&init_net, "net/llc/llc2/timeout", llc2_timeout_table);
-	llc_station_header = register_net_sysctl_sz(&init_net, "net/llc/station", empty, 0);
 
-	if (!llc2_timeout_header || !llc_station_header) {
-		llc_sysctl_exit();
+	llc2_timeout_header = register_net_sysctl(&init_net, "net/llc/llc2/timeout", llc2_timeout_table);
+
+	if (!llc2_timeout_header)
 		return -ENOMEM;
-	}
+
 	return 0;
 }
 
 void llc_sysctl_exit(void)
 {
-	if (llc2_timeout_header) {
-		unregister_net_sysctl_table(llc2_timeout_header);
-		llc2_timeout_header = NULL;
-	}
-	if (llc_station_header) {
-		unregister_net_sysctl_table(llc_station_header);
-		llc_station_header = NULL;
-	}
+	unregister_net_sysctl_table(llc2_timeout_header);
 }
