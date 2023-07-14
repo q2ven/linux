@@ -31,7 +31,7 @@ static void llc_ui_format_mac(struct seq_file *seq, const u8 *addr)
 	seq_printf(seq, "%pM", addr);
 }
 
-static struct sock *llc_get_sk_idx(loff_t pos)
+static struct sock *llc_get_sk_idx(struct net *net, loff_t pos)
 {
 	struct llc_sap *sap;
 	struct sock *sk = NULL;
@@ -44,6 +44,8 @@ static struct sock *llc_get_sk_idx(loff_t pos)
 			struct hlist_nulls_node *node;
 
 			sk_nulls_for_each(sk, node, head) {
+				if (!net_eq(sock_net(sk), net))
+					continue;
 				if (!pos)
 					goto found; /* keep the lock */
 				--pos;
@@ -58,20 +60,22 @@ found:
 
 static void *llc_seq_start(struct seq_file *seq, loff_t *pos) __acquires(RCU)
 {
+	struct net *net = seq_file_net(seq);
 	loff_t l = *pos;
 
 	rcu_read_lock_bh();
-	return l ? llc_get_sk_idx(--l) : SEQ_START_TOKEN;
+	return l ? llc_get_sk_idx(net, --l) : SEQ_START_TOKEN;
 }
 
-static struct sock *laddr_hash_next(struct llc_sap *sap, int bucket)
+static struct sock *laddr_hash_next(struct net *net, struct llc_sap *sap, int bucket)
 {
 	struct hlist_nulls_node *node;
 	struct sock *sk = NULL;
 
 	while (++bucket < LLC_SK_LADDR_HASH_ENTRIES)
 		sk_nulls_for_each(sk, node, &sap->sk_laddr_hash[bucket])
-			goto out;
+			if (net_eq(sock_net(sk), net))
+				goto out;
 
 out:
 	return sk;
@@ -79,30 +83,34 @@ out:
 
 static void *llc_seq_next(struct seq_file *seq, void *v, loff_t *pos)
 {
+	struct net *net = seq_file_net(seq);
 	struct sock* sk, *next;
 	struct llc_sock *llc;
 	struct llc_sap *sap;
 
 	++*pos;
 	if (v == SEQ_START_TOKEN) {
-		sk = llc_get_sk_idx(0);
+		sk = llc_get_sk_idx(net, 0);
 		goto out;
 	}
 	sk = v;
-	next = sk_nulls_next(sk);
-	if (next) {
-		sk = next;
-		goto out;
+
+	while ((next = sk_nulls_next(sk))) {
+		if (net_eq(sock_net(sk), net)) {
+			sk = next;
+			goto out;
+		}
 	}
+
 	llc = llc_sk(sk);
 	sap = llc->sap;
-	sk = laddr_hash_next(sap, llc_sk_laddr_hashfn(sap, &llc->laddr));
+	sk = laddr_hash_next(net, sap, llc_sk_laddr_hashfn(sap, &llc->laddr));
 	if (sk)
 		goto out;
 	spin_unlock_bh(&sap->sk_lock);
 	list_for_each_entry_continue_rcu(sap, &llc_sap_list, node) {
 		spin_lock_bh(&sap->sk_lock);
-		sk = laddr_hash_next(sap, -1);
+		sk = laddr_hash_next(net, sap, -1);
 		if (sk)
 			break; /* keep the lock */
 		spin_unlock_bh(&sap->sk_lock);
@@ -214,38 +222,28 @@ static const struct seq_operations llc_seq_core_ops = {
 	.show   = llc_seq_core_show,
 };
 
-static struct proc_dir_entry *llc_proc_dir;
-
-int __init llc_proc_init(void)
+int __net_init llc_proc_init(struct net *net)
 {
-	int rc = -ENOMEM;
-	struct proc_dir_entry *p;
+	if (!proc_net_mkdir(net, "llc", net->proc_net))
+		goto err;
 
-	llc_proc_dir = proc_mkdir("llc", init_net.proc_net);
-	if (!llc_proc_dir)
-		goto out;
+	if (!proc_create_net("llc/socket", 0444, net->proc_net,
+			     &llc_seq_socket_ops, sizeof(struct seq_net_private)))
+		goto err_subtree;
 
-	p = proc_create_seq("socket", 0444, llc_proc_dir, &llc_seq_socket_ops);
-	if (!p)
-		goto out_socket;
+	if (!proc_create_net("llc/core", 0444, net->proc_net,
+			     &llc_seq_core_ops, sizeof(struct seq_net_private)))
+		goto err_subtree;
 
-	p = proc_create_seq("core", 0444, llc_proc_dir, &llc_seq_core_ops);
-	if (!p)
-		goto out_core;
+	return 0;
 
-	rc = 0;
-out:
-	return rc;
-out_core:
-	remove_proc_entry("socket", llc_proc_dir);
-out_socket:
-	remove_proc_entry("llc", init_net.proc_net);
-	goto out;
+err_subtree:
+	remove_proc_subtree("llc", net->proc_net);
+err:
+	return -ENOMEM;
 }
 
-void llc_proc_exit(void)
+void __net_exit llc_proc_exit(struct net *net)
 {
-	remove_proc_entry("socket", llc_proc_dir);
-	remove_proc_entry("core", llc_proc_dir);
-	remove_proc_entry("llc", init_net.proc_net);
+	remove_proc_subtree("llc", net->proc_net);
 }

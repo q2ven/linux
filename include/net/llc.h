@@ -144,8 +144,8 @@ void llc_station_init(void);
 void llc_station_exit(void);
 
 #ifdef CONFIG_PROC_FS
-int llc_proc_init(void);
-void llc_proc_exit(void);
+int llc_proc_init(struct net *net);
+void llc_proc_exit(struct net *net);
 #else
 #define llc_proc_init()	(0)
 #define llc_proc_exit()	do { } while(0)

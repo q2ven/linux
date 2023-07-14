@@ -1248,11 +1248,16 @@ static const struct proto_ops llc_ui_ops = {
 
 static int __net_init llc_net_init(struct net *net)
 {
-	return 0;
+	int rc;
+
+	rc = llc_proc_init(net);
+
+	return rc;
 }
 
 static void __net_exit llc_net_exit(struct net *net)
 {
+	llc_proc_exit(net);
 }
 
 static struct pernet_operations llc_net_ops = {
@@ -1262,8 +1267,6 @@ static struct pernet_operations llc_net_ops = {
 
 static const char llc_pernet_err_msg[] __initconst =
 	KERN_CRIT "LLC: Unable to register the netns operations\n";
-static const char llc_proc_err_msg[] __initconst =
-	KERN_CRIT "LLC: Unable to register the proc_fs entries\n";
 static const char llc_sysctl_err_msg[] __initconst =
 	KERN_CRIT "LLC: Unable to register the sysctl entries\n";
 static const char llc_sock_err_msg[] __initconst =
@@ -1286,15 +1289,10 @@ static int __init llc2_init(void)
 		goto out_station;
 	}
 
-	rc = llc_proc_init();
-	if (rc != 0) {
-		printk(llc_proc_err_msg);
-		goto out_pernet;
-	}
 	rc = llc_sysctl_init();
 	if (rc) {
 		printk(llc_sysctl_err_msg);
-		goto out_proc;
+		goto out_pernet;
 	}
 	rc = sock_register(&llc_ui_family_ops);
 	if (rc) {
@@ -1307,8 +1305,6 @@ out:
 	return rc;
 out_sysctl:
 	llc_sysctl_exit();
-out_proc:
-	llc_proc_exit();
 out_pernet:
 	unregister_pernet_subsys(&llc_net_ops);
 out_station:
@@ -1323,7 +1319,6 @@ static void __exit llc2_exit(void)
 	llc_remove_pack(LLC_DEST_SAP);
 	llc_remove_pack(LLC_DEST_CONN);
 	sock_unregister(PF_LLC);
-	llc_proc_exit();
 	llc_sysctl_exit();
 	proto_unregister(&llc_proto);
 }
