@@ -1251,12 +1251,23 @@ static int __net_init llc_net_init(struct net *net)
 	int rc;
 
 	rc = llc_proc_init(net);
+	if (rc)
+		goto out;
 
+	net->llc.sysctl_llc2_ack_timeout = LLC2_ACK_TIME * HZ;
+	net->llc.sysctl_llc2_p_timeout = LLC2_P_TIME * HZ;
+	net->llc.sysctl_llc2_rej_timeout = LLC2_REJ_TIME * HZ;
+	net->llc.sysctl_llc2_busy_timeout = LLC2_BUSY_TIME * HZ;
+
+	rc = llc_sysctl_init(net);
+
+out:
 	return rc;
 }
 
 static void __net_exit llc_net_exit(struct net *net)
 {
+	llc_sysctl_exit(net);
 	llc_proc_exit(net);
 }
 
@@ -1289,22 +1300,16 @@ static int __init llc2_init(void)
 		goto out_station;
 	}
 
-	rc = llc_sysctl_init();
-	if (rc) {
-		printk(llc_sysctl_err_msg);
-		goto out_pernet;
-	}
 	rc = sock_register(&llc_ui_family_ops);
 	if (rc) {
 		printk(llc_sock_err_msg);
-		goto out_sysctl;
+		goto out_pernet;
 	}
 	llc_add_pack(LLC_DEST_SAP, llc_sap_handler);
 	llc_add_pack(LLC_DEST_CONN, llc_conn_handler);
 out:
 	return rc;
-out_sysctl:
-	llc_sysctl_exit();
+
 out_pernet:
 	unregister_pernet_subsys(&llc_net_ops);
 out_station:
@@ -1319,7 +1324,6 @@ static void __exit llc2_exit(void)
 	llc_remove_pack(LLC_DEST_SAP);
 	llc_remove_pack(LLC_DEST_CONN);
 	sock_unregister(PF_LLC);
-	llc_sysctl_exit();
 	proto_unregister(&llc_proto);
 }
 

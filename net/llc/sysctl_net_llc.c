@@ -18,49 +18,71 @@
 static struct ctl_table llc2_timeout_table[] = {
 	{
 		.procname	= "ack",
-		.data		= &sysctl_llc2_ack_timeout,
-		.maxlen		= sizeof(sysctl_llc2_ack_timeout),
+		.data		= &init_net.llc.sysctl_llc2_ack_timeout,
+		.maxlen		= sizeof(init_net.llc.sysctl_llc2_ack_timeout),
 		.mode		= 0644,
 		.proc_handler   = proc_dointvec_jiffies,
 	},
 	{
 		.procname	= "busy",
-		.data		= &sysctl_llc2_busy_timeout,
-		.maxlen		= sizeof(sysctl_llc2_busy_timeout),
+		.data		= &init_net.llc.sysctl_llc2_busy_timeout,
+		.maxlen		= sizeof(init_net.llc.sysctl_llc2_busy_timeout),
 		.mode		= 0644,
 		.proc_handler   = proc_dointvec_jiffies,
 	},
 	{
 		.procname	= "p",
-		.data		= &sysctl_llc2_p_timeout,
-		.maxlen		= sizeof(sysctl_llc2_p_timeout),
+		.data		= &init_net.llc.sysctl_llc2_p_timeout,
+		.maxlen		= sizeof(init_net.llc.sysctl_llc2_p_timeout),
 		.mode		= 0644,
 		.proc_handler   = proc_dointvec_jiffies,
 	},
 	{
 		.procname	= "rej",
-		.data		= &sysctl_llc2_rej_timeout,
-		.maxlen		= sizeof(sysctl_llc2_rej_timeout),
+		.data		= &init_net.llc.sysctl_llc2_rej_timeout,
+		.maxlen		= sizeof(init_net.llc.sysctl_llc2_rej_timeout),
 		.mode		= 0644,
 		.proc_handler   = proc_dointvec_jiffies,
 	},
 };
 
-static struct ctl_table_header *llc2_timeout_header;
-
-int __init llc_sysctl_init(void)
+int __net_init llc_sysctl_init(struct net *net)
 {
-	struct ctl_table empty[1] = {};
+	struct ctl_table *table;
 
-	llc2_timeout_header = register_net_sysctl(&init_net, "net/llc/llc2/timeout", llc2_timeout_table);
+	if (net_eq(net, &init_net)) {
+		table = llc2_timeout_table;
+	} else {
+		int i;
 
-	if (!llc2_timeout_header)
-		return -ENOMEM;
+		table = kmemdup(llc2_timeout_table, sizeof(llc2_timeout_table), GFP_KERNEL);
+		if (!table)
+			goto err;
+
+		for (i = 0; i < ARRAY_SIZE(llc2_timeout_table); i++)
+			table[i].data += (void *)net - (void *)&init_net;
+	}
+
+	net->llc.header = register_net_sysctl(net, "net/llc/llc2/timeout", table);
+	if (!net->llc.header)
+		goto err_register;
 
 	return 0;
+
+err_register:
+	if (!net_eq(net, &init_net))
+		kfree(table);
+err:
+	return -ENOMEM;
 }
 
-void llc_sysctl_exit(void)
+void __net_exit llc_sysctl_exit(struct net *net)
 {
-	unregister_net_sysctl_table(llc2_timeout_header);
+	struct ctl_table *table;
+
+	table = net->llc.header->ctl_table_arg;
+	unregister_net_sysctl_table(net->llc.header);
+
+	if (!net_eq(net, &init_net))
+		kfree(table);
 }

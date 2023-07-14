@@ -891,22 +891,23 @@ out_kfree_skb:
 static void llc_sk_init(struct sock *sk)
 {
 	struct llc_sock *llc = llc_sk(sk);
+	struct net *net = sock_net(sk);
 
 	llc->state    = LLC_CONN_STATE_ADM;
 	llc->inc_cntr = llc->dec_cntr = 2;
 	llc->dec_step = llc->connect_step = 1;
 
 	timer_setup(&llc->ack_timer.timer, llc_conn_ack_tmr_cb, 0);
-	llc->ack_timer.expire	      = sysctl_llc2_ack_timeout;
+	llc->ack_timer.expire = READ_ONCE(net->llc.sysctl_llc2_ack_timeout);
 
 	timer_setup(&llc->pf_cycle_timer.timer, llc_conn_pf_cycle_tmr_cb, 0);
-	llc->pf_cycle_timer.expire	   = sysctl_llc2_p_timeout;
+	llc->pf_cycle_timer.expire = READ_ONCE(net->llc.sysctl_llc2_p_timeout);
 
 	timer_setup(&llc->rej_sent_timer.timer, llc_conn_rej_tmr_cb, 0);
-	llc->rej_sent_timer.expire	   = sysctl_llc2_rej_timeout;
+	llc->rej_sent_timer.expire = READ_ONCE(net->llc.sysctl_llc2_rej_timeout);
 
 	timer_setup(&llc->busy_state_timer.timer, llc_conn_busy_tmr_cb, 0);
-	llc->busy_state_timer.expire	     = sysctl_llc2_busy_timeout;
+	llc->busy_state_timer.expire = READ_ONCE(net->llc.sysctl_llc2_busy_timeout);
 
 	llc->n2 = 2;   /* max retransmit */
 	llc->k  = 2;   /* tx win size, will adjust dynam */

@@ -151,8 +151,8 @@ void llc_proc_exit(struct net *net);
 #define llc_proc_exit()	do { } while(0)
 #endif /* CONFIG_PROC_FS */
 #ifdef CONFIG_SYSCTL
-int llc_sysctl_init(void);
-void llc_sysctl_exit(void);
+int llc_sysctl_init(struct net *net);
+void llc_sysctl_exit(struct net *net);
 
 extern int sysctl_llc2_ack_timeout;
 extern int sysctl_llc2_busy_timeout;
