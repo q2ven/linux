@@ -404,7 +404,7 @@ static int llc_ui_bind(struct socket *sock, struct sockaddr *uaddr, int addrlen)
 		memcpy(laddr.mac, addr->sllc_mac, IFHWADDRLEN);
 		laddr.lsap = addr->sllc_sap;
 		rc = -EADDRINUSE; /* mac + sap clash. */
-		ask = llc_lookup_established(sap, &daddr, &laddr, &init_net);
+		ask = llc_lookup_established(sap, &daddr, &laddr, sock_net(sk));
 		if (ask) {
 			sock_put(ask);
 			goto out_put;
