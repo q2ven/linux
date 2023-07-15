@@ -177,9 +177,6 @@ static int llc_ui_create(struct net *net, struct socket *sock, int protocol,
 	if (!ns_capable(net->user_ns, CAP_NET_RAW))
 		return -EPERM;
 
-	if (!net_eq(net, &init_net))
-		return -EAFNOSUPPORT;
-
 	if (likely(sock->type == SOCK_DGRAM || sock->type == SOCK_STREAM)) {
 		rc = -ENOMEM;
 		sk = llc_sk_alloc(net, PF_LLC, GFP_KERNEL, &llc_proto, kern);
