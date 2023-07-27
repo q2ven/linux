@@ -154,6 +154,31 @@ static inline u32 hsiphash(const void *data, size_t len,
 #define SIPHASH_CONST_2 0x6c7967656e657261ULL
 #define SIPHASH_CONST_3 0x7465646279746573ULL
 
+#define SIPROUND SIPHASH_PERMUTATION(v0, v1, v2, v3)
+
+#define __PREAMBLE(len, key0, key1) \
+	u64 v0 = SIPHASH_CONST_0; \
+	u64 v1 = SIPHASH_CONST_1; \
+	u64 v2 = SIPHASH_CONST_2; \
+	u64 v3 = SIPHASH_CONST_3; \
+	u64 b = ((u64)(len)) << 56; \
+	v3 ^= key1; \
+	v2 ^= key0; \
+	v1 ^= key1; \
+	v0 ^= key0;
+
+#define POSTAMBLE \
+	v3 ^= b; \
+	SIPROUND; \
+	SIPROUND; \
+	v0 ^= b; \
+	v2 ^= 0xff; \
+	SIPROUND; \
+	SIPROUND; \
+	SIPROUND; \
+	SIPROUND; \
+	return (v0 ^ v1) ^ (v2 ^ v3);
+
 #define HSIPHASH_PERMUTATION(a, b, c, d) ( \
 	(a) += (b), (b) = rol32((b), 5), (b) ^= (a), (a) = rol32((a), 16), \
 	(c) += (d), (d) = rol32((d), 8), (d) ^= (c), \

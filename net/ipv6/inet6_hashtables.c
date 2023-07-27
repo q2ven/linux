@@ -26,18 +26,11 @@ u32 inet6_ehashfn(const struct net *net,
 		  const struct in6_addr *faddr, const __be16 fport)
 {
 	static u32 inet6_ehash_secret __read_mostly;
-	static u32 ipv6_hash_secret __read_mostly;
-
-	u32 lhash, fhash;
 
 	net_get_random_once(&inet6_ehash_secret, sizeof(inet6_ehash_secret));
-	net_get_random_once(&ipv6_hash_secret, sizeof(ipv6_hash_secret));
 
-	lhash = (__force u32)laddr->s6_addr32[3];
-	fhash = __ipv6_addr_jhash(faddr, ipv6_hash_secret);
-
-	return __inet6_ehashfn(lhash, lport, fhash, fport,
-			       inet6_ehash_secret + net_hash_mix(net));
+	return ipv6_siphash(net, inet6_ehash_secret,
+			    laddr, lport, faddr, fport);
 }
 
 /*

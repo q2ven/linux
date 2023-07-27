@@ -13,6 +13,7 @@
 #include <linux/hardirq.h>
 #include <linux/jhash.h>
 #include <linux/refcount.h>
+#include <linux/siphash.h>
 #include <linux/jump_label_ratelimit.h>
 #include <net/if_inet6.h>
 #include <net/flow.h>
@@ -758,6 +759,24 @@ static inline u32 __ipv6_addr_jhash(const struct in6_addr *a, const u32 initval)
 			    (__force u32)a->s6_addr32[2],
 			    (__force u32)a->s6_addr32[3],
 			    initval);
+}
+
+static inline u32 ipv6_siphash(const struct net *net, const u32 inet6_ehash_secret,
+			       const struct in6_addr *laddr, const u16 lport,
+			       const struct in6_addr *faddr, const __be16 fport)
+{
+	__PREAMBLE(16,
+		   ((u64)net_hash_mix(net) << 32 | inet6_ehash_secret),
+		   ((u64)laddr->s6_addr32[3] << 32) | (lport << 16) | fport)
+	v3 ^= *(__force u64 *)faddr->s6_addr32;
+	SIPROUND;
+	SIPROUND;
+	v0 ^= *(__force u64 *)faddr->s6_addr32;
+	v3 ^= *(__force u64 *)(faddr->s6_addr32 + 2);
+	SIPROUND;
+	SIPROUND;
+	v0 ^= *(__force u64 *)(faddr->s6_addr32 + 2);
+	POSTAMBLE
 }
 
 static inline bool ipv6_addr_loopback(const struct in6_addr *a)
