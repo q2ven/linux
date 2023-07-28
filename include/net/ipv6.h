@@ -761,6 +761,17 @@ static inline u32 __ipv6_addr_jhash(const struct in6_addr *a, const u32 initval)
 			    initval);
 }
 
+#define HSIPROUND SIPROUND
+#define HPOSTAMBLE \
+	v3 ^= b; \
+	HSIPROUND; \
+	v0 ^= b; \
+	v2 ^= 0xff; \
+	HSIPROUND; \
+	HSIPROUND; \
+	HSIPROUND; \
+	return (v0 ^ v1) ^ (v2 ^ v3);
+
 static inline u32 ipv6_siphash(const struct net *net, const u32 inet6_ehash_secret,
 			       const struct in6_addr *laddr, const u16 lport,
 			       const struct in6_addr *faddr, const __be16 fport)
@@ -770,13 +781,11 @@ static inline u32 ipv6_siphash(const struct net *net, const u32 inet6_ehash_secr
 		   ((u64)laddr->s6_addr32[3] << 32) | (lport << 16) | fport)
 	v3 ^= *(__force u64 *)faddr->s6_addr32;
 	SIPROUND;
-	SIPROUND;
 	v0 ^= *(__force u64 *)faddr->s6_addr32;
 	v3 ^= *(__force u64 *)(faddr->s6_addr32 + 2);
 	SIPROUND;
-	SIPROUND;
 	v0 ^= *(__force u64 *)(faddr->s6_addr32 + 2);
-	POSTAMBLE
+	HPOSTAMBLE
 }
 
 static inline bool ipv6_addr_loopback(const struct in6_addr *a)
