@@ -1573,6 +1573,15 @@ static struct ctl_table ipv4_net_table[] = {
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= SYSCTL_ONE,
 	},
+	{
+		.procname	= "tcp_ext_data_offset",
+		.data		= &init_net.ipv4.sysctl_tcp_ext_data_offset,
+		.maxlen		= sizeof(u8),
+		.mode		= 0644,
+		.proc_handler	= proc_dou8vec_minmax,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_TWO,
+	},
 };
 
 static __net_init int ipv4_sysctl_init_net(struct net *net)
