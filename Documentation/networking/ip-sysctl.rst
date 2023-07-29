@@ -1223,6 +1223,20 @@ tcp_rto_min_us - INTEGER
 
 	Default: 200000
 
+tcp_ext_data_offset - INTEGER
+	Enable TCP Extended Data Offset (EDO).
+
+	EDO is negotiated during a SYN exchange and extends the space
+	available for TCP options in non-SYN segments.
+
+	Possible values:
+
+	- 0 - Disabled
+	- 1 - Send shorter variant including header length
+	- 2 - Send longer variant including header and segment length
+
+	Default: 0
+
 UDP variables
 =============
 
