@@ -129,6 +129,11 @@ enum {
 
 #define TCP_TX_DELAY		37	/* delay outgoing packets by XX usec */
 
+enum {
+	TCP_EDO_OFF,
+	TCP_EDO_HDR,
+	TCP_EDO_HDR_SEG,
+};
 
 #define TCP_REPAIR_ON		1
 #define TCP_REPAIR_OFF		0

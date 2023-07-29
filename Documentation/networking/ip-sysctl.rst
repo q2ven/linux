@@ -1176,6 +1176,13 @@ tcp_plb_cong_thresh - INTEGER
 
 	Default: 128
 
+tcp_ext_data_offset - INTEGER
+	Enable TCP Extended Data Offset.
+
+	- 0 - Disabled
+	- 1 - Send shorter variant including header length
+	- 2 - Send longer variant including header and segment length
+
 UDP variables
 =============
 
