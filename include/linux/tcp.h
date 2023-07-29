@@ -369,6 +369,8 @@ struct tcp_sock {
 	u8	compressed_ack;
 	u8	dup_ack_counter:2,
 		tlp_retrans:1,	/* TLP is a retransmission */
+		edo:1,		/* TCP Extended Data Offset */
+		edo_seg:1,	/* TCP EDO w/ Segment Length */
 		unused:5;
 	u8	thin_lto    : 1,/* Use linear timeouts for thin streams */
 		fastopen_connect:1, /* FASTOPEN_CONNECT sockopt */

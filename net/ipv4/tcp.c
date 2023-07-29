@@ -460,6 +460,17 @@ void tcp_init_sock(struct sock *sk)
 	tp->tsoffset = 0;
 	tp->rack.reo_wnd_steps = 1;
 
+	if (sk->sk_protocol == IPPROTO_TCP) {
+		switch (READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_ext_data_offset)) {
+		case TCP_EDO_HDR_SEG:
+			tp->edo_seg = 1;
+			fallthrough;
+		case TCP_EDO_HDR:
+			tp->edo = 1;
+			break;
+		}
+	}
+
 	sk->sk_write_space = sk_stream_write_space;
 	sock_set_flag(sk, SOCK_USE_WRITE_QUEUE);
 
