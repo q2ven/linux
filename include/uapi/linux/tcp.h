@@ -137,6 +137,8 @@ enum {
 
 #define TCP_IS_MPTCP		43	/* Is MPTCP being used? */
 
+#define TCP_EXT_DATA_OFFSET	44	/* Enable Extended Data Offset */
+
 enum {
 	TCP_EDO_OFF,
 	TCP_EDO_HDR,
