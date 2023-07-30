@@ -423,6 +423,7 @@ static inline bool tcp_urg_mode(const struct tcp_sock *tp)
 #define OPTION_FAST_OPEN_COOKIE	BIT(8)
 #define OPTION_SMC		BIT(9)
 #define OPTION_MPTCP		BIT(10)
+#define OPTION_EDO_SUPPORTED	BIT(11)
 
 static void smc_options_write(__be32 *ptr, u16 *options)
 {
@@ -620,6 +621,12 @@ static void tcp_options_write(struct tcphdr *th, struct tcp_sock *tp,
 	__be32 *ptr = (__be32 *)(th + 1);
 	u16 options = opts->options;	/* mungable copy */
 
+	if (unlikely(OPTION_EDO_SUPPORTED & options)) {
+		*ptr++ = htonl((TCPOPT_EXP_EDO << 24) |
+			       (TCPOLEN_EXP_EDO_SUPPORTED << 16) |
+			       TCPOPT_EDO_MAGIC);
+	}
+
 	if (unlikely(OPTION_MD5 & options)) {
 		*ptr++ = htonl((TCPOPT_NOP << 24) | (TCPOPT_NOP << 16) |
 			       (TCPOPT_MD5SIG << 8) | TCPOLEN_MD5SIG);
@@ -797,6 +804,11 @@ static unsigned int tcp_syn_options(struct sock *sk, struct sk_buff *skb,
 	 * going out.  */
 	opts->mss = tcp_advertise_mss(sk);
 	remaining -= TCPOLEN_MSS_ALIGNED;
+
+	if (tp->edo) {
+		opts->options |= OPTION_EDO_SUPPORTED;
+		remaining -= TCPOLEN_EXP_EDO_SUPPORTED;
+	}
 
 	if (likely(READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_timestamps) && !*md5)) {
 		opts->options |= OPTION_TS;
