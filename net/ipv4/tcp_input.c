@@ -7055,6 +7055,8 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 		isn = cookie_init_sequence(af_ops, sk, skb, &req->mss);
 		if (!tmp_opt.tstamp_ok)
 			inet_rsk(req)->ecn_ok = 0;
+
+		tcp_rsk(req)->edo = 0;
 	}
 
 	tcp_rsk(req)->snt_isn = isn;
