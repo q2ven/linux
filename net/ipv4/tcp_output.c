@@ -427,6 +427,7 @@ static inline bool tcp_urg_mode(const struct tcp_sock *tp)
 #define OPTION_SMC		BIT(9)
 #define OPTION_MPTCP		BIT(10)
 #define OPTION_AO		BIT(11)
+#define OPTION_EDO_SUPPORTED	BIT(12)
 
 static void smc_options_write(__be32 *ptr, u16 *options)
 {
@@ -673,6 +674,13 @@ static void tcp_options_write(struct tcphdr *th, struct tcp_sock *tp,
 	} else if (tcp_key_is_ao(key)) {
 		ptr = process_tcp_ao_options(tp, tcprsk, opts, key, ptr);
 	}
+
+	if (unlikely(OPTION_EDO_SUPPORTED & options)) {
+		*ptr++ = htonl((TCPOPT_EXP_EDO << 24) |
+			       (TCPOLEN_EXP_EDO_SUPPORTED << 16) |
+			       TCPOPT_EDO_MAGIC);
+	}
+
 	if (unlikely(opts->mss)) {
 		*ptr++ = htonl((TCPOPT_MSS << 24) |
 			       (TCPOLEN_MSS << 16) |
@@ -844,6 +852,11 @@ static unsigned int tcp_syn_options(struct sock *sk, struct sk_buff *skb,
 	 * going out.  */
 	opts->mss = tcp_advertise_mss(sk);
 	remaining -= TCPOLEN_MSS_ALIGNED;
+
+	if (tp->edo) {
+		opts->options |= OPTION_EDO_SUPPORTED;
+		remaining -= TCPOLEN_EXP_EDO_SUPPORTED;
+	}
 
 	if (likely(timestamps)) {
 		opts->options |= OPTION_TS;
