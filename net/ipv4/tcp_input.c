@@ -6301,6 +6301,8 @@ consume:
 			tp->window_clamp = min(tp->window_clamp, 65535U);
 		}
 
+		tp->edo &= tp->rx_opt.edo_ok;
+
 		if (tp->rx_opt.saw_tstamp) {
 			tp->rx_opt.tstamp_ok	   = 1;
 			tp->tcp_header_len =
