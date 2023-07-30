@@ -2386,6 +2386,15 @@ static inline bool tcp_key_is_ao(const struct tcp_key *key)
 	return false;
 }
 
+static inline bool tcp_key_is_none(const struct tcp_key *key)
+{
+#if defined(CONFIG_TCP_AO) || defined(CONFIG_TCP_MD5SIG)
+	return key->type == TCP_KEY_NONE;
+#else
+	return true;
+#endif
+}
+
 int tcpv4_offload_init(void);
 
 void tcp_v4_init(void);

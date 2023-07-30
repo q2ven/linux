@@ -3939,7 +3939,10 @@ int do_tcp_setsockopt(struct sock *sk, int level, int optname,
 			goto ao_parse;
 		if (tp->repair)
 			goto ao_parse;
-		err = -EISCONN;
+		if (tp->edo)
+			err = -EOPNOTSUPP;
+		else
+			err = -EISCONN;
 		break;
 ao_parse:
 		err = tp->af_specific->ao_parse(sk, optname, optval, optlen);
@@ -3949,7 +3952,10 @@ ao_parse:
 #ifdef CONFIG_TCP_MD5SIG
 	case TCP_MD5SIG:
 	case TCP_MD5SIG_EXT:
-		err = tp->af_specific->md5_parse(sk, optname, optval, optlen);
+		if (tp->edo)
+			err = -EOPNOTSUPP;
+		else
+			err = tp->af_specific->md5_parse(sk, optname, optval, optlen);
 		break;
 #endif
 	case TCP_FASTOPEN:
@@ -4013,6 +4019,33 @@ ao_parse:
 			tcp_enable_tx_delay();
 		WRITE_ONCE(tp->tcp_tx_delay, val);
 		break;
+	case TCP_EXT_DATA_OFFSET: {
+		struct tcp_key key;
+
+		if (val < TCP_EDO_OFF || val > TCP_EDO_HDR_SEG) {
+			err = -EINVAL;
+			break;
+		}
+
+		if ((1 << sk->sk_state) & ~(TCPF_CLOSE | TCPF_LISTEN)) {
+			err = -EISCONN;
+			break;
+		}
+
+		if (sk_is_mptcp(sk)) {
+			err = -EOPNOTSUPP;
+			break;
+		}
+
+		tcp_get_current_key(sk, &key);
+		if (!tcp_key_is_none(&key)) {
+			err = -EOPNOTSUPP;
+			break;
+		}
+
+		tp->edo = val;
+		break;
+	}
 	default:
 		err = -ENOPROTOOPT;
 		break;
@@ -4503,6 +4536,10 @@ int do_tcp_getsockopt(struct sock *sk, int level,
 
 	case TCP_TX_DELAY:
 		val = READ_ONCE(tp->tcp_tx_delay);
+		break;
+
+	case TCP_EXT_DATA_OFFSET:
+		val = tp->edo;
 		break;
 
 	case TCP_TIMESTAMP:

@@ -137,6 +137,14 @@ enum {
 
 #define TCP_IS_MPTCP		43	/* Is MPTCP being used? */
 
+#define TCP_EXT_DATA_OFFSET	44	/* Enable Extended Data Offset */
+
+enum {
+	TCP_EDO_OFF,
+	TCP_EDO_HDR,
+	TCP_EDO_HDR_SEG,
+};
+
 #define TCP_REPAIR_ON		1
 #define TCP_REPAIR_OFF		0
 #define TCP_REPAIR_OFF_NO_WP	-1	/* Turn off without window probes */
