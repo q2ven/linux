@@ -4239,7 +4239,7 @@ void tcp_parse_options(const struct net *net,
 				if (opsize >= TCPOLEN_EXP_EDO_SUPPORTED &&
 				    get_unaligned_be16(ptr) == TCPOPT_EDO_MAGIC) {
 					if (th->syn) {
-						if (!estab && opsize == TCPOLEN_EXP_EDO_SUPPORTED)
+						if (opsize == TCPOLEN_EXP_EDO_SUPPORTED)
 							opt_rx->edo_ok = 1;
 					}
 					break;
@@ -6471,6 +6471,13 @@ consume:
 			tp->rx_opt.snd_wscale = tp->rx_opt.rcv_wscale = 0;
 			WRITE_ONCE(tp->window_clamp,
 				   min(tp->window_clamp, 65535U));
+		}
+
+		tp->edo &= tp->rx_opt.edo_ok;
+		if (tp->edo) {
+			sk_gso_disable(sk);
+			sk->sk_gso_max_size = 0;
+			sk->sk_gso_max_segs = 1;
 		}
 
 		if (tp->rx_opt.saw_tstamp) {
