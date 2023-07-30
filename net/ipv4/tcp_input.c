@@ -4239,7 +4239,7 @@ void tcp_parse_options(const struct net *net,
 				if (opsize >= TCPOLEN_EXP_EDO_SUPPORTED &&
 				    get_unaligned_be16(ptr) == TCPOPT_EDO_MAGIC) {
 					if (th->syn) {
-						if (!estab && opsize == TCPOLEN_EXP_EDO_SUPPORTED)
+						if (opsize == TCPOLEN_EXP_EDO_SUPPORTED)
 							opt_rx->edo_ok = 1;
 					}
 					break;
@@ -4304,9 +4304,12 @@ static bool tcp_fast_parse_options(const struct net *net,
 	 */
 	if (th->doff == (sizeof(*th) / 4)) {
 		tp->rx_opt.saw_tstamp = 0;
+		tp->rx_opt.edo_ok = 0;
 		return false;
 	} else if (tp->rx_opt.tstamp_ok &&
 		   th->doff == ((sizeof(*th) + TCPOLEN_TSTAMP_ALIGNED) / 4)) {
+		tp->rx_opt.edo_ok = 0;
+
 		if (tcp_parse_aligned_timestamp(tp, th))
 			return true;
 	}
@@ -5894,6 +5897,21 @@ static bool tcp_reset_check(const struct sock *sk, const struct sk_buff *skb)
 					       TCPF_CLOSING));
 }
 
+static void tcp_edo_rcv_synack(struct sock *sk)
+{
+	struct tcp_sock *tp = tcp_sk(sk);
+
+	if (tp->rx_opt.edo_ok) {
+		sk_gso_disable(sk);
+		sk->sk_gso_max_size = 0;
+		sk->sk_gso_max_segs = 1;
+		NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPEDOSUCCESS);
+	} else {
+		tp->edo = 0;
+		NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPEDOFALLBACKSYNACK);
+	}
+}
+
 /* Does PAWS and seqno based validation of an incoming segment, flags will
  * play significant role here.
  */
@@ -5992,6 +6010,12 @@ static bool tcp_validate_incoming(struct sock *sk, struct sk_buff *skb,
 	 * RFC 5961 4.2 : Send a challenge ack
 	 */
 	if (th->syn) {
+		if (unlikely(sk->sk_state == TCP_SYN_RECV) && tp->edo) {
+			tcp_edo_rcv_synack(sk);
+			tcp_send_challenge_ack(sk);
+			consume_skb(skb);
+			return false;
+		}
 syn_challenge:
 		if (syn_inerr)
 			TCP_INC_STATS(sock_net(sk), TCP_MIB_INERRS);
@@ -6472,6 +6496,9 @@ consume:
 			WRITE_ONCE(tp->window_clamp,
 				   min(tp->window_clamp, 65535U));
 		}
+
+		if (tp->edo)
+			tcp_edo_rcv_synack(sk);
 
 		if (tp->rx_opt.saw_tstamp) {
 			tp->rx_opt.tstamp_ok	   = 1;
