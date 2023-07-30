@@ -6306,6 +6306,13 @@ consume:
 			tp->window_clamp = min(tp->window_clamp, 65535U);
 		}
 
+		tp->edo &= tp->rx_opt.edo_ok;
+		if (tp->edo) {
+			sk_gso_disable(sk);
+			sk->sk_gso_max_size = 0;
+			sk->sk_gso_max_segs = 1;
+		}
+
 		if (tp->rx_opt.saw_tstamp) {
 			tp->rx_opt.tstamp_ok	   = 1;
 			tp->tcp_header_len =
