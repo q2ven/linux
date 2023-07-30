@@ -882,6 +882,11 @@ static unsigned int tcp_synack_options(const struct sock *sk,
 	opts->mss = mss;
 	remaining -= TCPOLEN_MSS_ALIGNED;
 
+	if (tcp_rsk(req)->ext_doff) {
+		opts->options |= OPTION_EDO_SUPPORTED;
+		remaining -= (TCPOLEN_EDO_SUPPORTED + 2);
+	}
+
 	if (likely(ireq->wscale_ok)) {
 		opts->ws = ireq->rcv_wscale;
 		opts->options |= OPTION_WSCALE;
