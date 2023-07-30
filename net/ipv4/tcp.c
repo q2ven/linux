@@ -3680,6 +3680,14 @@ int do_tcp_setsockopt(struct sock *sk, int level, int optname,
 			tcp_enable_tx_delay();
 		WRITE_ONCE(tp->tcp_tx_delay, val);
 		break;
+	case TCP_EXT_DATA_OFFSET:
+		if (val > 1 || val < 0)
+			err = -EINVAL;
+		else if (!((1 << sk->sk_state) & (TCPF_CLOSE | TCPF_LISTEN)))
+			err = -EINVAL;
+		else
+			tp->ext_doff = val;
+		break;
 	default:
 		err = -ENOPROTOOPT;
 		break;
@@ -4160,6 +4168,10 @@ int do_tcp_getsockopt(struct sock *sk, int level,
 
 	case TCP_TX_DELAY:
 		val = READ_ONCE(tp->tcp_tx_delay);
+		break;
+
+	case TCP_EXT_DATA_OFFSET:
+		val = tp->ext_doff;
 		break;
 
 	case TCP_TIMESTAMP:

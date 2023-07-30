@@ -128,7 +128,7 @@ enum {
 #define TCP_CM_INQ		TCP_INQ
 
 #define TCP_TX_DELAY		37	/* delay outgoing packets by XX usec */
-
+#define TCP_EXT_DATA_OFFSET	38	/* Enable Extended Data Offset */
 
 #define TCP_REPAIR_ON		1
 #define TCP_REPAIR_OFF		0
