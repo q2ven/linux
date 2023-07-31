@@ -4049,10 +4049,12 @@ int tcp_parse_options(const struct net *net, struct sk_buff *skb,
 	const unsigned char *ptr;
 	const struct tcphdr *th = tcp_hdr(skb);
 	int length = (th->doff * 4) - sizeof(struct tcphdr);
+	bool parse_edo_ext = opt_rx->edo_ok;
 
 	ptr = (const unsigned char *)(th + 1);
 	opt_rx->saw_tstamp = 0;
 	opt_rx->saw_unknown = 0;
+	opt_rx->edo_ok = 0;
 
 	while (length > 0) {
 		int opcode = *ptr++;
@@ -4139,6 +4141,11 @@ int tcp_parse_options(const struct net *net, struct sk_buff *skb,
 
 			case TCPOPT_EDO_SUPPORTED:
 				if (opsize == TCPOLEN_EDO_SUPPORTED && th->syn && !estab)
+					opt_rx->edo_ok = 1;
+				break;
+
+			case TCPOPT_EDO_LENGTH:
+				if (opsize == TCPOLEN_EDO_LENGTH && !th->syn && parse_edo_ext)
 					opt_rx->edo_ok = 1;
 				break;
 

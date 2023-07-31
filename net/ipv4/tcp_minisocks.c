@@ -553,6 +553,7 @@ struct sock *tcp_create_openreq_child(const struct sock *sk,
 	}
 	newtp->snd_wnd = ntohs(tcp_hdr(skb)->window) << newtp->rx_opt.snd_wscale;
 	newtp->max_window = newtp->snd_wnd;
+	newtp->ext_doff = treq->ext_doff;
 
 	if (newtp->rx_opt.tstamp_ok) {
 		newtp->rx_opt.ts_recent = READ_ONCE(req->ts_recent);
@@ -614,8 +615,10 @@ struct sock *tcp_check_req(struct sock *sk, struct sk_buff *skb,
 	bool paws_reject = false;
 	bool own_req;
 
+	tmp_opt.edo_ok = 0;
 	tmp_opt.saw_tstamp = 0;
 	if (th->doff > (sizeof(struct tcphdr)>>2)) {
+		tmp_opt.edo_ok = tcp_rsk(req)->ext_doff;
 		tcp_parse_options(sock_net(sk), skb, &tmp_opt, 0, NULL);
 
 		if (tmp_opt.saw_tstamp) {
@@ -800,6 +803,8 @@ struct sock *tcp_check_req(struct sock *sk, struct sk_buff *skb,
 		__NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPDEFERACCEPTDROP);
 		return NULL;
 	}
+
+	tcp_rsk(req)->ext_doff = tmp_opt.edo_ok;
 
 	/* OK, ACK is valid, create big socket and
 	 * feed this segment to it. It will repeat all
