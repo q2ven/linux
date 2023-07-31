@@ -211,6 +211,8 @@ void tcp_time_wait(struct sock *sk, int state, int timeo);
 #define TCPOLEN_EXP_FASTOPEN_BASE  4
 #define TCPOLEN_EXP_SMC_BASE   6
 #define TCPOLEN_EXP_EDO_SUPPORTED  4
+#define TCPOLEN_EXP_EDO_EXT_HDR    6
+#define TCPOLEN_EXP_EDO_EXT_SEG    8
 
 /* But this is what stacks really send out. */
 #define TCPOLEN_TSTAMP_ALIGNED		12
@@ -222,6 +224,7 @@ void tcp_time_wait(struct sock *sk, int state, int timeo);
 #define TCPOLEN_MD5SIG_ALIGNED		20
 #define TCPOLEN_MSS_ALIGNED		4
 #define TCPOLEN_EXP_SMC_BASE_ALIGNED	8
+#define TCPOLEN_EXP_EDO_EXT_ALIGNED	8
 
 /* Flags in tp->nonagle */
 #define TCP_NAGLE_OFF		1	/* Nagle's algo is disabled */
