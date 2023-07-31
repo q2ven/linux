@@ -122,8 +122,9 @@ struct tcp_options_received {
 		smc_ok : 1,	/* SMC seen on SYN packet		*/
 		snd_wscale : 4,	/* Window scaling received from sender	*/
 		rcv_wscale : 4;	/* Window scaling to send to receiver	*/
-	u8	saw_unknown:1,	/* Received unknown option		*/
-		unused:7;
+	u8	edo_ok : 1,	/* Extended Data Offset			*/
+		saw_unknown:1,	/* Received unknown option		*/
+		unused:6;
 	u8	num_sacks;	/* Number of SACK blocks		*/
 	u16	user_mss;	/* mss requested by user in ioctl	*/
 	u16	mss_clamp;	/* Maximal mss, negotiated at connection setup */
@@ -155,6 +156,7 @@ struct tcp_request_sock {
 #if IS_ENABLED(CONFIG_MPTCP)
 	bool				drop_req;
 #endif
+	bool				ext_doff;
 	u32				txhash;
 	u32				rcv_isn;
 	u32				snt_isn;
