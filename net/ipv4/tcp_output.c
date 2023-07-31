@@ -416,6 +416,7 @@ static inline bool tcp_urg_mode(const struct tcp_sock *tp)
 #define OPTION_SMC		BIT(9)
 #define OPTION_MPTCP		BIT(10)
 #define OPTION_EDO_SUPPORTED	BIT(11)
+#define OPTION_EDO_LENGTH	BIT(12)
 
 static void smc_options_write(__be32 *ptr, u16 *options)
 {
@@ -439,6 +440,7 @@ struct tcp_out_options {
 	u8 num_sack_blocks;	/* number of SACK blocks to include */
 	u8 hash_size;		/* bytes in hash_location */
 	u8 bpf_opt_len;		/* length of BPF hdr option */
+	u16 edo_len;		/* Extended Data Offset Length */
 	__u8 *hash_location;	/* temporary pointer, overloaded */
 	__u32 tsval, tsecr;	/* need to include OPTION_TS */
 	struct tcp_fastopen_cookie *fastopen_cookie;	/* Fast open cookie */
@@ -618,6 +620,10 @@ static void tcp_options_write(struct tcphdr *th, struct tcp_sock *tp,
 		*ptr++ = htonl((TCPOPT_NOP << 24) | (TCPOPT_NOP << 16) |
 			       (TCPOPT_EDO_SUPPORTED << 8) | TCPOLEN_EDO_SUPPORTED);
 	}
+
+	if (OPTION_EDO_LENGTH & options)
+		*ptr++ = htonl((TCPOPT_EDO_LENGTH << 24) | (TCPOLEN_EDO_LENGTH << 16) |
+			       opts->edo_len);
 
 	if (unlikely(OPTION_MD5 & options)) {
 		*ptr++ = htonl((TCPOPT_NOP << 24) | (TCPOPT_NOP << 16) |
@@ -951,6 +957,11 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 	}
 #endif
 
+	if (tp->ext_doff) {
+		opts->options |= OPTION_EDO_LENGTH;
+		size += TCPOLEN_EDO_LENGTH;
+	}
+
 	if (likely(tp->rx_opt.tstamp_ok)) {
 		opts->options |= OPTION_TS;
 		opts->tsval = skb ? tcp_skb_timestamp(skb) + tp->tsoffset : 0;
@@ -980,7 +991,7 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 		const unsigned int remaining = MAX_TCP_OPTION_SPACE - size;
 		if (unlikely(remaining < TCPOLEN_SACK_BASE_ALIGNED +
 					 TCPOLEN_SACK_PERBLOCK))
-			return size;
+			goto out;
 
 		opts->num_sack_blocks =
 			min_t(unsigned int, eff_sacks,
@@ -999,6 +1010,9 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 
 		size = MAX_TCP_OPTION_SPACE - remaining;
 	}
+
+out:
+	opts->edo_len = size + sizeof(struct tcphdr);
 
 	return size;
 }
