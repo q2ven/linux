@@ -6907,6 +6907,8 @@ tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 			SKB_DR_SET(reason, TCP_FASTOPEN);
 			goto discard;
 		}
+
+		th = tcp_hdr(skb);
 	}
 
 	if (!th->ack && !th->rst && !th->syn) {

@@ -2269,6 +2269,8 @@ lookup:
 			iph = ip_hdr(skb);
 			tcp_v4_fill_cb(skb, iph, th);
 			nsk = tcp_check_req(sk, skb, req, false, &req_stolen);
+			th = tcp_hdr(skb);
+			iph = ip_hdr(skb);
 		} else {
 			drop_reason = SKB_DROP_REASON_SOCKET_FILTER;
 		}

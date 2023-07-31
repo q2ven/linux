@@ -575,6 +575,9 @@ struct sock *tcp_create_openreq_child(const struct sock *sk,
 	}
 	newtp->snd_wnd = ntohs(tcp_hdr(skb)->window) << newtp->rx_opt.snd_wscale;
 	newtp->max_window = newtp->snd_wnd;
+	newtp->edo = treq->edo;
+	if (newtp->edo)
+		sk_gso_disable(newsk);
 
 	if (newtp->rx_opt.tstamp_ok) {
 		newtp->tcp_usec_ts = treq->req_usec_ts;
@@ -660,8 +663,12 @@ struct sock *tcp_check_req(struct sock *sk, struct sk_buff *skb,
 	bool own_req;
 
 	tmp_opt.saw_tstamp = 0;
+	tmp_opt.edo_ok = 0;
 	if (th->doff > (sizeof(struct tcphdr)>>2)) {
-		tcp_parse_options(sock_net(sk), skb, &tmp_opt, 0, NULL, false);
+		if (tcp_parse_options(sock_net(sk), skb, &tmp_opt, 0, NULL, !!tcp_rsk(req)->edo))
+			return NULL;
+
+		th = tcp_hdr(skb);
 
 		if (tmp_opt.saw_tstamp) {
 			tmp_opt.ts_recent = READ_ONCE(req->ts_recent);
@@ -835,11 +842,22 @@ struct sock *tcp_check_req(struct sock *sk, struct sk_buff *skb,
 	if (!(flg & TCP_FLAG_ACK))
 		return NULL;
 
+	if (tcp_rsk(req)->edo) {
+		if (tmp_opt.edo_ok) {
+			NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPEDOSUCCESS);
+		} else {
+			tcp_rsk(req)->edo = 0;
+			NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPEDOFALLBACKACK);
+		}
+	}
+
 	/* For Fast Open no more processing is needed (sk is the
 	 * child socket).
 	 */
-	if (fastopen)
+	if (fastopen) {
+		tcp_sk(sk)->edo = tcp_rsk(req)->edo;
 		return sk;
+	}
 
 	/* While TCP_DEFER_ACCEPT is active, drop bare ACK. */
 	if (req->num_timeout < READ_ONCE(inet_csk(sk)->icsk_accept_queue.rskq_defer_accept) &&

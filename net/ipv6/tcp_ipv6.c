@@ -1835,6 +1835,8 @@ lookup:
 			hdr = ipv6_hdr(skb);
 			tcp_v6_fill_cb(skb, hdr, th);
 			nsk = tcp_check_req(sk, skb, req, false, &req_stolen);
+			th = tcp_hdr(skb);
+			hdr = ipv6_hdr(skb);
 		} else {
 			drop_reason = SKB_DROP_REASON_SOCKET_FILTER;
 		}
