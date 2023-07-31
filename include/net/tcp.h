@@ -190,6 +190,7 @@ void tcp_time_wait(struct sock *sk, int state, int timeo);
 #define TCPOPT_EXP		254	/* Experimental */
 
 #define TCPOPT_EDO_SUPPORTED	TCPOPT_EXP	/* Extended Data Offset Supported */
+#define TCPOPT_EDO_EXTENSION	TCPOPT_EXP	/* Extended Data Offset Extension */
 
 /* Magic number to be after the option value for sharing TCP
  * experimental options. See draft-ietf-tcpm-experimental-options-00.txt
@@ -211,6 +212,8 @@ void tcp_time_wait(struct sock *sk, int state, int timeo);
 #define TCPOLEN_EXP_FASTOPEN_BASE  4
 #define TCPOLEN_EXP_SMC_BASE   6
 #define TCPOLEN_EXP_EDO_BASE   4
+#define TCPOLEN_EDO_EXT_HDR    6
+#define TCPOLEN_EDO_EXT_SEG    8
 
 /* But this is what stacks really send out. */
 #define TCPOLEN_TSTAMP_ALIGNED		12
@@ -222,6 +225,7 @@ void tcp_time_wait(struct sock *sk, int state, int timeo);
 #define TCPOLEN_MD5SIG_ALIGNED		20
 #define TCPOLEN_MSS_ALIGNED		4
 #define TCPOLEN_EXP_SMC_BASE_ALIGNED	8
+#define TCPOLEN_EDO_EXT_ALIGNED		8
 
 /* Flags in tp->nonagle */
 #define TCP_NAGLE_OFF		1	/* Nagle's algo is disabled */
