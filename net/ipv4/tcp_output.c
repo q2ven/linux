@@ -424,6 +424,8 @@ static inline bool tcp_urg_mode(const struct tcp_sock *tp)
 #define OPTION_MPTCP		BIT(10)
 #define OPTION_AO		BIT(11)
 #define OPTION_EDO_SUPPORTED	BIT(12)
+#define OPTION_EDO_EXT_HDR	BIT(13)
+#define OPTION_EDO_EXT_SEG	BIT(12) /* flagged with EDO_EXT_HDR */
 
 static void smc_options_write(__be32 *ptr, u16 *options)
 {
@@ -447,6 +449,8 @@ struct tcp_out_options {
 	u8 num_sack_blocks;	/* number of SACK blocks to include */
 	u8 hash_size;		/* bytes in hash_location */
 	u8 bpf_opt_len;		/* length of BPF hdr option */
+	u16 edo_hdr;		/* EDO Extension Header Length */
+	u16 edo_seg;		/* EDO Extension Segment Length */
 	__u8 *hash_location;	/* temporary pointer, overloaded */
 	__u32 tsval, tsecr;	/* need to include OPTION_TS */
 	struct tcp_fastopen_cookie *fastopen_cookie;	/* Fast open cookie */
@@ -663,7 +667,19 @@ out_ao:
 #endif
 	}
 
-	if (unlikely(OPTION_EDO_SUPPORTED & options)) {
+	if (OPTION_EDO_EXT_HDR & options) {
+		if (OPTION_EDO_EXT_SEG & options) {
+			*ptr++ = htonl((TCPOPT_EXP_EDO << 24) |
+				       (TCPOLEN_EXP_EDO_EXT_SEG << 16) |
+				       TCPOPT_EDO_MAGIC);
+			*ptr++ = htonl((opts->edo_hdr << 16) | opts->edo_seg);
+		} else {
+			*ptr++ = htonl((TCPOPT_NOP << 24) | (TCPOPT_NOP << 16) |
+				       (TCPOPT_EXP_EDO << 8) |
+				       TCPOLEN_EXP_EDO_EXT_HDR);
+			*ptr++ = htonl((TCPOPT_EDO_MAGIC << 16) | opts->edo_hdr);
+		}
+	} else if (unlikely(OPTION_EDO_SUPPORTED & options)) {
 		*ptr++ = htonl((TCPOPT_EXP_EDO << 24) |
 			       (TCPOLEN_EXP_EDO_SUPPORTED << 16) |
 			       TCPOPT_EDO_MAGIC);
@@ -980,8 +996,8 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 					struct tcp_out_options *opts,
 					struct tcp_key *key)
 {
+	unsigned int size = 0, limit = MAX_TCP_OPTION_SPACE;
 	struct tcp_sock *tp = tcp_sk(sk);
-	unsigned int size = 0;
 	unsigned int eff_sacks;
 
 	opts->options = 0;
@@ -993,6 +1009,15 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 	} else if (tcp_key_is_ao(key)) {
 		opts->options |= OPTION_AO;
 		size += tcp_ao_len(key->ao_key);
+	}
+
+	if (tp->edo) {
+		opts->options |= OPTION_EDO_EXT_HDR;
+		if (tp->edo_seg)
+			opts->options |= OPTION_EDO_EXT_SEG;
+
+		size += TCPOLEN_EXP_EDO_EXT_ALIGNED;
+		limit = tp->mss_cache;
 	}
 
 	if (likely(tp->rx_opt.tstamp_ok)) {
@@ -1010,7 +1035,7 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 	 * left.
 	 */
 	if (sk_is_mptcp(sk)) {
-		unsigned int remaining = MAX_TCP_OPTION_SPACE - size;
+		const unsigned int remaining = limit - size;
 		unsigned int opt_size = 0;
 
 		if (mptcp_established_options(sk, skb, &opt_size, remaining,
@@ -1022,7 +1047,8 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 
 	eff_sacks = tp->rx_opt.num_sacks + tp->rx_opt.dsack;
 	if (unlikely(eff_sacks)) {
-		const unsigned int remaining = MAX_TCP_OPTION_SPACE - size;
+		const unsigned int remaining = limit - size;
+
 		if (unlikely(remaining < TCPOLEN_SACK_BASE_ALIGNED +
 					 TCPOLEN_SACK_PERBLOCK))
 			return size;
@@ -1038,11 +1064,11 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 
 	if (unlikely(BPF_SOCK_OPS_TEST_FLAG(tp,
 					    BPF_SOCK_OPS_WRITE_HDR_OPT_CB_FLAG))) {
-		unsigned int remaining = MAX_TCP_OPTION_SPACE - size;
+		unsigned int remaining = limit - size;
 
 		bpf_skops_hdr_opt_len(sk, skb, NULL, NULL, 0, opts, &remaining);
 
-		size = MAX_TCP_OPTION_SPACE - remaining;
+		size = limit - remaining;
 	}
 
 	return size;
@@ -1335,6 +1361,12 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 		tcp_options_size = tcp_syn_options(sk, skb, &opts, &key);
 	} else {
 		tcp_options_size = tcp_established_options(sk, skb, &opts, &key);
+
+		if (unlikely(tcp_options_size > MAX_TCP_OPTION_SPACE) &&
+		    pskb_expand_head(skb, tcp_options_size - MAX_TCP_OPTION_SPACE,
+				     0, GFP_ATOMIC))
+			return -ENOBUFS;
+
 		/* Force a PSH flag on all (GSO) packets to expedite GRO flush
 		 * at receiver : This slightly improve GRO performance.
 		 * Note that we do not force the PSH flag for non GSO packets,
@@ -1387,8 +1419,10 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 	th->dest		= inet->inet_dport;
 	th->seq			= htonl(tcb->seq);
 	th->ack_seq		= htonl(rcv_nxt);
-	*(((__be16 *)th) + 6)	= htons(((tcp_header_size >> 2) << 12) |
-					tcb->tcp_flags);
+	if (tcp_header_size < MAX_TCP_OPTION_SPACE + sizeof(struct tcphdr))
+		*(((__be16 *)th) + 6) = htons(((tcp_header_size >> 2) << 12) | tcb->tcp_flags);
+	else
+		*(((__be16 *)th) + 6) = htons((15 << 12) | tcb->tcp_flags);
 
 	th->check		= 0;
 	th->urg_ptr		= 0;
@@ -1415,7 +1449,11 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 		th->window	= htons(min(tp->rcv_wnd, 65535U));
 	}
 
+	opts.edo_hdr = tcp_header_size;
+	opts.edo_seg = skb->len;
+
 	tcp_options_write(th, tp, NULL, &opts, &key);
+	tcp_options_write(th, tp, &opts);
 
 	if (tcp_key_is_md5(&key)) {
 #ifdef CONFIG_TCP_MD5SIG
