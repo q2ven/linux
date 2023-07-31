@@ -4151,6 +4151,7 @@ void tcp_parse_options(const struct net *net,
 	ptr = (const unsigned char *)(th + 1);
 	opt_rx->saw_tstamp = 0;
 	opt_rx->saw_unknown = 0;
+	opt_rx->edo_ok = 0;
 
 	while (length > 0) {
 		int opcode = *ptr++;
@@ -4235,6 +4236,15 @@ void tcp_parse_options(const struct net *net,
 				break;
 
 			case TCPOPT_EXP:
+				if (opsize >= TCPOLEN_EXP_EDO_SUPPORTED &&
+				    get_unaligned_be16(ptr) == TCPOPT_EDO_MAGIC) {
+					if (th->syn) {
+						if (!estab && opsize == TCPOLEN_EXP_EDO_SUPPORTED)
+							opt_rx->edo_ok = 1;
+					}
+					break;
+				}
+
 				/* Fast Open option shares code 254 using a
 				 * 16 bits magic number.
 				 */
@@ -6551,6 +6561,9 @@ consume:
 #endif
 		tcp_set_state(sk, TCP_SYN_RECV);
 
+		if (!tp->rx_opt.edo_ok)
+			tp->edo = 0;
+
 		if (tp->rx_opt.saw_tstamp) {
 			tp->rx_opt.tstamp_ok = 1;
 			tcp_store_ts_recent(tp);
@@ -6990,6 +7003,7 @@ static void tcp_openreq_init(struct request_sock *req,
 	tcp_rsk(req)->rcv_nxt = TCP_SKB_CB(skb)->seq + 1;
 	tcp_rsk(req)->snt_synack = 0;
 	tcp_rsk(req)->last_oow_ack_time = 0;
+	tcp_rsk(req)->edo = rx_opt->edo_ok ? tcp_sk(sk)->edo : 0;
 	req->mss = rx_opt->mss_clamp;
 	req->ts_recent = rx_opt->saw_tstamp ? rx_opt->rcv_tsval : 0;
 	ireq->tstamp_ok = rx_opt->tstamp_ok;
