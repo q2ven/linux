@@ -4145,8 +4145,34 @@ int tcp_parse_options(const struct net *net, struct sk_buff *skb,
 				break;
 
 			case TCPOPT_EDO_LENGTH:
-				if (opsize == TCPOLEN_EDO_LENGTH && !th->syn && parse_edo_ext)
+				if (opsize == TCPOLEN_EDO_LENGTH && !th->syn && parse_edo_ext) {
+					u16 edo_len = get_unaligned_be16(ptr);
+					u8 parsed;
+
+					if (edo_len < th->doff * 4) {
+						/* TODO: return error and drop. */
+						WARN_ON(1);
+						return -EINVAL;
+					} else if (edo_len == th->doff * 4) {
+						opt_rx->edo_ok = 1;
+						continue;
+					}
+
+					if (!pskb_may_pull((__force struct sk_buff *)skb, edo_len)) {
+						/* TODO: return error and drop. */
+						WARN_ON(1);
+						return -EINVAL;
+					}
+
 					opt_rx->edo_ok = 1;
+
+					th = tcp_hdr(skb);
+					parsed = th->doff * 4 - sizeof(struct tcphdr) - length;
+					ptr = (const unsigned char *)(th + 1) + parsed;
+					length = edo_len - parsed;
+					TCP_SKB_CB(skb)->end_seq = (TCP_SKB_CB(skb)->seq + th->fin +
+								    skb->len - edo_len);
+				}
 				break;
 
 			case TCPOPT_EXP:

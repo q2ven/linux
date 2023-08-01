@@ -620,6 +620,7 @@ struct sock *tcp_check_req(struct sock *sk, struct sk_buff *skb,
 	if (th->doff > (sizeof(struct tcphdr)>>2)) {
 		tmp_opt.edo_ok = tcp_rsk(req)->ext_doff;
 		tcp_parse_options(sock_net(sk), skb, &tmp_opt, 0, NULL);
+		th = tcp_hdr(skb);
 
 		if (tmp_opt.saw_tstamp) {
 			tmp_opt.ts_recent = READ_ONCE(req->ts_recent);
