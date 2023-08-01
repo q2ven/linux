@@ -418,6 +418,7 @@ static inline bool tcp_urg_mode(const struct tcp_sock *tp)
 #define OPTION_EDO_SUPPORTED	BIT(11)
 #define OPTION_EDO_EXT_HDR	BIT(12)
 #define OPTION_EDO_EXT_SEG	BIT(11) /* flagged with EDO_EXT_HDR */
+#define OPTION_EDO_NOP128	BIT(13)
 
 static void smc_options_write(__be32 *ptr, u16 *options)
 {
@@ -633,6 +634,11 @@ static void tcp_options_write(struct tcphdr *th, struct tcp_sock *tp,
 		*ptr++ = htonl((TCPOPT_EDO_SUPPORTED << 24) |
 			       (TCPOLEN_EXP_EDO_BASE << 16) |
 			       TCPOPT_EDO_MAGIC);
+	}
+
+	if (OPTION_EDO_NOP128 & options) {
+		memset(ptr, TCPOPT_NOP, TCPOLEN_EDO_NOP128);
+		ptr += TCPOLEN_EDO_NOP128 / sizeof(*ptr);
 	}
 
 	if (unlikely(OPTION_MD5 & options)) {
@@ -974,6 +980,11 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 
 		size += TCPOLEN_EDO_EXT_ALIGNED;
 		limit = tp->mss_cache;
+
+		if (READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_ext_data_offset_nop128)) {
+			opts->options |= OPTION_EDO_NOP128;
+			size += TCPOLEN_EDO_NOP128;
+		}
 	}
 
 	if (likely(tp->rx_opt.tstamp_ok)) {
