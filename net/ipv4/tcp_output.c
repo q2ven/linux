@@ -939,8 +939,8 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 					struct tcp_out_options *opts,
 					struct tcp_md5sig_key **md5)
 {
+	unsigned int size = 0, limit = MAX_TCP_OPTION_SPACE;
 	struct tcp_sock *tp = tcp_sk(sk);
-	unsigned int size = 0;
 	unsigned int eff_sacks;
 
 	opts->options = 0;
@@ -960,6 +960,7 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 	if (tp->ext_doff) {
 		opts->options |= OPTION_EDO_LENGTH;
 		size += TCPOLEN_EDO_LENGTH;
+		limit = MAX_TCP_OPTION_SPACE_EDO;
 	}
 
 	if (likely(tp->rx_opt.tstamp_ok)) {
@@ -976,7 +977,7 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 	 * left.
 	 */
 	if (sk_is_mptcp(sk)) {
-		unsigned int remaining = MAX_TCP_OPTION_SPACE - size;
+		const unsigned int remaining = limit - size;
 		unsigned int opt_size = 0;
 
 		if (mptcp_established_options(sk, skb, &opt_size, remaining,
@@ -988,7 +989,8 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 
 	eff_sacks = tp->rx_opt.num_sacks + tp->rx_opt.dsack;
 	if (unlikely(eff_sacks)) {
-		const unsigned int remaining = MAX_TCP_OPTION_SPACE - size;
+		const unsigned int remaining = limit - size;
+
 		if (unlikely(remaining < TCPOLEN_SACK_BASE_ALIGNED +
 					 TCPOLEN_SACK_PERBLOCK))
 			goto out;
@@ -1004,11 +1006,11 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 
 	if (unlikely(BPF_SOCK_OPS_TEST_FLAG(tp,
 					    BPF_SOCK_OPS_WRITE_HDR_OPT_CB_FLAG))) {
-		unsigned int remaining = MAX_TCP_OPTION_SPACE - size;
+		unsigned int remaining = limit - size;
 
 		bpf_skops_hdr_opt_len(sk, skb, NULL, NULL, 0, opts, &remaining);
 
-		size = MAX_TCP_OPTION_SPACE - remaining;
+		size = limit - remaining;
 	}
 
 out:
@@ -1311,6 +1313,13 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 	} else {
 		tcp_options_size = tcp_established_options(sk, skb, &opts,
 							   &md5);
+
+		if (unlikely(tcp_options_size > MAX_TCP_OPTION_SPACE) &&
+		    pskb_expand_head(skb, tcp_options_size - MAX_TCP_OPTION_SPACE,
+				     0, GFP_ATOMIC)) {
+			return -ENOBUFS;
+		}
+
 		/* Force a PSH flag on all (GSO) packets to expedite GRO flush
 		 * at receiver : This slightly improve GRO performance.
 		 * Note that we do not force the PSH flag for non GSO packets,
@@ -1356,8 +1365,10 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 	th->dest		= inet->inet_dport;
 	th->seq			= htonl(tcb->seq);
 	th->ack_seq		= htonl(rcv_nxt);
-	*(((__be16 *)th) + 6)	= htons(((tcp_header_size >> 2) << 12) |
-					tcb->tcp_flags);
+	if (tcp_header_size < MAX_TCP_OPTION_SPACE + sizeof(struct tcphdr))
+		*(((__be16 *)th) + 6) = htons(((tcp_header_size >> 2) << 12) | tcb->tcp_flags);
+	else
+		*(((__be16 *)th) + 6) = htons((15 << 12) | tcb->tcp_flags);
 
 	th->check		= 0;
 	th->urg_ptr		= 0;
