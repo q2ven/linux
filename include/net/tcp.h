@@ -213,6 +213,7 @@ void tcp_time_wait(struct sock *sk, int state, int timeo);
 #define TCPOLEN_EXP_EDO_SUPPORTED  4
 #define TCPOLEN_EXP_EDO_EXT_HDR    6
 #define TCPOLEN_EXP_EDO_EXT_SEG    8
+#define TCPOLEN_EDO_NOP128     128
 
 /* But this is what stacks really send out. */
 #define TCPOLEN_TSTAMP_ALIGNED		12

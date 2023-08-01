@@ -133,6 +133,7 @@ struct netns_ipv4 {
 	u8 sysctl_tcp_migrate_req;
 	u8 sysctl_tcp_comp_sack_nr;
 	u8 sysctl_tcp_ext_data_offset;
+	u8 sysctl_tcp_nops;
 	int sysctl_tcp_reordering;
 	u8 sysctl_tcp_retries1;
 	u8 sysctl_tcp_retries2;
