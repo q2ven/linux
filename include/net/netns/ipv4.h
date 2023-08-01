@@ -118,6 +118,7 @@ struct netns_ipv4 {
 #endif
 	u8 sysctl_tcp_mtu_probing;
 	u8 sysctl_tcp_ext_data_offset;
+	u8 sysctl_tcp_nops;
 	int sysctl_tcp_mtu_probe_floor;
 	int sysctl_tcp_base_mss;
 	int sysctl_tcp_min_snd_mss;
