@@ -1582,6 +1582,13 @@ static struct ctl_table ipv4_net_table[] = {
 		.extra1		= SYSCTL_ZERO,
 		.extra2		= SYSCTL_TWO,
 	},
+	{
+		.procname	= "tcp_nops",
+		.data		= &init_net.ipv4.sysctl_tcp_nops,
+		.maxlen		= sizeof(u8),
+		.mode		= 0644,
+		.proc_handler	= proc_dou8vec_minmax,
+	},
 };
 
 static __net_init int ipv4_sysctl_init_net(struct net *net)

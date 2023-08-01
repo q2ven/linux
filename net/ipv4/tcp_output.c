@@ -429,6 +429,7 @@ static inline bool tcp_urg_mode(const struct tcp_sock *tp)
 #define OPTION_AO		BIT(11)
 #define OPTION_EDO_SUPPORTED	BIT(12)
 #define OPTION_EDO_EXTENSION	BIT(13)
+#define OPTION_NOPS		BIT(14)
 
 static void smc_options_write(__be32 *ptr, u16 *options)
 {
@@ -458,6 +459,7 @@ struct tcp_out_options {
 	u16 edo_seg;		/* EDO Extension Segment Length */
 	struct tcp_fastopen_cookie *fastopen_cookie;	/* Fast open cookie */
 	struct mptcp_out_options mptcp;
+	u8 nops;		/* NOPs after EDO Extension */
 };
 
 static void mptcp_options_write(struct tcphdr *th, __be32 *ptr,
@@ -696,6 +698,14 @@ static void tcp_options_write(struct tcphdr *th, struct tcp_sock *tp,
 		*ptr++ = htonl((TCPOPT_EXP_EDO << 24) |
 			       (TCPOLEN_EXP_EDO_SUPPORTED << 16) |
 			       TCPOPT_EDO_MAGIC);
+	}
+
+	if (OPTION_NOPS & options) {
+		u8 *ptr8 = (u8 *)ptr;
+
+		memset(ptr8, TCPOPT_NOP, opts->nops);
+		ptr8 += opts->nops;
+		ptr = (__be32 *)ptr8;
 	}
 
 	if (unlikely(opts->mss)) {
@@ -1028,6 +1038,12 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 		opts->options |= OPTION_EDO_EXTENSION;
 		size += TCPOLEN_EXP_EDO_EXT_ALIGNED;
 		limit = tp->mss_cache;
+
+		opts->nops = READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_nops);
+		if (opts->nops) {
+			opts->options |= OPTION_NOPS;
+			size += opts->nops;
+		}
 	}
 
 	if (likely(tp->rx_opt.tstamp_ok)) {
