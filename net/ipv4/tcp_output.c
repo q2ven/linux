@@ -417,6 +417,7 @@ static inline bool tcp_urg_mode(const struct tcp_sock *tp)
 #define OPTION_MPTCP		BIT(10)
 #define OPTION_EDO_SUPPORTED	BIT(11)
 #define OPTION_EDO_LENGTH	BIT(12)
+#define OPTION_EDO_NOP128	BIT(13)
 
 static void smc_options_write(__be32 *ptr, u16 *options)
 {
@@ -624,6 +625,12 @@ static void tcp_options_write(struct tcphdr *th, struct tcp_sock *tp,
 	if (OPTION_EDO_LENGTH & options)
 		*ptr++ = htonl((TCPOPT_EDO_LENGTH << 24) | (TCPOLEN_EDO_LENGTH << 16) |
 			       opts->edo_len);
+
+	if (OPTION_EDO_NOP128 & options) {
+		printk(KERN_ERR "Adding bunch of NOPs: %d bytes\n", TCPOLEN_EDO_NOP128);
+		memset(ptr, TCPOPT_NOP, TCPOLEN_EDO_NOP128);
+		ptr += TCPOLEN_EDO_NOP128 / sizeof(*ptr);
+	}
 
 	if (unlikely(OPTION_MD5 & options)) {
 		*ptr++ = htonl((TCPOPT_NOP << 24) | (TCPOPT_NOP << 16) |
@@ -961,6 +968,10 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 		opts->options |= OPTION_EDO_LENGTH;
 		size += TCPOLEN_EDO_LENGTH;
 		limit = MAX_TCP_OPTION_SPACE_EDO;
+
+		printk(KERN_ERR "Will add bunch of NOPs: %d bytes\n", TCPOLEN_EDO_NOP128);
+		opts->options |= OPTION_EDO_NOP128;
+		size += TCPOLEN_EDO_NOP128;
 	}
 
 	if (likely(tp->rx_opt.tstamp_ok)) {
@@ -1314,10 +1325,14 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 		tcp_options_size = tcp_established_options(sk, skb, &opts,
 							   &md5);
 
-		if (unlikely(tcp_options_size > MAX_TCP_OPTION_SPACE) &&
-		    pskb_expand_head(skb, tcp_options_size - MAX_TCP_OPTION_SPACE,
-				     0, GFP_ATOMIC)) {
-			return -ENOBUFS;
+		if (unlikely(tcp_options_size > MAX_TCP_OPTION_SPACE)) {
+			printk(KERN_ERR "tcp_options_size: %u\n", tcp_options_size);
+
+			if (pskb_expand_head(skb, tcp_options_size - MAX_TCP_OPTION_SPACE,
+					     0, GFP_ATOMIC)) {
+				printk(KERN_ERR "Failed to expand head\n");
+				return -ENOBUFS;
+			}
 		}
 
 		/* Force a PSH flag on all (GSO) packets to expedite GRO flush

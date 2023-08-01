@@ -222,6 +222,7 @@ void tcp_time_wait(struct sock *sk, int state, int timeo);
 #define TCPOLEN_EXP_SMC_BASE_ALIGNED	8
 #define TCPOLEN_EDO_SUPPORTED		2
 #define TCPOLEN_EDO_LENGTH		4
+#define TCPOLEN_EDO_NOP128		128
 
 /* Flags in tp->nonagle */
 #define TCP_NAGLE_OFF		1	/* Nagle's algo is disabled */
