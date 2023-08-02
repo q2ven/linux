@@ -5319,7 +5319,17 @@ static void tcp_data_queue(struct sock *sk, struct sk_buff *skb)
 		return;
 	}
 	skb_dst_drop(skb);
-	__skb_pull(skb, tcp_hdr(skb)->doff * 4);
+
+	if (tp->edo) {
+		u32 data_len;
+
+		data_len = TCP_SKB_CB(skb)->end_seq - TCP_SKB_CB(skb)->seq
+			- tcp_hdr(skb)->fin;
+
+		__skb_pull(skb, skb->len - data_len);
+	} else {
+		__skb_pull(skb, tcp_hdr(skb)->doff << 2);
+	}
 
 	reason = SKB_DROP_REASON_NOT_SPECIFIED;
 	tp->rx_opt.dsack = 0;
