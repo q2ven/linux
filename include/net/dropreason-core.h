@@ -95,6 +95,7 @@
 	FN(TCP_EDO_EXT_HDR)		\
 	FN(TCP_EDO_EXT_SEG)		\
 	FN(TCP_EDO_EXT_DUP)		\
+	FN(TCP_EDO_EXT_MISS)		\
 	FNe(MAX)
 
 /**
@@ -427,6 +428,8 @@ enum skb_drop_reason {
 	SKB_DROP_REASON_TCP_EDO_EXT_SEG,
 	/** @SKB_DROP_REASON_TCP_EDO_EXT_DUP: TCP EDO Ext seen twice. */
 	SKB_DROP_REASON_TCP_EDO_EXT_DUP,
+	/** @SKB_DROP_REASON_TCP_EDO_EXT_MISS: TCP EDO Ext missing. */
+	SKB_DROP_REASON_TCP_EDO_EXT_MISS,
 	/**
 	 * @SKB_DROP_REASON_MAX: the maximum of core drop reasons, which
 	 * shouldn't be used as a real 'reason' - only for tracing code gen
