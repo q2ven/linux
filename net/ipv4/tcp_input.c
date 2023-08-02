@@ -4259,26 +4259,44 @@ static bool tcp_parse_aligned_timestamp(struct tcp_sock *tp, const struct tcphdr
 /* Fast parse options. This hopes to only see timestamps.
  * If it is wrong it falls back on tcp_parse_options().
  */
-static bool tcp_fast_parse_options(const struct net *net, struct sk_buff *skb,
-				   const struct tcphdr *th, struct tcp_sock *tp)
+static int tcp_fast_parse_options(const struct net *net, struct sk_buff *skb,
+				  struct tcp_sock *tp)
 {
-	/* In the spirit of fast parsing, compare doff directly to constant
-	 * values.  Because equality is used, short doff can be ignored here.
-	 */
-	if (th->doff == (sizeof(*th) / 4)) {
-		tp->rx_opt.saw_tstamp = 0;
-		return false;
-	} else if (tp->rx_opt.tstamp_ok &&
-		   th->doff == ((sizeof(*th) + TCPOLEN_TSTAMP_ALIGNED) / 4)) {
-		if (tcp_parse_aligned_timestamp(tp, th))
-			return true;
+	const struct tcphdr *th = tcp_hdr(skb);
+
+	if (!tp->edo) {
+		/* In the spirit of fast parsing, compare doff directly to constant
+		 * values.  Because equality is used, short doff can be ignored here.
+		 */
+		if (th->doff == (sizeof(*th) / 4)) {
+			tp->rx_opt.saw_tstamp = 0;
+			return 0;
+		} else if (tp->rx_opt.tstamp_ok &&
+			   th->doff == ((sizeof(*th) + TCPOLEN_TSTAMP_ALIGNED) / 4)) {
+			if (tcp_parse_aligned_timestamp(tp, th))
+				return 1;
+		}
 	}
 
-	tcp_parse_options(net, skb, &tp->rx_opt, 1, NULL, false);
+
+	if (tcp_parse_options(net, skb, &tp->rx_opt, 1, NULL, tp->edo)) {
+		kfree_skb(skb);
+		return -EINVAL;
+	}
+
+	th = tcp_hdr(skb);
+
+	/* RST may lack EDO. */
+	if (tp->edo && !tp->rx_opt.edo_ok && !th->rst) {
+		/* TODO: Add drop reason */
+		kfree_skb(skb);
+		return -EINVAL;
+	}
+
 	if (tp->rx_opt.saw_tstamp && tp->rx_opt.rcv_tsecr)
 		tp->rx_opt.rcv_tsecr -= tp->tsoffset;
 
-	return true;
+	return 1;
 }
 
 #ifdef CONFIG_TCP_MD5SIG
@@ -5794,16 +5812,21 @@ static bool tcp_reset_check(const struct sock *sk, const struct sk_buff *skb)
 /* Does PAWS and seqno based validation of an incoming segment, flags will
  * play significant role here.
  */
-static bool tcp_validate_incoming(struct sock *sk, struct sk_buff *skb,
-				  const struct tcphdr *th, int syn_inerr)
+static bool tcp_validate_incoming(struct sock *sk, struct sk_buff *skb, int syn_inerr)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
+	const struct tcphdr *th;
 	SKB_DR(reason);
+	int ret;
+
+	ret = tcp_fast_parse_options(sock_net(sk), skb, tp);
+	if (ret < 0)
+		return false;
+
+	th = tcp_hdr(skb);
 
 	/* RFC1323: H1. Apply PAWS check first. */
-	if (tcp_fast_parse_options(sock_net(sk), skb, th, tp) &&
-	    tp->rx_opt.saw_tstamp &&
-	    tcp_paws_discard(sk, skb)) {
+	if (ret && tp->rx_opt.saw_tstamp && tcp_paws_discard(sk, skb)) {
 		if (!th->rst) {
 			if (unlikely(th->syn))
 				goto syn_challenge;
@@ -6092,8 +6115,10 @@ slow_path:
 	 *	Standard slow path.
 	 */
 
-	if (!tcp_validate_incoming(sk, skb, th, 1))
+	if (!tcp_validate_incoming(sk, skb, 1))
 		return;
+
+	th = tcp_hdr(skb);
 
 step5:
 	reason = tcp_ack(sk, skb, FLAG_SLOWPATH | FLAG_UPDATE_TS_RECENT);
@@ -6633,8 +6658,10 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 		SKB_DR_SET(reason, TCP_FLAGS);
 		goto discard;
 	}
-	if (!tcp_validate_incoming(sk, skb, th, 0))
+	if (!tcp_validate_incoming(sk, skb, 0))
 		return 0;
+
+	th = tcp_hdr(skb);
 
 	/* step 5: check the ACK field */
 	acceptable = tcp_ack(sk, skb, FLAG_SLOWPATH |
