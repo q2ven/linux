@@ -761,6 +761,13 @@ static inline void __tcp_fast_path_on(struct tcp_sock *tp, u32 snd_wnd)
 	if (sk_is_mptcp((struct sock *)tp))
 		return;
 
+	/* EDO Extension option must be parsed and skb_pull()ed;
+	 * otherwise TCP options in the extra space would be ACKed
+	 * and recv()ed.
+	 */
+	if (tp->edo)
+		return;
+
 	tp->pred_flags = htonl((tp->tcp_header_len << 26) |
 			       ntohl(TCP_FLAG_ACK) |
 			       snd_wnd);
