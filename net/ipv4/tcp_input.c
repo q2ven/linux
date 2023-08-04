@@ -4180,16 +4180,17 @@ EXPORT_SYMBOL_GPL(tcp_parse_mss_option);
  * But, this can also be called on packets in the established flow when
  * the fast version below fails.
  */
-void tcp_parse_options(const struct net *net,
-		       const struct sk_buff *skb,
-		       struct tcp_options_received *opt_rx, int estab,
-		       struct tcp_fastopen_cookie *foc)
+enum skb_drop_reason tcp_parse_options(const struct net *net, struct sk_buff *skb,
+				       struct tcp_options_received *opt_rx, int estab,
+				       struct tcp_fastopen_cookie *foc)
 {
-	const unsigned char *ptr;
+	enum skb_drop_reason reason = SKB_NOT_DROPPED_YET;
 	const struct tcphdr *th = tcp_hdr(skb);
-	int length = (th->doff * 4) - sizeof(struct tcphdr);
+	const unsigned char *ptr;
+	int length;
 
 	ptr = (const unsigned char *)(th + 1);
+	length = (th->doff * 4) - sizeof(struct tcphdr);
 	opt_rx->saw_tstamp = 0;
 	opt_rx->saw_unknown = 0;
 	opt_rx->edo_ok = 0;
@@ -4200,18 +4201,18 @@ void tcp_parse_options(const struct net *net,
 
 		switch (opcode) {
 		case TCPOPT_EOL:
-			return;
+			goto out;
 		case TCPOPT_NOP:	/* Ref: RFC 793 section 3.1 */
 			length--;
 			continue;
 		default:
 			if (length < 2)
-				return;
+				goto out;
 			opsize = *ptr++;
 			if (opsize < 2) /* "silly options" */
-				return;
+				goto out;
 			if (opsize > length)
-				return;	/* don't parse partial options */
+				goto out; /* don't parse partial options */
 			switch (opcode) {
 			case TCPOPT_MSS:
 				if (opsize == TCPOLEN_MSS && th->syn && !estab) {
@@ -4318,6 +4319,9 @@ void tcp_parse_options(const struct net *net,
 			length -= opsize;
 		}
 	}
+
+out:
+	return reason;
 }
 EXPORT_SYMBOL(tcp_parse_options);
 
@@ -4343,8 +4347,7 @@ static bool tcp_parse_aligned_timestamp(struct tcp_sock *tp, const struct tcphdr
 /* Fast parse options. This hopes to only see timestamps.
  * If it is wrong it falls back on tcp_parse_options().
  */
-static bool tcp_fast_parse_options(const struct net *net,
-				   const struct sk_buff *skb,
+static bool tcp_fast_parse_options(const struct net *net, struct sk_buff *skb,
 				   const struct tcphdr *th, struct tcp_sock *tp)
 {
 	/* In the spirit of fast parsing, compare doff directly to constant
