@@ -4042,8 +4042,7 @@ EXPORT_SYMBOL_GPL(tcp_parse_mss_option);
  * But, this can also be called on packets in the established flow when
  * the fast version below fails.
  */
-void tcp_parse_options(const struct net *net,
-		       const struct sk_buff *skb,
+void tcp_parse_options(const struct net *net, struct sk_buff *skb,
 		       struct tcp_options_received *opt_rx, int estab,
 		       struct tcp_fastopen_cookie *foc)
 {
@@ -4189,8 +4188,7 @@ static bool tcp_parse_aligned_timestamp(struct tcp_sock *tp, const struct tcphdr
 /* Fast parse options. This hopes to only see timestamps.
  * If it is wrong it falls back on tcp_parse_options().
  */
-static bool tcp_fast_parse_options(const struct net *net,
-				   const struct sk_buff *skb,
+static bool tcp_fast_parse_options(const struct net *net, struct sk_buff *skb,
 				   const struct tcphdr *th, struct tcp_sock *tp)
 {
 	/* In the spirit of fast parsing, compare doff directly to constant
