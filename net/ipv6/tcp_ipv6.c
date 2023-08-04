@@ -1974,6 +1974,8 @@ do_time_wait:
 	{
 		struct sock *sk2;
 
+		hdr = ipv6_hdr(skb);
+		th = tcp_hdr(skb);
 		sk2 = inet6_lookup_listener(net, net->ipv4.tcp_death_row.hashinfo,
 					    skb, __tcp_hdrlen(th),
 					    &ipv6_hdr(skb)->saddr, th->source,

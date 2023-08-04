@@ -107,16 +107,24 @@ tcp_timewait_state_process(struct inet_timewait_sock *tw, struct sk_buff *skb,
 
 	tmp_opt.saw_tstamp = 0;
 	ts_recent_stamp = READ_ONCE(tcptw->tw_ts_recent_stamp);
-	if (th->doff > (sizeof(*th) >> 2) && ts_recent_stamp) {
-		tcp_parse_options(twsk_net(tw), skb, &tmp_opt, 0, NULL, false);
+	if (th->doff > (sizeof(*th) >> 2)) {
+		if (tcp_parse_options(twsk_net(tw), skb, &tmp_opt, 0, NULL, !!tw->tw_edo))
+			goto discard;
 
-		if (tmp_opt.saw_tstamp) {
+		th = tcp_hdr(skb);
+
+		if (tw->tw_edo && !tmp_opt.edo_ok && !th->rst && !th->syn)
+			goto discard;
+
+		if (ts_recent_stamp && tmp_opt.saw_tstamp) {
 			if (tmp_opt.rcv_tsecr)
 				tmp_opt.rcv_tsecr -= tcptw->tw_ts_offset;
 			tmp_opt.ts_recent	= READ_ONCE(tcptw->tw_ts_recent);
 			tmp_opt.ts_recent_stamp	= ts_recent_stamp;
 			paws_reject = tcp_paws_reject(&tmp_opt, th->rst);
 		}
+	} else if (tw->tw_edo && !th->rst && !th->syn) {
+		goto discard;
 	}
 
 	if (READ_ONCE(tw->tw_substate) == TCP_FIN_WAIT2) {
@@ -258,6 +266,8 @@ kill:
 		return tcp_timewait_check_oow_rate_limit(
 			tw, skb, LINUX_MIB_TCPACKSKIPPEDTIMEWAIT);
 	}
+
+discard:
 	inet_twsk_put(tw);
 	return TCP_TW_SUCCESS;
 }
@@ -316,6 +326,7 @@ void tcp_time_wait(struct sock *sk, int state, int timeo)
 		tw->tw_mark		= sk->sk_mark;
 		tw->tw_priority		= READ_ONCE(sk->sk_priority);
 		tw->tw_rcv_wscale	= tp->rx_opt.rcv_wscale;
+		tw->tw_edo		= tp->edo;
 		tcptw->tw_rcv_nxt	= tp->rcv_nxt;
 		tcptw->tw_snd_nxt	= tp->snd_nxt;
 		tcptw->tw_rcv_wnd	= tcp_receive_window(tp);

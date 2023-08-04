@@ -2407,13 +2407,13 @@ do_time_wait:
 	}
 	switch (tcp_timewait_state_process(inet_twsk(sk), skb, th, &isn)) {
 	case TCP_TW_SYN: {
-		struct sock *sk2 = inet_lookup_listener(net,
-							net->ipv4.tcp_death_row.hashinfo,
-							skb, __tcp_hdrlen(th),
-							iph->saddr, th->source,
-							iph->daddr, th->dest,
-							inet_iif(skb),
-							sdif);
+		struct sock *sk2;
+
+		iph = ip_hdr(skb);
+		th = tcp_hdr(skb);
+		sk2 = inet_lookup_listener(net,	net->ipv4.tcp_death_row.hashinfo,
+					   skb, __tcp_hdrlen(th), iph->saddr, th->source,
+					   iph->daddr, th->dest, inet_iif(skb),	sdif);
 		if (sk2) {
 			inet_twsk_deschedule_put(inet_twsk(sk));
 			sk = sk2;
