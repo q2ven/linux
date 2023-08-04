@@ -90,16 +90,27 @@ tcp_timewait_state_process(struct inet_timewait_sock *tw, struct sk_buff *skb,
 	bool paws_reject = false;
 
 	tmp_opt.saw_tstamp = 0;
-	if (th->doff > (sizeof(*th) >> 2) && tcptw->tw_ts_recent_stamp) {
+	if (th->doff > (sizeof(*th) >> 2)) {
+		tmp_opt.edo_ok = tw->tw_ext_doff;
 		tcp_parse_options(twsk_net(tw), skb, &tmp_opt, 0, NULL);
 
-		if (tmp_opt.saw_tstamp) {
+		if (tw->tw_ext_doff && !tmp_opt.edo_ok) {
+			inet_twsk_put(tw);
+			return TCP_TW_SUCCESS;
+		}
+
+		th = tcp_hdr(skb);
+
+		if (tcptw->tw_ts_recent_stamp && tmp_opt.saw_tstamp) {
 			if (tmp_opt.rcv_tsecr)
 				tmp_opt.rcv_tsecr -= tcptw->tw_ts_offset;
 			tmp_opt.ts_recent	= tcptw->tw_ts_recent;
 			tmp_opt.ts_recent_stamp	= tcptw->tw_ts_recent_stamp;
 			paws_reject = tcp_paws_reject(&tmp_opt, th->rst);
 		}
+	} else if (tw->tw_ext_doff) {
+		inet_twsk_put(tw);
+		return TCP_TW_SUCCESS;
 	}
 
 	if (tw->tw_substate == TCP_FIN_WAIT2) {
@@ -295,6 +306,7 @@ void tcp_time_wait(struct sock *sk, int state, int timeo)
 		tw->tw_mark		= sk->sk_mark;
 		tw->tw_priority		= sk->sk_priority;
 		tw->tw_rcv_wscale	= tp->rx_opt.rcv_wscale;
+		tw->tw_ext_doff		= tp->ext_doff;
 		tcptw->tw_rcv_nxt	= tp->rcv_nxt;
 		tcptw->tw_snd_nxt	= tp->snd_nxt;
 		tcptw->tw_rcv_wnd	= tcp_receive_window(tp);
