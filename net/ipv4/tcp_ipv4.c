@@ -863,12 +863,13 @@ static void tcp_v4_send_ack(const struct sock *sk,
 			    struct sk_buff *skb, u32 seq, u32 ack,
 			    u32 win, u32 tsval, u32 tsecr, int oif,
 			    struct tcp_md5sig_key *key,
-			    int reply_flags, u8 tos, u32 txhash)
+			    int reply_flags, u8 tos, u32 txhash, u8 edo)
 {
 	const struct tcphdr *th = tcp_hdr(skb);
 	struct {
 		struct tcphdr th;
-		__be32 opt[(TCPOLEN_TSTAMP_ALIGNED >> 2)
+		__be32 opt[((TCPOLEN_TSTAMP_ALIGNED +
+			     TCPOLEN_EXP_EDO_EXT_ALIGNED) >> 2)
 #ifdef CONFIG_TCP_MD5SIG
 			   + (TCPOLEN_MD5SIG_ALIGNED >> 2)
 #endif
@@ -878,6 +879,7 @@ static void tcp_v4_send_ack(const struct sock *sk,
 	struct ip_reply_arg arg;
 	struct sock *ctl_sk;
 	u64 transmit_time;
+	int offset = 0;
 
 	memset(&rep.th, 0, sizeof(struct tcphdr));
 	memset(&arg, 0, sizeof(arg));
@@ -891,6 +893,30 @@ static void tcp_v4_send_ack(const struct sock *sk,
 		rep.opt[1] = htonl(tsval);
 		rep.opt[2] = htonl(tsecr);
 		arg.iov[0].iov_len += TCPOLEN_TSTAMP_ALIGNED;
+		offset = 3;
+	}
+
+	if (edo) {
+		u16 hdr_len = sizeof(struct tcphdr) + TCPOLEN_EXP_EDO_EXT_ALIGNED;
+
+		if (tsecr)
+			hdr_len += TCPOLEN_TSTAMP_ALIGNED;
+		if (key)
+			hdr_len += TCPOLEN_MD5SIG_ALIGNED;
+
+		if (edo == TCP_EDO_HDR_SEG) {
+			rep.opt[offset++] = htonl((TCPOPT_EXP_EDO << 24) |
+						  (TCPOLEN_EXP_EDO_EXT_SEG << 16) |
+						  TCPOPT_EDO_MAGIC);
+			rep.opt[offset++] = htonl((hdr_len << 16) | hdr_len);
+		} else {
+			rep.opt[offset++] = htonl((TCPOPT_NOP << 24) | (TCPOPT_NOP << 16) |
+						  (TCPOPT_EXP_EDO << 8) |
+						  TCPOLEN_EXP_EDO_EXT_HDR);
+			rep.opt[offset++] = htonl((TCPOPT_EDO_MAGIC << 16) | hdr_len);
+		}
+
+		arg.iov[0].iov_len += TCPOLEN_EXP_EDO_EXT_ALIGNED;
 	}
 
 	/* Swap the send and the receive. */
@@ -904,8 +930,6 @@ static void tcp_v4_send_ack(const struct sock *sk,
 
 #ifdef CONFIG_TCP_MD5SIG
 	if (key) {
-		int offset = (tsecr) ? 3 : 0;
-
 		rep.opt[offset++] = htonl((TCPOPT_NOP << 24) |
 					  (TCPOPT_NOP << 16) |
 					  (TCPOPT_MD5SIG << 8) |
@@ -960,8 +984,8 @@ static void tcp_v4_timewait_ack(struct sock *sk, struct sk_buff *skb)
 			tcp_twsk_md5_key(tcptw),
 			tw->tw_transparent ? IP_REPLY_ARG_NOSRCCHECK : 0,
 			tw->tw_tos,
-			tw->tw_txhash
-			);
+			tw->tw_txhash,
+			tw->tw_edo ? tw->tw_edo + tw->tw_edo_seg : TCP_EDO_OFF);
 
 	inet_twsk_put(tw);
 }
@@ -994,7 +1018,8 @@ static void tcp_v4_reqsk_send_ack(const struct sock *sk, struct sk_buff *skb,
 			tcp_md5_do_lookup(sk, l3index, addr, AF_INET),
 			inet_rsk(req)->no_srccheck ? IP_REPLY_ARG_NOSRCCHECK : 0,
 			ip_hdr(skb)->tos,
-			READ_ONCE(tcp_rsk(req)->txhash));
+			READ_ONCE(tcp_rsk(req)->txhash),
+			TCP_EDO_OFF);
 }
 
 /*
