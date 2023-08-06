@@ -756,6 +756,7 @@ static void tcp_v4_send_reset(const struct sock *sk, struct sk_buff *skb,
 	struct sock *ctl_sk;
 	struct net *net;
 	u32 txhash = 0;
+	u16 offset = 0;
 
 	/* Never send a reset in response to a reset. */
 	if (th->rst)
@@ -785,6 +786,38 @@ static void tcp_v4_send_reset(const struct sock *sk, struct sk_buff *skb,
 	memset(&arg, 0, sizeof(arg));
 	arg.iov[0].iov_base = (unsigned char *)&rep;
 	arg.iov[0].iov_len  = sizeof(rep.th);
+
+	if (sk) {
+		u8 edo = TCP_EDO_OFF;
+
+		if (sk->sk_state == TCP_TIME_WAIT)
+			edo = inet_twsk(sk)->tw_edo;
+		else if ((1 << sk->sk_state) & ~(TCPF_SYN_SENT | TCPF_SYN_RECV |
+						 TCPF_LISTEN | TCPF_NEW_SYN_RECV))
+			edo = tcp_sk(sk)->edo;
+
+		if (edo) {
+			u16 hdr_len;
+
+			arg.iov[0].iov_len += TCPOLEN_EXP_EDO_EXT_ALIGNED;
+			hdr_len = arg.iov[0].iov_len;
+
+			if (edo == TCP_EDO_HDR) {
+				rep.opt[offset++] = htonl((TCPOPT_NOP << 24) |
+							  (TCPOPT_NOP << 16) |
+							  (TCPOPT_EXP_EDO << 8) |
+							  TCPOLEN_EXP_EDO_EXT_HDR);
+				rep.opt[offset++] = htonl((TCPOPT_EDO_MAGIC << 16) | hdr_len);
+			} else {
+				rep.opt[offset++] = htonl((TCPOPT_EXP_EDO << 24) |
+							  (TCPOLEN_EXP_EDO_EXT_SEG << 16) |
+							  TCPOPT_EDO_MAGIC);
+				rep.opt[offset++] = htonl((hdr_len << 16) | hdr_len);
+			}
+
+			rep.th.doff = arg.iov[0].iov_len / 4;
+		}
+	}
 
 	net = sk ? sock_net(sk) : dev_net(skb_dst(skb)->dev);
 
@@ -845,15 +878,15 @@ static void tcp_v4_send_reset(const struct sock *sk, struct sk_buff *skb,
 	}
 
 	if (key) {
-		rep.opt[0] = htonl((TCPOPT_NOP << 24) |
-				   (TCPOPT_NOP << 16) |
-				   (TCPOPT_MD5SIG << 8) |
-				   TCPOLEN_MD5SIG);
+		rep.opt[offset++] = htonl((TCPOPT_NOP << 24) |
+					  (TCPOPT_NOP << 16) |
+					  (TCPOPT_MD5SIG << 8) |
+					  TCPOLEN_MD5SIG);
 		/* Update length and the length the header thinks exists */
 		arg.iov[0].iov_len += TCPOLEN_MD5SIG_ALIGNED;
 		rep.th.doff = arg.iov[0].iov_len / 4;
 
-		tcp_v4_md5_hash_hdr((__u8 *) &rep.opt[1],
+		tcp_v4_md5_hash_hdr((__u8 *) &rep.opt[offset],
 				     key, ip_hdr(skb)->saddr,
 				     ip_hdr(skb)->daddr, &rep.th);
 	}
@@ -863,7 +896,7 @@ static void tcp_v4_send_reset(const struct sock *sk, struct sk_buff *skb,
 		__be32 mrst = mptcp_reset_option(skb);
 
 		if (mrst) {
-			rep.opt[0] = mrst;
+			rep.opt[offset++] = mrst;
 			arg.iov[0].iov_len += sizeof(mrst);
 			rep.th.doff = arg.iov[0].iov_len / 4;
 		}
