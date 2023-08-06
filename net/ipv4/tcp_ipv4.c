@@ -670,9 +670,9 @@ EXPORT_SYMBOL(tcp_v4_send_check);
  */
 
 #ifdef CONFIG_TCP_MD5SIG
-#define OPTION_BYTES TCPOLEN_MD5SIG_ALIGNED
+#define OPTION_BYTES (TCPOLEN_EXP_EDO_EXT_ALIGNED + sizeof(__be32) + TCPOLEN_MD5SIG_ALIGNED)
 #else
-#define OPTION_BYTES sizeof(__be32)
+#define OPTION_BYTES (TCPOLEN_EXP_EDO_EXT_ALIGNED + sizeof(__be32))
 #endif
 
 static void tcp_v4_send_reset(const struct sock *sk, struct sk_buff *skb)
@@ -682,6 +682,7 @@ static void tcp_v4_send_reset(const struct sock *sk, struct sk_buff *skb)
 		struct tcphdr th;
 		__be32 opt[OPTION_BYTES / sizeof(__be32)];
 	} rep;
+	u8 edo = TCP_EDO_OFF, offset = 0;
 	struct ip_reply_arg arg;
 #ifdef CONFIG_TCP_MD5SIG
 	struct tcp_md5sig_key *key = NULL;
@@ -723,6 +724,16 @@ static void tcp_v4_send_reset(const struct sock *sk, struct sk_buff *skb)
 	memset(&arg, 0, sizeof(arg));
 	arg.iov[0].iov_base = (unsigned char *)&rep;
 	arg.iov[0].iov_len  = sizeof(rep.th);
+
+	if (sk) {
+		if (sk_fullsock(sk)) {
+			if (tcp_sk(sk)->edo &&
+			    (1 << sk->sk_state) & ~(TCPF_LISTEN | TCPF_SYN_SENT))
+				edo = tcp_sk(sk)->edo + tcp_sk(sk)->edo_seg;
+		} else if (sk->sk_state == TCP_TIME_WAIT && inet_twsk(sk)->tw_edo) {
+			edo = inet_twsk(sk)->tw_edo + inet_twsk(sk)->tw_edo_seg;
+		}
+	}
 
 	net = sk ? sock_net(sk) : dev_net(skb_dst(skb)->dev);
 #ifdef CONFIG_TCP_MD5SIG
@@ -774,31 +785,58 @@ static void tcp_v4_send_reset(const struct sock *sk, struct sk_buff *skb)
 			goto out;
 
 	}
-
-	if (key) {
-		rep.opt[0] = htonl((TCPOPT_NOP << 24) |
-				   (TCPOPT_NOP << 16) |
-				   (TCPOPT_MD5SIG << 8) |
-				   TCPOLEN_MD5SIG);
-		/* Update length and the length the header thinks exists */
-		arg.iov[0].iov_len += TCPOLEN_MD5SIG_ALIGNED;
-		rep.th.doff = arg.iov[0].iov_len / 4;
-
-		tcp_v4_md5_hash_hdr((__u8 *) &rep.opt[1],
-				     key, ip_hdr(skb)->saddr,
-				     ip_hdr(skb)->daddr, &rep.th);
-	}
 #endif
-	/* Can't co-exist with TCPMD5, hence check rep.opt[0] */
-	if (rep.opt[0] == 0) {
+
+	/* Can't co-exist with TCPMD5 unless EDO is enabled. */
+	if (!key || edo) {
 		__be32 mrst = mptcp_reset_option(skb);
 
 		if (mrst) {
-			rep.opt[0] = mrst;
+			rep.opt[offset++] = mrst;
 			arg.iov[0].iov_len += sizeof(mrst);
 			rep.th.doff = arg.iov[0].iov_len / 4;
 		}
 	}
+
+	if (edo) {
+		u16 hdr_len;
+
+		arg.iov[0].iov_len += TCPOLEN_EXP_EDO_EXT_ALIGNED;
+
+		hdr_len = arg.iov[0].iov_len;
+		if (key)
+			hdr_len += TCPOLEN_MD5SIG_ALIGNED;
+
+		if (edo == TCP_EDO_HDR_SEG) {
+			rep.opt[offset++] = htonl((TCPOPT_EXP_EDO << 24) |
+						  (TCPOLEN_EXP_EDO_EXT_SEG << 16) |
+						  TCPOPT_EDO_MAGIC);
+			rep.opt[offset++] = htonl((hdr_len << 16) | hdr_len);
+		} else {
+			rep.opt[offset++] = htonl((TCPOPT_NOP << 24) | (TCPOPT_NOP << 16) |
+						  (TCPOPT_EXP_EDO << 8) |
+						  TCPOLEN_EXP_EDO_EXT_HDR);
+			rep.opt[offset++] = htonl((TCPOPT_EDO_MAGIC << 16) | hdr_len);
+		}
+
+		rep.th.doff = arg.iov[0].iov_len / 4;
+	}
+
+#ifdef CONFIG_TCP_MD5SIG
+	if (key) {
+		rep.opt[offset++] = htonl((TCPOPT_NOP << 24) |
+					  (TCPOPT_NOP << 16) |
+					  (TCPOPT_MD5SIG << 8) |
+					  TCPOLEN_MD5SIG);
+		/* Update length and the length the header thinks exists */
+		arg.iov[0].iov_len += TCPOLEN_MD5SIG_ALIGNED;
+		rep.th.doff = arg.iov[0].iov_len / 4;
+
+		tcp_v4_md5_hash_hdr((__u8 *) &rep.opt[offset++],
+				     key, ip_hdr(skb)->saddr,
+				     ip_hdr(skb)->daddr, &rep.th);
+	}
+#endif
 
 	arg.csum = csum_tcpudp_nofold(ip_hdr(skb)->daddr,
 				      ip_hdr(skb)->saddr, /* XXX */
