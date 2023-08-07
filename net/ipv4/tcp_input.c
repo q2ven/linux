@@ -4176,13 +4176,55 @@ u16 tcp_parse_mss_option(const struct tcphdr *th, u16 user_mss)
 }
 EXPORT_SYMBOL_GPL(tcp_parse_mss_option);
 
+static enum skb_drop_reason tcp_parse_edo_extension(struct sk_buff *skb,
+						    const struct tcphdr **thp,
+						    const unsigned char **ptr,
+						    int *left, int opsize)
+{
+	u16 hdr_len;
+	u8 parsed;
+
+	if (opsize == TCPOLEN_EXP_EDO_EXT_SEG) {
+		u16 seg_len = get_unaligned_be16(*ptr + 4);
+
+		if (seg_len != skb->len)
+			return SKB_DROP_REASON_TCP_EDO_EXT_SEG;
+	}
+
+	hdr_len = get_unaligned_be16(*ptr + 2);
+
+	if (hdr_len == (*thp)->doff * 4)
+		return SKB_NOT_DROPPED_YET;
+
+	if (unlikely(hdr_len < (*thp)->doff * 4 || hdr_len > skb->len))
+		return SKB_DROP_REASON_TCP_EDO_EXT_HDR;
+
+	parsed = *ptr - (const unsigned char *)*thp;
+
+	if (!pskb_may_pull(skb, hdr_len))
+		return SKB_DROP_REASON_NOMEM;
+
+	*thp = tcp_hdr(skb);
+
+	TCP_SKB_CB(skb)->end_seq = TCP_SKB_CB(skb)->seq + (*thp)->fin + skb->len - hdr_len;
+
+	*ptr = (const unsigned char *)*thp + parsed;
+	*left = hdr_len - (parsed - 2);
+
+	DEBUG_NET_WARN_ON_ONCE(get_unaligned_be16(*ptr + 2) != hdr_len);
+	DEBUG_NET_WARN_ON_ONCE(opsize == TCPOLEN_EXP_EDO_EXT_SEG &&
+			       get_unaligned_be16(*ptr + 4) != skb->len);
+
+	return SKB_NOT_DROPPED_YET;
+}
+
 /* Look for tcp options. Normally only called on SYN and SYNACK packets.
  * But, this can also be called on packets in the established flow when
  * the fast version below fails.
  */
 enum skb_drop_reason tcp_parse_options(const struct net *net, struct sk_buff *skb,
 				       struct tcp_options_received *opt_rx, int estab,
-				       struct tcp_fastopen_cookie *foc)
+				       struct tcp_fastopen_cookie *foc, bool parse_edo_ext)
 {
 	enum skb_drop_reason reason = SKB_NOT_DROPPED_YET;
 	const struct tcphdr *th = tcp_hdr(skb);
@@ -4290,7 +4332,28 @@ enum skb_drop_reason tcp_parse_options(const struct net *net, struct sk_buff *sk
 					if (th->syn) {
 						if (opsize == TCPOLEN_EXP_EDO_SUPPORTED)
 							opt_rx->edo_ok = 1;
+
+						/* Ignore EDO Extension in SYN and SYN+ACK. */
+						break;
 					}
+
+					if (!parse_edo_ext)
+						break;
+
+					if (opsize != TCPOLEN_EXP_EDO_EXT_HDR &&
+					    opsize != TCPOLEN_EXP_EDO_EXT_SEG)
+						break;
+
+					if (opt_rx->edo_ok) {
+						SKB_DR_SET(reason, TCP_EDO_EXT_DUP);
+						goto out;
+					}
+
+					reason = tcp_parse_edo_extension(skb, &th, &ptr, &length, opsize);
+					if (reason)
+						goto out;
+
+					opt_rx->edo_ok = 1;
 					break;
 				}
 
@@ -4365,7 +4428,7 @@ static bool tcp_fast_parse_options(const struct net *net, struct sk_buff *skb,
 			return true;
 	}
 
-	tcp_parse_options(net, skb, &tp->rx_opt, 1, NULL);
+	tcp_parse_options(net, skb, &tp->rx_opt, 1, NULL, false);
 	if (tp->rx_opt.saw_tstamp && tp->rx_opt.rcv_tsecr)
 		tp->rx_opt.rcv_tsecr -= tp->tsoffset;
 
@@ -6385,7 +6448,7 @@ static bool tcp_rcv_fastopen_synack(struct sock *sk, struct sk_buff *synack,
 		/* Get original SYNACK MSS value if user MSS sets mss_clamp */
 		tcp_clear_options(&opt);
 		opt.user_mss = opt.mss_clamp = 0;
-		tcp_parse_options(sock_net(sk), synack, &opt, 0, NULL);
+		tcp_parse_options(sock_net(sk), synack, &opt, 0, NULL, false);
 		mss = opt.mss_clamp;
 	}
 
@@ -6469,7 +6532,7 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 	bool fastopen_fail;
 	SKB_DR(reason);
 
-	tcp_parse_options(sock_net(sk), skb, &tp->rx_opt, 0, &foc);
+	tcp_parse_options(sock_net(sk), skb, &tp->rx_opt, 0, &foc, false);
 	if (tp->rx_opt.saw_tstamp && tp->rx_opt.rcv_tsecr)
 		tp->rx_opt.rcv_tsecr -= tp->tsoffset;
 
@@ -7276,7 +7339,7 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 	tmp_opt.mss_clamp = af_ops->mss_clamp;
 	tmp_opt.user_mss  = tp->rx_opt.user_mss;
 	tcp_parse_options(sock_net(sk), skb, &tmp_opt, 0,
-			  want_cookie ? NULL : &foc);
+			  want_cookie ? NULL : &foc, false);
 
 	if (want_cookie && !tmp_opt.saw_tstamp)
 		tcp_clear_options(&tmp_opt);

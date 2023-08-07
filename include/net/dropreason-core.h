@@ -100,6 +100,9 @@
 	FN(IP_TUNNEL_ECN)		\
 	FN(TUNNEL_TXINFO)		\
 	FN(LOCAL_MAC)			\
+	FN(TCP_EDO_EXT_HDR)		\
+	FN(TCP_EDO_EXT_SEG)		\
+	FN(TCP_EDO_EXT_DUP)		\
 	FNe(MAX)
 
 /**
@@ -462,6 +465,12 @@ enum skb_drop_reason {
 	 * @SKB_DROP_REASON_MAX: the maximum of core drop reasons, which
 	 * shouldn't be used as a real 'reason' - only for tracing code gen
 	 */
+	/** @SKB_DROP_REASON_TCP_EDO_EXT_HDR: TCP EDO Ext header length is invalid. */
+	SKB_DROP_REASON_TCP_EDO_EXT_HDR,
+	/** @SKB_DROP_REASON_TCP_EDO_EXT_SEG: TCP EDO Ext segment length is invalid. */
+	SKB_DROP_REASON_TCP_EDO_EXT_SEG,
+	/** @SKB_DROP_REASON_TCP_EDO_EXT_DUP: TCP EDO Ext seen twice. */
+	SKB_DROP_REASON_TCP_EDO_EXT_DUP,
 	SKB_DROP_REASON_MAX,
 
 	/**
