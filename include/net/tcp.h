@@ -432,7 +432,8 @@ int tcp_mmap(struct file *file, struct socket *sock,
 #endif
 int tcp_parse_options(const struct net *net, struct sk_buff *skb,
 		      struct tcp_options_received *opt_rx,
-		      int estab, struct tcp_fastopen_cookie *foc);
+		      int estab, struct tcp_fastopen_cookie *foc,
+		      bool parse_edo_ext);
 const u8 *tcp_parse_md5sig_option(const struct tcphdr *th);
 
 /*
