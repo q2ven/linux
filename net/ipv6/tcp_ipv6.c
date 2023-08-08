@@ -1060,6 +1060,7 @@ static void tcp_v6_send_reset(const struct sock *sk, struct sk_buff *skb)
 				label = ip6_flowlabel(ipv6h);
 			priority = READ_ONCE(sk->sk_priority);
 			txhash = sk->sk_txhash;
+			edo = tcp_sk(sk)->edo;
 			if (tcp_sk(sk)->edo &&
 			    ((1 << sk->sk_state) & ~(TCPF_LISTEN | TCPF_SYN_SENT)))
 				edo = tcp_sk(sk)->edo + tcp_sk(sk)->edo_seg;
@@ -1068,6 +1069,7 @@ static void tcp_v6_send_reset(const struct sock *sk, struct sk_buff *skb)
 			label = cpu_to_be32(inet_twsk(sk)->tw_flowlabel);
 			priority = inet_twsk(sk)->tw_priority;
 			txhash = inet_twsk(sk)->tw_txhash;
+			edo = inet_twsk(sk)->tw_edo;
 			if (inet_twsk(sk)->tw_edo)
 				edo = inet_twsk(sk)->tw_edo + inet_twsk(sk)->tw_edo_seg;
 		}
@@ -1077,6 +1079,7 @@ static void tcp_v6_send_reset(const struct sock *sk, struct sk_buff *skb)
 	}
 
 	net = sk ? sock_net(sk) : dev_net(skb_dst(skb)->dev);
+
 	/* Invalid TCP option size or twice included auth */
 	if (tcp_parse_auth_options(th, &md5_hash_location, &aoh))
 		return;
@@ -1084,6 +1087,10 @@ static void tcp_v6_send_reset(const struct sock *sk, struct sk_buff *skb)
 	rcu_read_lock();
 #endif
 #ifdef CONFIG_TCP_MD5SIG
+
+	th = tcp_hdr(skb);
+	ipv6h = ipv6_hdr(skb);
+
 	if (sk && sk_fullsock(sk)) {
 		int l3index;
 
@@ -1821,12 +1828,14 @@ process:
 		struct sock *nsk;
 
 		sk = req->rsk_listener;
+
 		if (!xfrm6_policy_check(sk, XFRM_POLICY_IN, skb))
 			drop_reason = SKB_DROP_REASON_XFRM_POLICY;
 		else
 			drop_reason = tcp_inbound_hash(sk, req, skb,
 						       &hdr->saddr, &hdr->daddr,
-						       AF_INET6, dif, sdif);
+						       AF_INET6, dif, sdif,
+						       tcp_rsk(req)->edo);
 		if (drop_reason) {
 			sk_drops_add(sk, skb);
 			reqsk_put(req);
@@ -1903,7 +1912,7 @@ process:
 	}
 
 	drop_reason = tcp_inbound_hash(sk, NULL, skb, &hdr->saddr, &hdr->daddr,
-				       AF_INET6, dif, sdif);
+				       AF_INET6, dif, sdif, tcp_sk(sk)->edo);
 	if (drop_reason)
 		goto discard_and_relse;
 

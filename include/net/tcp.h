@@ -448,7 +448,7 @@ int tcp_parse_options(const struct net *net, struct sk_buff *skb,
 		      struct tcp_options_received *opt_rx,
 		      int estab, struct tcp_fastopen_cookie *foc,
 		      bool parse_edo_ext);
-
+				  bool parse_edo_ext);
 /*
  *	BPF SKB-less helpers
  */
@@ -1824,10 +1824,10 @@ tcp_md5_do_lookup_any_l3index(const struct sock *sk,
 }
 
 enum skb_drop_reason
-tcp_inbound_md5_hash(const struct sock *sk, const struct sk_buff *skb,
+tcp_inbound_md5_hash(const struct sock *sk, struct sk_buff *skb,
 		     const void *saddr, const void *daddr,
-		     int family, int l3index, const __u8 *hash_location);
-
+		     int family, int l3index, const __u8 *hash_location,
+		     bool edo);
 
 #define tcp_twsk_md5_key(twsk)	((twsk)->tw_md5_key)
 #else
@@ -1846,9 +1846,10 @@ tcp_md5_do_lookup_any_l3index(const struct sock *sk,
 }
 
 static inline enum skb_drop_reason
-tcp_inbound_md5_hash(const struct sock *sk, const struct sk_buff *skb,
+tcp_inbound_md5_hash(const struct sock *sk, struct sk_buff *skb,
 		     const void *saddr, const void *daddr,
-		     int family, int l3index, const __u8 *hash_location)
+		     int family, int l3index, const __u8 *hash_location,
+		     bool edo)
 {
 	return SKB_NOT_DROPPED_YET;
 }
@@ -2713,12 +2714,14 @@ static inline u64 tcp_transmit_time(const struct sock *sk)
 }
 
 static inline int tcp_parse_auth_options(const struct tcphdr *th,
-		const u8 **md5_hash, const struct tcp_ao_hdr **aoh)
+					 const u8 **md5_hash,
+					 const struct tcp_ao_hdr **aoh,
+					 bool parse_edo_ext)
 {
 	const u8 *md5_tmp, *ao_tmp;
 	int ret;
 
-	ret = tcp_do_parse_auth_options(th, &md5_tmp, &ao_tmp);
+	ret = tcp_do_parse_auth_options(th, &md5_tmp, &ao_tmp, parse_edo_ext);
 	if (ret)
 		return ret;
 

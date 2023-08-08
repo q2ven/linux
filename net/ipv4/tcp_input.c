@@ -4380,14 +4380,19 @@ static int tcp_fast_parse_options(const struct net *net, struct sk_buff *skb,
  * Parse Signature options
  */
 int tcp_do_parse_auth_options(const struct tcphdr *th,
-			      const u8 **md5_hash, const u8 **ao_hash)
+			      const u8 **md5_hash, const u8 **ao_hash,
+			      bool parse_edo_ext)
 {
 	int length = (th->doff << 2) - sizeof(*th);
 	const u8 *ptr = (const u8 *)(th + 1);
 	unsigned int minlen = TCPOLEN_MD5SIG;
+	bool parsed_edo_ext = false;
 
 	if (IS_ENABLED(CONFIG_TCP_AO))
 		minlen = sizeof(struct tcp_ao_hdr) + 1;
+
+	if (parse_edo_ext)
+		minlen = TCPOLEN_EXP_EDO_EXT_HDR;
 
 	*md5_hash = NULL;
 	*ao_hash = NULL;
@@ -4419,6 +4424,20 @@ int tcp_do_parse_auth_options(const struct tcphdr *th,
 				if (unlikely(*md5_hash || *ao_hash))
 					return -EEXIST;
 				*ao_hash = ptr;
+			} else if (parse_edo_ext && !th->syn &&
+				   opcode == TCPOPT_EXP_EDO &&
+				   opsize >= TCPOLEN_EXP_EDO_EXT_HDR &&
+				   get_unaligned_be16(ptr) == TCPOPT_EDO_MAGIC) {
+				int ret;
+
+				if (parsed_edo_ext)
+					return ERR_PTR(-EINVAL);
+
+				ret = tcp_parse_edo_extension(skb, &th, &ptr, &length, opsize);
+				if (ret < 0)
+					return ERR_PTR(ret);
+
+				parsed_edo_ext = true;
 			}
 		}
 		ptr += opsize - 2;

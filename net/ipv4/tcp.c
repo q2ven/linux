@@ -4434,9 +4434,10 @@ EXPORT_SYMBOL(tcp_md5_hash_key);
 
 /* Called with rcu_read_lock() */
 enum skb_drop_reason
-tcp_inbound_md5_hash(const struct sock *sk, const struct sk_buff *skb,
+tcp_inbound_md5_hash(const struct sock *sk, struct sk_buff *skb,
 		     const void *saddr, const void *daddr,
-		     int family, int l3index, const __u8 *hash_location)
+		     int family, int l3index, const __u8 *hash_location,
+		     bool edo)
 {
 	/* This gets called for each TCP segment that has TCP-MD5 option.
 	 * We have 3 drop cases:
