@@ -861,7 +861,7 @@ const struct tcp_request_sock_ops tcp_request_sock_ipv6_ops = {
 
 static void tcp_v6_send_response(const struct sock *sk, struct sk_buff *skb, u32 seq,
 				 u32 ack, u32 win, u32 tsval, u32 tsecr,
-				 int oif, int rst, u8 tclass, __be32 label,
+				 int oif, int rst, u8 tclass, u8 edo, __be32 label,
 				 u32 priority, u32 txhash, struct tcp_key *key)
 {
 	const struct tcphdr *th = tcp_hdr(skb);
@@ -877,6 +877,8 @@ static void tcp_v6_send_response(const struct sock *sk, struct sk_buff *skb, u32
 
 	if (tsecr)
 		tot_len += TCPOLEN_TSTAMP_ALIGNED;
+	if (edo)
+		tot_len += TCPOLEN_EXP_EDO_EXT_ALIGNED;
 	if (tcp_key_is_md5(key))
 		tot_len += TCPOLEN_MD5SIG_ALIGNED;
 	if (tcp_key_is_ao(key))
@@ -912,6 +914,20 @@ static void tcp_v6_send_response(const struct sock *sk, struct sk_buff *skb, u32
 	t1->window = htons(win);
 
 	topt = (__be32 *)(t1 + 1);
+
+	if (edo) {
+		if (edo == TCP_EDO_HDR) {
+			*topt++ = htonl((TCPOPT_NOP << 24) | (TCPOPT_NOP << 16) |
+					(TCPOPT_EXP_EDO << 8) |
+					TCPOLEN_EXP_EDO_EXT_HDR);
+			*topt++ = htonl((TCPOPT_EDO_MAGIC << 16) | tot_len);
+		} else {
+			*topt++ = htonl((TCPOPT_EXP_EDO << 24) |
+					(TCPOLEN_EXP_EDO_EXT_SEG << 16) |
+					TCPOPT_EDO_MAGIC);
+			*topt++ = htonl((tot_len << 16) | tot_len);
+		}
+	}
 
 	if (tsecr) {
 		*topt++ = htonl((TCPOPT_NOP << 24) | (TCPOPT_NOP << 16) |
@@ -1019,6 +1035,7 @@ static void tcp_v6_send_reset(const struct sock *sk, struct sk_buff *skb,
 	const struct tcp_ao_hdr *aoh;
 	struct tcp_key key = {};
 	u32 seq = 0, ack_seq = 0;
+	u8 edo = TCP_EDO_OFF;
 	__be32 label = 0;
 	u32 priority = 0;
 	struct net *net;
@@ -1115,12 +1132,16 @@ static void tcp_v6_send_reset(const struct sock *sk, struct sk_buff *skb,
 	if (sk) {
 		oif = sk->sk_bound_dev_if;
 		if (sk_fullsock(sk)) {
+			if ((1 << sk->sk_state) &
+			    ~(TCPF_SYN_SENT | TCPF_SYN_RECV | TCPF_LISTEN))
+				edo = tcp_sk(sk)->edo;
 			if (inet6_test_bit(REPFLOW, sk))
 				label = ip6_flowlabel(ipv6h);
 			priority = READ_ONCE(sk->sk_priority);
 			txhash = sk->sk_txhash;
 		}
 		if (sk->sk_state == TCP_TIME_WAIT) {
+			edo = inet_twsk(sk)->tw_edo;
 			label = cpu_to_be32(inet_twsk(sk)->tw_flowlabel);
 			priority = inet_twsk(sk)->tw_priority;
 			txhash = inet_twsk(sk)->tw_txhash;
@@ -1133,7 +1154,7 @@ static void tcp_v6_send_reset(const struct sock *sk, struct sk_buff *skb,
 	trace_tcp_send_reset(sk, skb, reason);
 
 	tcp_v6_send_response(sk, skb, seq, ack_seq, 0, 0, 0, oif, 1,
-			     ipv6_get_dsfield(ipv6h), label, priority, txhash,
+			     ipv6_get_dsfield(ipv6h), edo, label, priority, txhash,
 			     &key);
 
 #if defined(CONFIG_TCP_MD5SIG) || defined(CONFIG_TCP_AO)
@@ -1146,11 +1167,11 @@ out:
 
 static void tcp_v6_send_ack(const struct sock *sk, struct sk_buff *skb, u32 seq,
 			    u32 ack, u32 win, u32 tsval, u32 tsecr, int oif,
-			    struct tcp_key *key, u8 tclass,
+			    struct tcp_key *key, u8 tclass, u8 edo,
 			    __be32 label, u32 priority, u32 txhash)
 {
 	tcp_v6_send_response(sk, skb, seq, ack, win, tsval, tsecr, oif, 0,
-			     tclass, label, priority, txhash, key);
+			     tclass, edo, label, priority, txhash, key);
 }
 
 static void tcp_v6_timewait_ack(struct sock *sk, struct sk_buff *skb)
@@ -1201,7 +1222,8 @@ static void tcp_v6_timewait_ack(struct sock *sk, struct sk_buff *skb)
 			tcptw->tw_rcv_wnd >> tw->tw_rcv_wscale,
 			tcp_tw_tsval(tcptw),
 			READ_ONCE(tcptw->tw_ts_recent), tw->tw_bound_dev_if,
-			&key, tw->tw_tclass, cpu_to_be32(tw->tw_flowlabel),
+			&key, tw->tw_tclass, tw->tw_edo,
+			cpu_to_be32(tw->tw_flowlabel),
 			tw->tw_priority, tw->tw_txhash);
 
 #ifdef CONFIG_TCP_AO
@@ -1278,9 +1300,10 @@ static void tcp_v6_reqsk_send_ack(const struct sock *sk, struct sk_buff *skb,
 			tcp_synack_window(req) >> inet_rsk(req)->rcv_wscale,
 			tcp_rsk_tsval(tcp_rsk(req)),
 			READ_ONCE(req->ts_recent), sk->sk_bound_dev_if,
-			&key, ipv6_get_dsfield(ipv6_hdr(skb)), 0,
+			&key, ipv6_get_dsfield(ipv6_hdr(skb)), TCP_EDO_OFF, 0,
 			READ_ONCE(sk->sk_priority),
 			READ_ONCE(tcp_rsk(req)->txhash));
+
 	if (tcp_key_is_ao(&key))
 		kfree(key.traffic_key);
 }
