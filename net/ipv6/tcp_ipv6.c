@@ -845,7 +845,7 @@ const struct tcp_request_sock_ops tcp_request_sock_ipv6_ops = {
 static void tcp_v6_send_response(const struct sock *sk, struct sk_buff *skb, u32 seq,
 				 u32 ack, u32 win, u32 tsval, u32 tsecr,
 				 int oif, struct tcp_md5sig_key *key, int rst,
-				 u8 tclass, __be32 label, u32 priority, u32 txhash)
+				 u8 tclass, __be32 label, u32 priority, u32 txhash, u8 edo)
 {
 	const struct tcphdr *th = tcp_hdr(skb);
 	struct tcphdr *t1;
@@ -860,6 +860,9 @@ static void tcp_v6_send_response(const struct sock *sk, struct sk_buff *skb, u32
 
 	if (tsecr)
 		tot_len += TCPOLEN_TSTAMP_ALIGNED;
+	if (edo)
+		tot_len += TCPOLEN_EXP_EDO_EXT_ALIGNED;
+
 #ifdef CONFIG_TCP_MD5SIG
 	if (key)
 		tot_len += TCPOLEN_MD5SIG_ALIGNED;
@@ -895,6 +898,20 @@ static void tcp_v6_send_response(const struct sock *sk, struct sk_buff *skb, u32
 	t1->window = htons(win);
 
 	topt = (__be32 *)(t1 + 1);
+
+	if (edo) {
+		if (edo == TCP_EDO_HDR_SEG) {
+			*topt++ = htonl((TCPOPT_EXP_EDO << 24) |
+					(TCPOLEN_EXP_EDO_EXT_SEG << 16) |
+					TCPOPT_EDO_MAGIC);
+			*topt++ = htonl((tot_len << 16) | tot_len);
+		} else {
+			*topt++ = htonl((TCPOPT_NOP << 24) | (TCPOPT_NOP << 16) |
+					(TCPOPT_EXP_EDO << 8) |
+					TCPOLEN_EXP_EDO_EXT_HDR);
+			*topt++ = htonl((TCPOPT_EDO_MAGIC << 16) | tot_len);
+		}
+	}
 
 	if (tsecr) {
 		*topt++ = htonl((TCPOPT_NOP << 24) | (TCPOPT_NOP << 16) |
@@ -985,6 +1002,7 @@ static void tcp_v6_send_reset(const struct sock *sk, struct sk_buff *skb)
 	int genhash;
 	struct sock *sk1 = NULL;
 #endif
+	u8 edo = TCP_EDO_OFF;
 	__be32 label = 0;
 	u32 priority = 0;
 	struct net *net;
@@ -1062,11 +1080,16 @@ static void tcp_v6_send_reset(const struct sock *sk, struct sk_buff *skb)
 				label = ip6_flowlabel(ipv6h);
 			priority = sk->sk_priority;
 			txhash = sk->sk_txhash;
+			if (tcp_sk(sk)->edo &&
+			    ((1 << sk->sk_state) & ~(TCPF_LISTEN | TCPF_SYN_SENT)))
+				edo = tcp_sk(sk)->edo + tcp_sk(sk)->edo_seg;
 		}
 		if (sk->sk_state == TCP_TIME_WAIT) {
 			label = cpu_to_be32(inet_twsk(sk)->tw_flowlabel);
 			priority = inet_twsk(sk)->tw_priority;
 			txhash = inet_twsk(sk)->tw_txhash;
+			if (inet_twsk(sk)->tw_edo)
+				edo = inet_twsk(sk)->tw_edo + inet_twsk(sk)->tw_edo_seg;
 		}
 	} else {
 		if (net->ipv6.sysctl.flowlabel_reflect & FLOWLABEL_REFLECT_TCP_RESET)
@@ -1074,7 +1097,7 @@ static void tcp_v6_send_reset(const struct sock *sk, struct sk_buff *skb)
 	}
 
 	tcp_v6_send_response(sk, skb, seq, ack_seq, 0, 0, 0, oif, key, 1,
-			     ipv6_get_dsfield(ipv6h), label, priority, txhash);
+			     ipv6_get_dsfield(ipv6h), label, priority, txhash, edo);
 
 #ifdef CONFIG_TCP_MD5SIG
 out:
@@ -1085,10 +1108,10 @@ out:
 static void tcp_v6_send_ack(const struct sock *sk, struct sk_buff *skb, u32 seq,
 			    u32 ack, u32 win, u32 tsval, u32 tsecr, int oif,
 			    struct tcp_md5sig_key *key, u8 tclass,
-			    __be32 label, u32 priority, u32 txhash)
+			    __be32 label, u32 priority, u32 txhash, u8 edo)
 {
 	tcp_v6_send_response(sk, skb, seq, ack, win, tsval, tsecr, oif, key, 0,
-			     tclass, label, priority, txhash);
+			     tclass, label, priority, txhash, edo);
 }
 
 static void tcp_v6_timewait_ack(struct sock *sk, struct sk_buff *skb)
@@ -1101,7 +1124,7 @@ static void tcp_v6_timewait_ack(struct sock *sk, struct sk_buff *skb)
 			tcp_time_stamp_raw() + tcptw->tw_ts_offset,
 			tcptw->tw_ts_recent, tw->tw_bound_dev_if, tcp_twsk_md5_key(tcptw),
 			tw->tw_tclass, cpu_to_be32(tw->tw_flowlabel), tw->tw_priority,
-			tw->tw_txhash);
+			tw->tw_txhash, tw->tw_edo ? tw->tw_edo + tw->tw_edo_seg : TCP_EDO_OFF);
 
 	inet_twsk_put(tw);
 }
@@ -1130,7 +1153,7 @@ static void tcp_v6_reqsk_send_ack(const struct sock *sk, struct sk_buff *skb,
 			tcp_v6_md5_do_lookup(sk, &ipv6_hdr(skb)->saddr, l3index),
 			ipv6_get_dsfield(ipv6_hdr(skb)), 0,
 			READ_ONCE(sk->sk_priority),
-			READ_ONCE(tcp_rsk(req)->txhash));
+			READ_ONCE(tcp_rsk(req)->txhash), TCP_EDO_OFF);
 }
 
 
