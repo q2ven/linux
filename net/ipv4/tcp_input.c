@@ -4303,13 +4303,15 @@ static int tcp_fast_parse_options(const struct net *net, struct sk_buff *skb,
 /*
  * Parse MD5 Signature option
  */
-const u8 *tcp_parse_md5sig_option(const struct tcphdr *th)
+const u8 *tcp_parse_md5sig_option(struct sk_buff *skb, const struct tcphdr *th,
+				  bool parse_edo_ext)
 {
 	int length = (th->doff << 2) - sizeof(*th);
 	const u8 *ptr = (const u8 *)(th + 1);
+	bool parsed_edo_ext = false;
 
 	/* If not enough data remaining, we can short cut */
-	while (length >= TCPOLEN_MD5SIG) {
+	while (length >= TCPOLEN_EXP_EDO_EXT_HDR) {
 		int opcode = *ptr++;
 		int opsize;
 
@@ -4323,8 +4325,23 @@ const u8 *tcp_parse_md5sig_option(const struct tcphdr *th)
 			opsize = *ptr++;
 			if (opsize < 2 || opsize > length)
 				return NULL;
-			if (opcode == TCPOPT_MD5SIG)
+			if (opcode == TCPOPT_MD5SIG) {
 				return opsize == TCPOLEN_MD5SIG ? ptr : NULL;
+			} else if (parse_edo_ext && !th->syn &&
+				   opcode == TCPOPT_EXP_EDO &&
+				   opsize >= TCPOLEN_EXP_EDO_EXT_HDR &&
+				   get_unaligned_be16(ptr) == TCPOPT_EDO_MAGIC) {
+				int ret;
+
+				if (parsed_edo_ext)
+					return ERR_PTR(-EINVAL);
+
+				ret = tcp_parse_edo_extension(skb, &th, &ptr, &length, opsize);
+				if (ret < 0)
+					return ERR_PTR(ret);
+
+				parsed_edo_ext = true;
+			}
 		}
 		ptr += opsize - 2;
 		length -= opsize;

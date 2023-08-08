@@ -434,7 +434,8 @@ int tcp_parse_options(const struct net *net, struct sk_buff *skb,
 		      struct tcp_options_received *opt_rx,
 		      int estab, struct tcp_fastopen_cookie *foc,
 		      bool parse_edo_ext);
-const u8 *tcp_parse_md5sig_option(const struct tcphdr *th);
+const u8 *tcp_parse_md5sig_option(struct sk_buff *skb, const struct tcphdr *th,
+				  bool parse_edo_ext);
 
 /*
  *	BPF SKB-less helpers
@@ -1753,9 +1754,9 @@ tcp_md5_do_lookup(const struct sock *sk, int l3index,
 }
 
 enum skb_drop_reason
-tcp_inbound_md5_hash(const struct sock *sk, const struct sk_buff *skb,
+tcp_inbound_md5_hash(const struct sock *sk, struct sk_buff *skb,
 		     const void *saddr, const void *daddr,
-		     int family, int dif, int sdif);
+		     int family, int dif, int sdif, bool edo);
 
 
 #define tcp_twsk_md5_key(twsk)	((twsk)->tw_md5_key)
@@ -1768,9 +1769,9 @@ tcp_md5_do_lookup(const struct sock *sk, int l3index,
 }
 
 static inline enum skb_drop_reason
-tcp_inbound_md5_hash(const struct sock *sk, const struct sk_buff *skb,
+tcp_inbound_md5_hash(const struct sock *sk, struct sk_buff *skb,
 		     const void *saddr, const void *daddr,
-		     int family, int dif, int sdif)
+		     int family, int dif, int sdif, bool edo)
 {
 	return SKB_NOT_DROPPED_YET;
 }

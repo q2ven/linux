@@ -4470,9 +4470,9 @@ EXPORT_SYMBOL(tcp_md5_hash_key);
 
 /* Called with rcu_read_lock() */
 enum skb_drop_reason
-tcp_inbound_md5_hash(const struct sock *sk, const struct sk_buff *skb,
+tcp_inbound_md5_hash(const struct sock *sk, struct sk_buff *skb,
 		     const void *saddr, const void *daddr,
-		     int family, int dif, int sdif)
+		     int family, int dif, int sdif, bool edo)
 {
 	/*
 	 * This gets called for each TCP segment that arrives
@@ -4495,7 +4495,11 @@ tcp_inbound_md5_hash(const struct sock *sk, const struct sk_buff *skb,
 	l3index = sdif ? dif : 0;
 
 	hash_expected = tcp_md5_do_lookup(sk, l3index, saddr, family);
-	hash_location = tcp_parse_md5sig_option(th);
+	hash_location = tcp_parse_md5sig_option(skb, th, edo);
+	if (IS_ERR(hash_location))
+		return SKB_DROP_REASON_NOT_SPECIFIED;
+
+	th = tcp_hdr(skb);
 
 	/* We've parsed the options - do we have a hash? */
 	if (!hash_expected && !hash_location)
@@ -4529,15 +4533,15 @@ tcp_inbound_md5_hash(const struct sock *sk, const struct sk_buff *skb,
 		NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPMD5FAILURE);
 		if (family == AF_INET) {
 			net_info_ratelimited("MD5 Hash failed for (%pI4, %d)->(%pI4, %d)%s L3 index %d\n",
-					saddr, ntohs(th->source),
-					daddr, ntohs(th->dest),
-					genhash ? " tcp_v4_calc_md5_hash failed"
-					: "", l3index);
+					     &ip_hdr(skb)->saddr, ntohs(th->source),
+					     &ip_hdr(skb)->daddr, ntohs(th->dest),
+					     genhash ? " tcp_v4_calc_md5_hash failed"
+					     : "", l3index);
 		} else {
 			net_info_ratelimited("MD5 Hash %s for [%pI6c]:%u->[%pI6c]:%u L3 index %d\n",
-					genhash ? "failed" : "mismatch",
-					saddr, ntohs(th->source),
-					daddr, ntohs(th->dest), l3index);
+					     genhash ? "failed" : "mismatch",
+					     &ip_hdr(skb)->saddr, ntohs(th->source),
+					     &ip_hdr(skb)->daddr, ntohs(th->dest), l3index);
 		}
 		return SKB_DROP_REASON_TCP_MD5FAILURE;
 	}

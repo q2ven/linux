@@ -737,8 +737,14 @@ static void tcp_v4_send_reset(const struct sock *sk, struct sk_buff *skb)
 
 	net = sk ? sock_net(sk) : dev_net(skb_dst(skb)->dev);
 #ifdef CONFIG_TCP_MD5SIG
+	hash_location = tcp_parse_md5sig_option(skb, th, edo);
+	if (IS_ERR(hash_location))
+		goto out;
+
+	th = tcp_hdr(skb);
+
 	rcu_read_lock();
-	hash_location = tcp_parse_md5sig_option(th);
+
 	if (sk && sk_fullsock(sk)) {
 		const union tcp_md5_addr *addr;
 		int l3index;
@@ -2104,8 +2110,9 @@ process:
 			drop_reason = SKB_DROP_REASON_XFRM_POLICY;
 		else
 			drop_reason = tcp_inbound_md5_hash(sk, skb,
-						   &iph->saddr, &iph->daddr,
-						   AF_INET, dif, sdif);
+							   &iph->saddr, &iph->daddr,
+							   AF_INET, dif, sdif,
+							   tcp_rsk(req)->edo);
 		if (unlikely(drop_reason)) {
 			sk_drops_add(sk, skb);
 			reqsk_put(req);
@@ -2184,8 +2191,8 @@ process:
 		goto discard_and_relse;
 	}
 
-	drop_reason = tcp_inbound_md5_hash(sk, skb, &iph->saddr,
-					   &iph->daddr, AF_INET, dif, sdif);
+	drop_reason = tcp_inbound_md5_hash(sk, skb, &iph->saddr, &iph->daddr,
+					   AF_INET, dif, sdif, tcp_sk(sk)->edo);
 	if (drop_reason)
 		goto discard_and_relse;
 
