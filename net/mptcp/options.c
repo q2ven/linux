@@ -362,7 +362,8 @@ static void mptcp_parse_option(const struct sk_buff *skb,
 }
 
 void mptcp_get_options(const struct sk_buff *skb,
-		       struct mptcp_options_received *mp_opt)
+		       struct mptcp_options_received *mp_opt,
+		       bool parse_edo_ext)
 {
 	const struct tcphdr *th = tcp_hdr(skb);
 	const unsigned char *ptr;
@@ -394,6 +395,21 @@ void mptcp_get_options(const struct sk_buff *skb,
 				return;	/* don't parse partial options */
 			if (opcode == TCPOPT_MPTCP)
 				mptcp_parse_option(skb, ptr, opsize, mp_opt);
+			if (opcode == TCPOPT_EXP && parse_edo_ext && !th->syn &&
+			    (opsize == TCPOLEN_EDO_EXT_HDR ||
+			     opsize == TCPOLEN_EDO_EXT_SEG) &&
+			    get_unaligned_be16(ptr) == TCPOPT_EDO_MAGIC) {
+				u16 hdr_len = get_unaligned_be16(ptr);
+				u8 parsed;
+
+				/* Here, we have already pulled EDO Header Length */
+
+				parse_edo_ext = false;
+				parsed = th->doff * 4 - sizeof(struct tcphdr) - (length - 2);
+				length = hdr_len - parsed;
+
+				DEBUG_NET_WARN_ON_ONCE(hdr_len != get_unaligned_be16(ptr));
+			}
 			ptr += opsize - 2;
 			length -= opsize;
 		}
@@ -1136,7 +1152,7 @@ bool mptcp_incoming_options(struct sock *sk, struct sk_buff *skb)
 		return true;
 	}
 
-	mptcp_get_options(skb, &mp_opt);
+	mptcp_get_options(skb, &mp_opt, sk->sk_state != TCP_SYN_SENT && tcp_sk(sk)->edo);
 
 	/* The subflow can be in close state only if check_fully_established()
 	 * just sent a reset. If so, tell the caller to ignore the current packet.
