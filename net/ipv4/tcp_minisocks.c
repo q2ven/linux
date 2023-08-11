@@ -567,6 +567,8 @@ struct sock *tcp_create_openreq_child(const struct sock *sk,
 	newtp->max_window = newtp->snd_wnd;
 	newtp->edo = treq->edo;
 	newtp->edo_seg = treq->edo_seg;
+	if (newtp->edo)
+		sk_gso_disable(newsk);
 
 	if (newtp->rx_opt.tstamp_ok) {
 		newtp->rx_opt.ts_recent = READ_ONCE(req->ts_recent);

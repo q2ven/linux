@@ -456,6 +456,7 @@ void tcp_init_sock(struct sock *sk)
 		fallthrough;
 	case TCP_EDO_HDR:
 		tp->edo = 1;
+		sk_gso_disable(sk);
 		break;
 	}
 
@@ -3674,10 +3675,12 @@ int do_tcp_setsockopt(struct sock *sk, int level, int optname,
 			case TCP_EDO_HDR_SEG:
 				tp->edo = 1;
 				tp->edo_seg = 1;
+				sk_gso_disable(sk);
 				break;
 			case TCP_EDO_HDR:
 				tp->edo = 1;
 				tp->edo_seg = 0;
+				sk_gso_disable(sk);
 				break;
 			case TCP_EDO_OFF:
 				tp->edo = 0;
