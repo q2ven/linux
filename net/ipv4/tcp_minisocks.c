@@ -810,6 +810,8 @@ struct sock *tcp_check_req(struct sock *sk, struct sk_buff *skb,
 	 */
 	if (fastopen) {
 		tcp_sk(sk)->edo = tmp_opt.edo_ok;
+		if (tcp_sk(sk)->edo)
+			sk_gso_disable(sk);
 		return sk;
 	}
 
@@ -831,6 +833,9 @@ struct sock *tcp_check_req(struct sock *sk, struct sk_buff *skb,
 							 req, &own_req);
 	if (!child)
 		goto listen_overflow;
+
+	if (tcp_sk(child)->edo)
+		sk_gso_disable(sk);
 
 	if (own_req && rsk_drop_req(req)) {
 		reqsk_queue_removed(&inet_csk(req->rsk_listener)->icsk_accept_queue, req);
