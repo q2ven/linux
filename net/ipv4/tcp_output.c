@@ -1428,8 +1428,8 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 	/* Calculate the MD5 hash, as we have all we need now */
 	if (md5) {
 		sk_gso_disable(sk);
-		tp->af_specific->calc_md5_hash(opts.hash_location,
-					       md5, sk, skb);
+		tp->af_specific->calc_md5_hash(opts.hash_location, md5,
+					       sk, skb, tcp_header_size);
 	}
 #endif
 
@@ -3761,8 +3761,8 @@ struct sk_buff *tcp_make_synack(const struct sock *sk, struct dst_entry *dst,
 #ifdef CONFIG_TCP_MD5SIG
 	/* Okay, we have all we need - do the md5 hash if needed */
 	if (md5)
-		tcp_rsk(req)->af_specific->calc_md5_hash(opts.hash_location,
-					       md5, req_to_sk(req), skb);
+		tcp_rsk(req)->af_specific->calc_md5_hash(opts.hash_location, md5,
+							 req_to_sk(req), skb, tcp_header_size);
 	rcu_read_unlock();
 #endif
 

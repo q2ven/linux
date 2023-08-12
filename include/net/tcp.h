@@ -1723,7 +1723,8 @@ struct tcp_md5sig_pool {
 
 /* - functions */
 int tcp_v4_md5_hash_skb(char *md5_hash, const struct tcp_md5sig_key *key,
-			const struct sock *sk, const struct sk_buff *skb);
+			const struct sock *sk, const struct sk_buff *skb,
+			const unsigned int header_len);
 int tcp_md5_do_add(struct sock *sk, const union tcp_md5_addr *addr,
 		   int family, u8 prefixlen, int l3index, u8 flags,
 		   const u8 *newkey, u8 newkeylen);
@@ -2125,7 +2126,8 @@ struct tcp_sock_af_ops {
 	int		(*calc_md5_hash)(char *location,
 					 const struct tcp_md5sig_key *md5,
 					 const struct sock *sk,
-					 const struct sk_buff *skb);
+					 const struct sk_buff *skb,
+					 const unsigned int header_len);
 	int		(*md5_parse)(struct sock *sk,
 				     int optname,
 				     sockptr_t optval,
@@ -2141,7 +2143,8 @@ struct tcp_request_sock_ops {
 	int		(*calc_md5_hash) (char *location,
 					  const struct tcp_md5sig_key *md5,
 					  const struct sock *sk,
-					  const struct sk_buff *skb);
+					  const struct sk_buff *skb,
+					  const unsigned int header_len);
 #endif
 #ifdef CONFIG_SYN_COOKIES
 	__u32 (*cookie_init_seq)(const struct sk_buff *skb,

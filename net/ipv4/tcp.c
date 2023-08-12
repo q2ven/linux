@@ -4486,7 +4486,7 @@ tcp_inbound_md5_hash(const struct sock *sk, const struct sk_buff *skb,
 	struct tcp_md5sig_key *hash_expected;
 	const struct tcphdr *th = tcp_hdr(skb);
 	const struct tcp_sock *tp = tcp_sk(sk);
-	int genhash, l3index;
+	int genhash, header_len, l3index;
 	u8 newhash[16];
 
 	/* sdif set, means packet ingressed via a device
@@ -4511,18 +4511,19 @@ tcp_inbound_md5_hash(const struct sock *sk, const struct sk_buff *skb,
 		return SKB_DROP_REASON_TCP_MD5UNEXPECTED;
 	}
 
+	header_len = skb->len - TCP_SKB_CB(skb)->end_seq + TCP_SKB_CB(skb)->seq
+		+ th->syn + th->fin;
+
 	/* Check the signature.
 	 * To support dual stack listeners, we need to handle
 	 * IPv4-mapped case.
 	 */
 	if (family == AF_INET)
-		genhash = tcp_v4_md5_hash_skb(newhash,
-					      hash_expected,
-					      NULL, skb);
+		genhash = tcp_v4_md5_hash_skb(newhash, hash_expected,
+					      NULL, skb, header_len);
 	else
-		genhash = tp->af_specific->calc_md5_hash(newhash,
-							 hash_expected,
-							 NULL, skb);
+		genhash = tp->af_specific->calc_md5_hash(newhash, hash_expected,
+							 NULL, skb, header_len);
 
 	if (genhash || memcmp(hash_location, newhash, 16) != 0) {
 		NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPMD5FAILURE);

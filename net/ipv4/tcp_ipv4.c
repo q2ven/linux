@@ -780,7 +780,7 @@ static void tcp_v4_send_reset(const struct sock *sk, struct sk_buff *skb)
 			goto out;
 
 
-		genhash = tcp_v4_md5_hash_skb(newhash, key, NULL, skb);
+		genhash = tcp_v4_md5_hash_skb(newhash, key, NULL, skb, th->doff << 2);
 		if (genhash || memcmp(hash_location, newhash, 16) != 0)
 			goto out;
 
@@ -1498,8 +1498,8 @@ clear_hash_noput:
 }
 
 int tcp_v4_md5_hash_skb(char *md5_hash, const struct tcp_md5sig_key *key,
-			const struct sock *sk,
-			const struct sk_buff *skb)
+			const struct sock *sk, const struct sk_buff *skb,
+			const unsigned int header_len)
 {
 	struct tcp_md5sig_pool *hp;
 	struct ahash_request *req;
@@ -1525,7 +1525,7 @@ int tcp_v4_md5_hash_skb(char *md5_hash, const struct tcp_md5sig_key *key,
 
 	if (tcp_v4_md5_hash_headers(hp, daddr, saddr, th, skb->len))
 		goto clear_hash;
-	if (tcp_md5_hash_skb_data(hp, skb, th->doff << 2))
+	if (tcp_md5_hash_skb_data(hp, skb, header_len))
 		goto clear_hash;
 	if (tcp_md5_hash_key(hp, key))
 		goto clear_hash;
