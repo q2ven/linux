@@ -1017,6 +1017,32 @@ static void tcp_v6_send_reset(const struct sock *sk, struct sk_buff *skb)
 	if (!sk && !ipv6_unicast_destination(skb))
 		return;
 
+	if (sk) {
+		oif = sk->sk_bound_dev_if;
+		if (sk_fullsock(sk)) {
+			const struct ipv6_pinfo *np = tcp_inet6_sk(sk);
+
+			trace_tcp_send_reset(sk, skb);
+			if (np->repflow)
+				label = ip6_flowlabel(ipv6h);
+			priority = sk->sk_priority;
+			txhash = sk->sk_txhash;
+			if (tcp_sk(sk)->edo &&
+			    ((1 << sk->sk_state) & ~(TCPF_LISTEN | TCPF_SYN_SENT)))
+				edo = tcp_sk(sk)->edo + tcp_sk(sk)->edo_seg;
+		}
+		if (sk->sk_state == TCP_TIME_WAIT) {
+			label = cpu_to_be32(inet_twsk(sk)->tw_flowlabel);
+			priority = inet_twsk(sk)->tw_priority;
+			txhash = inet_twsk(sk)->tw_txhash;
+			if (inet_twsk(sk)->tw_edo)
+				edo = inet_twsk(sk)->tw_edo + inet_twsk(sk)->tw_edo_seg;
+		}
+	} else {
+		if (net->ipv6.sysctl.flowlabel_reflect & FLOWLABEL_REFLECT_TCP_RESET)
+			label = ip6_flowlabel(ipv6h);
+	}
+
 	net = sk ? sock_net(sk) : dev_net(skb_dst(skb)->dev);
 #ifdef CONFIG_TCP_MD5SIG
 	rcu_read_lock();
@@ -1068,32 +1094,6 @@ static void tcp_v6_send_reset(const struct sock *sk, struct sk_buff *skb)
 	else
 		ack_seq = ntohl(th->seq) + th->syn + th->fin + skb->len -
 			  (th->doff << 2);
-
-	if (sk) {
-		oif = sk->sk_bound_dev_if;
-		if (sk_fullsock(sk)) {
-			const struct ipv6_pinfo *np = tcp_inet6_sk(sk);
-
-			trace_tcp_send_reset(sk, skb);
-			if (np->repflow)
-				label = ip6_flowlabel(ipv6h);
-			priority = sk->sk_priority;
-			txhash = sk->sk_txhash;
-			if (tcp_sk(sk)->edo &&
-			    ((1 << sk->sk_state) & ~(TCPF_LISTEN | TCPF_SYN_SENT)))
-				edo = tcp_sk(sk)->edo + tcp_sk(sk)->edo_seg;
-		}
-		if (sk->sk_state == TCP_TIME_WAIT) {
-			label = cpu_to_be32(inet_twsk(sk)->tw_flowlabel);
-			priority = inet_twsk(sk)->tw_priority;
-			txhash = inet_twsk(sk)->tw_txhash;
-			if (inet_twsk(sk)->tw_edo)
-				edo = inet_twsk(sk)->tw_edo + inet_twsk(sk)->tw_edo_seg;
-		}
-	} else {
-		if (net->ipv6.sysctl.flowlabel_reflect & FLOWLABEL_REFLECT_TCP_RESET)
-			label = ip6_flowlabel(ipv6h);
-	}
 
 	tcp_v6_send_response(sk, skb, seq, ack_seq, 0, 0, 0, oif, key, 1,
 			     ipv6_get_dsfield(ipv6h), label, priority, txhash, edo);
