@@ -1941,6 +1941,11 @@ bool tcp_add_backlog(struct sock *sk, struct sk_buff *skb,
 	    memcmp(thtail + 1, th + 1, hdrlen - sizeof(*th)))
 		goto no_coalesce;
 
+	if (tcp_sk(sk)->edo) {
+		printk(KERN_ERR "EDO: trying to coalsce...\n");
+		WARN_ON_ONCE(tcp_sk(sk)->edo);
+	}
+
 	__skb_pull(skb, hdrlen);
 
 	shinfo = skb_shinfo(skb);

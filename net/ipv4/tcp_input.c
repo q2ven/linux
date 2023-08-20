@@ -4051,10 +4051,13 @@ static int tcp_parse_edo_extension(struct sk_buff *skb, const struct tcphdr **th
 	if (opsize == TCPOLEN_EDO_EXT_SEG) {
 		u16 seg_len = get_unaligned_be16(*ptr + 4);
 
-		if (seg_len != skb->len)
+		if (seg_len != skb->len) {
+			printk(KERN_ERR "EDO: invalid seg_len : %u, skb->len : %u\n", seg_len, skb->len);
 			return -EINVAL;
+		}
 	} else if (opsize != TCPOLEN_EDO_EXT_HDR) {
-		return 0;
+		printk(KERN_ERR "EDO: invalid opsize : %d\n", opsize);
+		return -EINVAL;
 	}
 
 	hdr_len = get_unaligned_be16(*ptr + 2);
@@ -4062,11 +4065,16 @@ static int tcp_parse_edo_extension(struct sk_buff *skb, const struct tcphdr **th
 	if (hdr_len == th->doff * 4)
 		return 1;
 
-	if (unlikely(hdr_len < th->doff * 4))
+	if (unlikely(hdr_len < th->doff * 4)) {
+		printk(KERN_ERR "EDO: invalid hdr_len : %u, th->doff * 4 : %u\n",
+		       hdr_len, th->doff * 4);
 		return -EINVAL;
+	}
 
-	if (!pskb_may_pull(skb, hdr_len))
+	if (!pskb_may_pull(skb, hdr_len)) {
+		printk(KERN_ERR "EDO: failed to pull hdr_len : %u\n", hdr_len);
 		return -ENOMEM;
+	}
 
 	*thp = th = tcp_hdr(skb);
 
