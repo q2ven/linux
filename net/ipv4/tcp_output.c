@@ -1446,6 +1446,17 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 		sk_gso_disable(sk);
 		tp->af_specific->calc_md5_hash(opts.hash_location, md5,
 					       sk, skb, tcp_header_size);
+		if (0) {
+			unsigned char *s = opts.hash_location;
+
+			printk(KERN_ERR "header: %d\t"
+			       "%02x %02x %02x %02x %02x %02x %02x %02x "
+			       "%02x %02x %02x %02x %02x %02x %02x %02x at %s:%d\n",
+			       tcp_header_size,
+			       s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7],
+			       s[8], s[9], s[10], s[11], s[12], s[13], s[14], s[15],
+			       __FUNCTION__, __LINE__);
+		}
 	}
 #endif
 

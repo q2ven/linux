@@ -4518,6 +4518,18 @@ tcp_inbound_md5_hash(const struct sock *sk, struct sk_buff *skb,
 	header_len = skb->len - TCP_SKB_CB(skb)->end_seq + TCP_SKB_CB(skb)->seq
 		+ th->syn + th->fin;
 
+	if (0) {
+		const unsigned char *s = hash_location;
+
+		printk(KERN_ERR "header: %d\t"
+		       "%02x %02x %02x %02x %02x %02x %02x %02x "
+		       "%02x %02x %02x %02x %02x %02x %02x %02x at %s:%d\n",
+		       header_len,
+		       s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7],
+		       s[8], s[9], s[10], s[11], s[12], s[13], s[14], s[15],
+		       __FUNCTION__, __LINE__);
+	}
+
 	/* Check the signature.
 	 * To support dual stack listeners, we need to handle
 	 * IPv4-mapped case.
@@ -4528,6 +4540,18 @@ tcp_inbound_md5_hash(const struct sock *sk, struct sk_buff *skb,
 	else
 		genhash = tp->af_specific->calc_md5_hash(newhash, hash_expected,
 							 NULL, skb, header_len);
+
+	if (0) {
+		unsigned char *s = newhash;
+
+		printk(KERN_ERR "header: %d\t"
+		       "%02x %02x %02x %02x %02x %02x %02x %02x "
+		       "%02x %02x %02x %02x %02x %02x %02x %02x at %s:%d\n",
+		       header_len,
+		       s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7],
+		       s[8], s[9], s[10], s[11], s[12], s[13], s[14], s[15],
+		       __FUNCTION__, __LINE__);
+	}
 
 	if (genhash || memcmp(hash_location, newhash, 16) != 0) {
 		NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPMD5FAILURE);
