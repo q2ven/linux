@@ -178,6 +178,45 @@ out:
 	return segs;
 }
 
+static bool tcp_gro_parse_options(const struct tcphdr *th, unsigned int thlen)
+{
+	const unsigned char *ptr = (const unsigned char *)(th + 1);
+	int length = thlen - sizeof(*th);
+
+	while (length > 0) {
+		unsigned char opcode = *ptr++;
+		unsigned char opsize;
+
+		switch (opcode) {
+		case TCPOPT_EOL:
+			goto out;
+		case TCPOPT_NOP:
+			length--;
+			continue;
+		}
+
+		if (unlikely(length < 2))
+			goto out;
+
+		opsize = *ptr++;
+		if (unlikely(opsize < 2))
+			goto out;
+		if (unlikely(opsize > length))
+			goto out;
+
+		if (opcode == TCPOPT_EXP &&
+		    opsize >= TCPOLEN_EXP_EDO_EXT_HDR &&
+		    get_unaligned_be16(ptr) == TCPOPT_EDO_MAGIC)
+			return true;
+
+		ptr += opsize - 2;
+		length -= opsize;
+	}
+
+out:
+	return false;
+}
+
 struct sk_buff *tcp_gro_receive(struct list_head *head, struct sk_buff *skb)
 {
 	struct sk_buff *pp = NULL;
@@ -209,6 +248,9 @@ struct sk_buff *tcp_gro_receive(struct list_head *head, struct sk_buff *skb)
 		if (unlikely(!th))
 			goto out;
 	}
+
+	if (tcp_gro_parse_options(th, thlen))
+		goto out;
 
 	skb_gro_pull(skb, thlen);
 
