@@ -4357,9 +4357,10 @@ static bool tcp_parse_aligned_timestamp(struct tcp_sock *tp, const struct tcphdr
  * If it is wrong it falls back on tcp_parse_options().
  */
 static int tcp_fast_parse_options(const struct net *net, struct sk_buff *skb,
-				  struct tcp_sock *tp)
+				  struct sock *sk)
 {
 	const struct tcphdr *th = tcp_hdr(skb);
+	struct tcp_sock *tp = tcp_sk(sk);
 
 	if (!tp->edo) {
 		/* In the spirit of fast parsing, compare doff directly to constant
@@ -4382,11 +4383,20 @@ static int tcp_fast_parse_options(const struct net *net, struct sk_buff *skb,
 
 	th = tcp_hdr(skb);
 
-	/* RST may lack EDO. */
-	if (tp->edo && !tp->rx_opt.edo_ok && !th->rst) {
-		/* TODO: Add drop reason */
-		kfree_skb(skb);
-		return -EINVAL;
+	if (tp->edo) {
+		if (unlikely(sk->sk_state == TCP_SYN_RECV)) {
+			if (tp->rx_opt.edo_ok) {
+				sk_gso_disable(sk);
+				sk->sk_gso_max_size = 0;
+				sk->sk_gso_max_segs = 1;
+			} else {
+				tp->edo = 0;
+			}
+		} else if (unlikely(!tp->rx_opt.edo_ok && !th->rst)) { /* RST may lack EDO. */
+			/* TODO: Add drop reason */
+			kfree_skb(skb);
+			return -EINVAL;
+		}
 	}
 
 	if (tp->rx_opt.saw_tstamp && tp->rx_opt.rcv_tsecr)
@@ -5991,7 +6001,7 @@ static bool tcp_validate_incoming(struct sock *sk, struct sk_buff *skb, int syn_
 	SKB_DR(reason);
 	int ret;
 
-	ret = tcp_fast_parse_options(sock_net(sk), skb, tp);
+	ret = tcp_fast_parse_options(sock_net(sk), skb, sk);
 	if (ret < 0)
 		return false;
 
