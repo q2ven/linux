@@ -1,169 +1,233 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Copyright Amazon.com Inc. or its affiliates. */
 
-#include <stdbool.h>
-#include <linux/bpf.h>
-#include <linux/tcp.h>
-#include <linux/types.h>
+#include "vmlinux.h"
+
 #include <bpf/bpf_helpers.h>
+#include <bpf/bpf_endian.h>
 #define BPF_PROG_TEST_TCP_HDR_OPTIONS
-#include "test_tcp_hdr_options.h"
-#include "test_siphash.h"
 
-#define ARRAY_SIZE(arr)	(sizeof(arr) / sizeof((arr)[0]))
+#define TC_ACT_OK 0
+#define TC_ACT_SHOT 2
+#define ETH_ALEN 6
+#define ETH_P_IP 0x0800
+#define TCPOPT_NOP 1
+#define TCPOPT_EOL 0
+#define TCPOPT_MSS 2
+#define TCPOPT_WINDOW 3
+#define TCPOPT_SACK_PERM 4
+#define TCPOPT_TIMESTAMP 8
 
-static int assert_gen_syncookie_cb(struct bpf_sock_ops *skops)
-{
-	struct tcp_opt tcp_opt;
-	int ret;
-
-	tcp_opt.kind = TCPOPT_WINDOW;
-	tcp_opt.len = 0;
-
-	ret = bpf_load_hdr_opt(skops, &tcp_opt, TCPOLEN_WINDOW, 0);
-	if (ret != TCPOLEN_WINDOW ||
-	    tcp_opt.data[0] != (skops->args[1] & BPF_SYNCOOKIE_WSCALE_MASK))
-		goto err;
-
-	tcp_opt.kind = TCPOPT_SACK_PERM;
-	tcp_opt.len = 0;
-
-	ret = bpf_load_hdr_opt(skops, &tcp_opt, TCPOLEN_SACK_PERM, 0);
-	if (ret != TCPOLEN_SACK_PERM ||
-	    !(skops->args[1] & BPF_SYNCOOKIE_SACK))
-		goto err;
-
-	tcp_opt.kind = TCPOPT_TIMESTAMP;
-	tcp_opt.len = 0;
-
-	ret = bpf_load_hdr_opt(skops, &tcp_opt, TCPOLEN_TIMESTAMP, 0);
-	if (ret != TCPOLEN_TIMESTAMP ||
-	    !(skops->args[1] & BPF_SYNCOOKIE_TS))
-		goto err;
-
-	if (((skops->skb_tcp_flags & (TCPHDR_ECE | TCPHDR_CWR)) !=
-	     (TCPHDR_ECE | TCPHDR_CWR)) ||
-	    !(skops->args[1] & BPF_SYNCOOKIE_ECN))
-		goto err;
-
-	return CG_OK;
-
-err:
-	return CG_ERR;
-}
-
-static siphash_key_t test_key_siphash = {
-	{ 0x0706050403020100ULL, 0x0f0e0d0c0b0a0908ULL }
+struct header {
+	struct ethhdr *eth;
+	struct iphdr *ipv4;
+	struct tcphdr *tcp;
 };
 
-static __u32 cookie_hash(struct bpf_sock_ops *skops)
+static __always_inline int is_tcp(struct __sk_buff * skb, struct header *hdr)
 {
-	return siphash_2u64((__u64)skops->remote_ip4 << 32 | skops->local_ip4,
-			    (__u64)skops->remote_port << 32 | skops->local_port,
-			    &test_key_siphash);
-}
+	void *data_end = (void *)(long)skb->data_end;
+	void *data = (void *)(long)skb->data;
 
-const __u16 msstab[] = {
-	536,
-	1300,
-	1440,
-	1460,
-};
+	hdr->eth = data;
+	if (hdr->eth + 1 > data_end)
+		return 0;
 
-#define COOKIE_BITS	8
-#define COOKIE_MASK	(((__u32)1 << COOKIE_BITS) - 1)
+	switch (bpf_ntohs(hdr->eth->h_proto)) {
+	case ETH_P_IP: {
+		hdr->ipv4 = (struct iphdr *)(hdr->eth + 1);
+		if (hdr->ipv4 + 1 > data_end)
+			return 0;
 
-/* Hash is calculated for each client and split into
- * ISN and TS.
- *
- * ISN:
- *
- * MSB                                   LSB
- * | 31 ... 8 | 7 6 | 5   | 4    | 3 2 1 0 |
- * | Hash_1   | MSS | ECN | SACK | WScale  |
- *
- * TS:
- *
- * MSB                LSB
- * | 31 ... 8 | 7 ... 0 |
- * | Random   | Hash_2  |
- */
-static void gen_syncookie(struct bpf_sock_ops *skops)
-{
-	__u16 mss = skops->args[0];
-	__u32 tstamp = 0;
-	__u32 cookie;
-	int mssind;
+		if (hdr->ipv4->ihl != sizeof(*hdr->ipv4) / 4)
+			return 0;
 
-	for (mssind = ARRAY_SIZE(msstab) - 1; mssind; mssind--)
-		if (mss > msstab[mssind])
-			break;
+		if (hdr->ipv4->version != 4)
+			return 0;
 
-	cookie = cookie_hash(skops);
+		if (hdr->ipv4->protocol != IPPROTO_TCP)
+			return 0;
 
-	if (skops->args[1] & BPF_SYNCOOKIE_TS) {
-		tstamp = bpf_get_prandom_u32();
-		tstamp &= ~COOKIE_MASK;
-		tstamp |= cookie & COOKIE_MASK;
-	}
-
-	cookie &= ~COOKIE_MASK;
-	cookie |= mssind << 6;
-	cookie |= skops->args[1] & (BPF_SYNCOOKIE_ECN |
-				    BPF_SYNCOOKIE_SACK |
-				    BPF_SYNCOOKIE_WSCALE_MASK);
-
-	skops->replylong[0] = cookie;
-	skops->replylong[1] = tstamp;
-}
-
-static int check_syncookie(struct bpf_sock_ops *skops)
-{
-	__u32 cookie = cookie_hash(skops);
-	__u32 tstamp = skops->args[1];
-	__u8 mssind;
-
-	if (tstamp)
-		cookie -= tstamp & COOKIE_MASK;
-	else
-		cookie &= ~COOKIE_MASK;
-
-	cookie -= skops->args[0] & ~COOKIE_MASK;
-	if (cookie)
-		return CG_ERR;
-
-	mssind = (skops->args[0] & (3 << 6)) >> 6;
-	if (mssind > ARRAY_SIZE(msstab))
-		return CG_ERR;
-
-	skops->replylong[0] = msstab[mssind];
-	skops->replylong[1] = skops->args[0] & (BPF_SYNCOOKIE_ECN |
-						BPF_SYNCOOKIE_SACK |
-						BPF_SYNCOOKIE_WSCALE_MASK);
-
-	return CG_OK;
-}
-
-SEC("sockops")
-int syncookie(struct bpf_sock_ops *skops)
-{
-	int ret = CG_OK;
-
-	switch (skops->op) {
-	case BPF_SOCK_OPS_TCP_LISTEN_CB:
-		bpf_sock_ops_cb_flags_set(skops, BPF_SOCK_OPS_SYNCOOKIE_CB_FLAG);
-		break;
-	case BPF_SOCK_OPS_GEN_SYNCOOKIE_CB:
-		ret = assert_gen_syncookie_cb(skops);
-		if (ret)
-			gen_syncookie(skops);
-		break;
-	case BPF_SOCK_OPS_CHECK_SYNCOOKIE_CB:
-		ret = check_syncookie(skops);
+		hdr->tcp = (void *)hdr->ipv4 + hdr->ipv4->ihl * 4;
 		break;
 	}
+	default:
+		return 0;
+	}
 
-	return ret;
+	if (hdr->tcp + 1 > data_end)
+		return 0;
+
+	return 1;
+}
+
+static __always_inline __u16 csum_fold(__u32 csum)
+{
+	csum = (csum & 0xffff) + (csum >> 16);
+	csum = (csum & 0xffff) + (csum >> 16);
+
+	return (__u16)~csum;
+}
+
+static __always_inline u16 csum_tcp(struct header *hdr, __u64 csum)
+{
+	__u32 len = hdr->tcp->doff * 4;
+	__u8 proto = IPPROTO_TCP;
+
+	csum += (__u32)hdr->ipv4->saddr;
+	csum += (__u32)hdr->ipv4->daddr;
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+	csum += proto + len;
+#else
+	csum += (proto + len) << 8;
+#endif
+	csum = (csum >> 32) + (csum & 0xffffffff);
+	csum = (csum >> 32) + (csum & 0xffffffff);
+
+	return csum_fold(csum);
+}
+
+static __always_inline int is_valid_syn(struct __sk_buff *skb, struct header *hdr)
+{
+	void *data_end = (void *)(long)skb->data_end;
+	void *data = (void *)(long)skb->data;
+	volatile u64 data_len;
+	s64 csum;
+
+	data_len = data_end - data;
+	if (bpf_skb_change_tail(skb, data_len + 60 - hdr->tcp->doff * 4, 0))
+		return 0;
+
+	data_end = (void *)(long)skb->data_end;
+	data = (void *)(long)skb->data;
+	hdr->eth = data;
+	hdr->ipv4 = (void *)(hdr->eth + 1);
+
+	if ((void *)hdr->ipv4 + 60 > data_end)
+		return 0;
+
+	csum = bpf_csum_diff(0, 0, (void *)hdr->ipv4, hdr->ipv4->ihl * 4, 0);
+	if (csum < 0)
+		return 0;
+
+	if (csum_fold(csum) != 0)
+		return 0;
+
+	hdr->tcp = (void*)hdr->ipv4 + hdr->ipv4->ihl * 4;
+	if (hdr->tcp + 1 > data_end)
+		return 0;
+
+	if (hdr->tcp->doff < sizeof(*hdr->tcp) / 4)
+		return 0;
+
+	if ((void *)hdr->tcp + 60 > data_end)
+		return 0;
+
+	csum = bpf_csum_diff(0, 0, (void *)hdr->tcp, hdr->tcp->doff * 4, 0);
+	if (csum < 0)
+		return 0;
+
+	/* checksum is on lo */
+	bpf_printk("%d csum: %u", csum_tcp(hdr, csum));
+
+	return 1;
+}
+
+#define swap(a, b)				\
+	do {					\
+		typeof(a) __tmp = (a);		\
+		(a) = (b);			\
+		(b) = __tmp;			\
+	} while (0)
+
+static __always_inline int gen_syncookie(struct __sk_buff *skb, struct header *hdr)
+{
+	u8 eth_tmp[ETH_ALEN];
+	s64 csum;
+
+	if (!is_valid_syn(skb, hdr))
+		return TC_ACT_SHOT;
+
+	__builtin_memcpy(eth_tmp, hdr->eth->h_source, ETH_ALEN);
+	__builtin_memcpy(hdr->eth->h_source, hdr->eth->h_dest, ETH_ALEN);
+	__builtin_memcpy(hdr->eth->h_dest, eth_tmp, ETH_ALEN);
+
+	swap(hdr->ipv4->saddr, hdr->ipv4->daddr);
+	swap(hdr->tcp->source, hdr->tcp->dest);
+
+	hdr->ipv4->check = 0;
+	hdr->ipv4->tos = 0;
+	hdr->ipv4->id = 0;
+	hdr->ipv4->ttl = 64;
+
+	hdr->tcp->check = 0;
+	hdr->tcp->ack_seq = bpf_htonl(bpf_ntohl(hdr->tcp->seq) + 1);
+	hdr->tcp->seq = bpf_htonl(92);
+	hdr->tcp->ack = 1;
+	hdr->tcp->ece = 1;
+	hdr->tcp->cwr = 0;
+
+	csum = bpf_csum_diff(0, 0, (void *)hdr->tcp, hdr->tcp->doff * 4, 0);
+	if (csum < 0)
+		return TC_ACT_SHOT;
+
+	hdr->tcp->check = csum_tcp(hdr, csum);
+
+	csum = bpf_csum_diff(0, 0, (void *)hdr->ipv4, sizeof(*hdr->ipv4), 0);
+	if (csum < 0)
+		return TC_ACT_SHOT;
+
+	hdr->ipv4->check = csum_fold(csum);
+
+	return bpf_redirect(skb->ifindex, 0);
+}
+
+static __always_inline int check_syncookie(struct __sk_buff *skb, struct header *hdr)
+{
+	struct bpf_sock_tuple tuple = {
+		.ipv4.saddr = hdr->ipv4->saddr,
+		.ipv4.daddr = hdr->ipv4->daddr,
+		.ipv4.sport = hdr->tcp->source,
+		.ipv4.dport = hdr->tcp->dest,
+	};
+	struct bpf_sock *skc;
+
+	skc = bpf_skc_lookup_tcp(skb, &tuple, sizeof(tuple.ipv4), BPF_F_CURRENT_NETNS, 0);
+	if (!skc)
+		return TC_ACT_OK;
+
+	if (skc->state != TCP_LISTEN)
+		goto release;
+
+	/* Call kfunc. */
+
+	if (bpf_sk_assign(skb, skc, 0)) {
+		bpf_sk_release(skc);
+		return TC_ACT_SHOT;
+	}
+
+release:
+	bpf_sk_release(skc);
+
+	return TC_ACT_OK;
+}
+
+SEC("tc")
+int syncookie(struct __sk_buff *skb)
+{
+	struct header hdr;
+
+	if (!is_tcp(skb, &hdr))
+		return TC_ACT_OK;
+
+	if (hdr.tcp->syn) {
+		if (hdr.tcp->ack)
+			return TC_ACT_OK;
+
+		return gen_syncookie(skb, &hdr);
+	}
+
+	return check_syncookie(skb, &hdr);
 }
 
 char _license[] SEC("license") = "GPL";

@@ -4,6 +4,7 @@
 #define _GNU_SOURCE
 #include <sched.h>
 #include <stdlib.h>
+#include <net/if.h>
 
 #include "test_progs.h"
 #include "cgroup_helpers.h"
@@ -12,11 +13,14 @@
 
 static int setup_netns(void)
 {
-	if (!ASSERT_OK(unshare(CLONE_NEWNET), "create netns"))
+//	if (!ASSERT_OK(unshare(CLONE_NEWNET), "create netns"))
+//		return -1;
+
+	if (!ASSERT_OK(system("ip link set dev lo up"), "ip"))
 		return -1;
 
-	if (!ASSERT_OK(system("ip link set dev lo up"), "system"))
-		return -1;
+//	if (!ASSERT_OK(system("ethtool -K lo tx off"), "ethtool"))
+//		return -1;
 
 	if (!ASSERT_OK(write_sysctl("/proc/sys/net/ipv4/tcp_syncookies", "2"),
 		       "write_sysctl(tcp_syncookies)"))
@@ -55,8 +59,6 @@ close_server:
 void test_tcp_syncookie(void)
 {
 	struct test_tcp_syncookie *skel;
-	struct bpf_link *link;
-	int cgroup;
 
 	if (setup_netns())
 		return;
@@ -65,20 +67,22 @@ void test_tcp_syncookie(void)
 	if (!ASSERT_OK_PTR(skel, "open_and_load"))
 		return;
 
-	cgroup = test__join_cgroup("/tcp_syncookie");
-	if (!ASSERT_GE(cgroup, 0, "join_cgroup"))
+	LIBBPF_OPTS(bpf_tc_hook, qdisc_lo, .attach_point = BPF_TC_INGRESS);
+	LIBBPF_OPTS(bpf_tc_opts, tc_attach,
+		    .prog_fd = bpf_program__fd(skel->progs.syncookie));
+
+	qdisc_lo.ifindex = if_nametoindex("lo");
+	if (!ASSERT_OK(bpf_tc_hook_create(&qdisc_lo), "qdisc add dev lo clsact"))
 		goto destroy_skel;
 
-	link = bpf_program__attach_cgroup(skel->progs.syncookie, cgroup);
-	if (!ASSERT_OK_PTR(link, "attach_cgroup"))
-		goto close_cgroup;
+	if (!ASSERT_OK(bpf_tc_attach(&qdisc_lo, &tc_attach),
+		       "filter add dev lo ingress"))
+		goto destroy_skel;
 
 	create_connection();
 
-	bpf_link__destroy(link);
-
-close_cgroup:
-	close(cgroup);
 destroy_skel:
+	system("tc qdisc del dev lo clsact");
+
 	test_tcp_syncookie__destroy(skel);
 }
