@@ -5,7 +5,7 @@
 
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
-#define BPF_PROG_TEST_TCP_HDR_OPTIONS
+#include "bpf_kfuncs.h"
 
 #define TC_ACT_OK 0
 #define TC_ACT_SHOT 2
@@ -184,6 +184,14 @@ static __always_inline int gen_syncookie(struct __sk_buff *skb, struct header *h
 
 static __always_inline int check_syncookie(struct __sk_buff *skb, struct header *hdr)
 {
+	struct tcp_options_received tcp_opt = {
+		.saw_tstamp = 1,
+		.rcv_tsval = 10,
+		.snd_wscale = 8,
+		.sack_ok = 1,
+		.wscale_ok = 1,
+		.rcv_tsecr = 1
+	};
 	struct bpf_sock_tuple tuple = {
 		.ipv4.saddr = hdr->ipv4->saddr,
 		.ipv4.daddr = hdr->ipv4->daddr,
@@ -191,6 +199,8 @@ static __always_inline int check_syncookie(struct __sk_buff *skb, struct header 
 		.ipv4.dport = hdr->tcp->dest,
 	};
 	struct bpf_sock *skc;
+	struct tcp_sock *tp;
+	int ret;
 
 	skc = bpf_skc_lookup_tcp(skb, &tuple, sizeof(tuple.ipv4), BPF_F_CURRENT_NETNS, 0);
 	if (!skc)
@@ -199,12 +209,15 @@ static __always_inline int check_syncookie(struct __sk_buff *skb, struct header 
 	if (skc->state != TCP_LISTEN)
 		goto release;
 
-	/* Call kfunc. */
+	tp = bpf_skc_to_tcp_sock(skc);
+	if (!tp)
+		goto release;
 
-	if (bpf_sk_assign(skb, skc, 0)) {
-		bpf_sk_release(skc);
-		return TC_ACT_SHOT;
-	}
+	ret = bpf_sk_assign_tcp_reqsk(skb, (struct sock *)tp,
+				      &tcp_opt, sizeof(tcp_opt), 1450);
+	if (ret < 0)
+		goto release;
+	/* Call kfunc. */
 
 release:
 	bpf_sk_release(skc);

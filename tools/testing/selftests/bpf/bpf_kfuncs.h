@@ -51,6 +51,13 @@ extern int bpf_dynptr_clone(const struct bpf_dynptr *ptr, struct bpf_dynptr *clo
 extern int bpf_sock_addr_set_sun_path(struct bpf_sock_addr_kern *sa_kern,
 				      const __u8 *sun_path, __u32 sun_path__sz) __ksym;
 
+
+struct sock;
+struct tcp_options_received;
+extern int bpf_sk_assign_tcp_reqsk(struct __sk_buff *skb, struct sock *sk,
+				   struct tcp_options_received *tcp_opt,
+				   int tcp_opt__sz, __u16 mss) __ksym;
+
 void *bpf_cast_to_kern_ctx(void *) __ksym;
 
 void *bpf_rdonly_cast(void *obj, __u32 btf_id) __ksym;

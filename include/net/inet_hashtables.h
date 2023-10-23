@@ -462,8 +462,18 @@ struct sock *inet_steal_sock(struct net *net, struct sk_buff *skb, int doff,
 	if (!sk)
 		return NULL;
 
-	if (!prefetched || !sk_fullsock(sk))
+	if (!prefetched)
 		return sk;
+
+	if (!sk_fullsock(sk)) {
+		if (sk->sk_state == TCP_NEW_SYN_RECV && inet_reqsk(sk)->syncookie) {
+			skb->sk = sk;
+			skb->destructor = sock_pfree;
+			sk = inet_reqsk(sk)->rsk_listener;
+		}
+
+		return sk;
+	}
 
 	if (sk->sk_protocol == IPPROTO_TCP) {
 		if (sk->sk_state != TCP_LISTEN)

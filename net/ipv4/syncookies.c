@@ -207,7 +207,7 @@ struct sock *tcp_get_cookie_sock(struct sock *sk, struct sk_buff *skb,
 	child = icsk->icsk_af_ops->syn_recv_sock(sk, skb, req, dst,
 						 NULL, &own_req);
 	if (child) {
-		refcount_set(&req->rsk_refcnt, 1);
+//		refcount_inc(&req->rsk_refcnt);
 		sock_rps_save_rxhash(child, skb);
 
 		if (rsk_drop_req(req)) {
@@ -288,13 +288,14 @@ struct request_sock *cookie_tcp_reqsk_alloc(const struct request_sock_ops *ops,
 	struct request_sock *req;
 
 	if (sk_is_mptcp(sk))
-		req = mptcp_subflow_reqsk_alloc(ops, sk, false);
+		req = mptcp_subflow_reqsk_alloc(ops, sk, true);
 	else
-		req = inet_reqsk_alloc(ops, sk, false);
+		req = inet_reqsk_alloc(ops, sk, true);
 
 	if (!req)
 		return NULL;
 
+	refcount_set(&req->rsk_refcnt, 1);
 	treq = tcp_rsk(req);
 
 	/* treq->af_specific might be used to perform TCP_MD5 lookup */
@@ -307,7 +308,7 @@ struct request_sock *cookie_tcp_reqsk_alloc(const struct request_sock_ops *ops,
 		int err = mptcp_subflow_init_cookie_req(req, sk, skb);
 
 		if (err) {
-			reqsk_free(req);
+			reqsk_put(req);
 			return NULL;
 		}
 	}
@@ -343,6 +344,23 @@ struct sock *cookie_v4_check(struct sock *sk, struct sk_buff *skb)
 	    !th->ack || th->rst)
 		goto out;
 
+	if (skb->sk) {
+		req = inet_reqsk(skb->sk);
+		ireq = inet_rsk(req);
+		treq = tcp_rsk(req);
+
+		printk(KERN_ERR "Bypassing SYN Cookie validation!, ref, req: %d, sk: %d\n",
+		       refcount_read(&req->rsk_refcnt), refcount_read(&sk->sk_refcnt));
+
+		skb->sk = NULL;
+		skb->destructor = NULL;
+
+		refcount_inc(&sk->sk_refcnt);
+		treq->syn_tos = TCP_SKB_CB(skb)->ip_dsfield;
+
+		goto aaa;
+	}
+
 	if (tcp_synq_no_recent_overflow(sk))
 		goto out;
 
@@ -373,23 +391,27 @@ struct sock *cookie_v4_check(struct sock *sk, struct sk_buff *skb)
 	if (!req)
 		goto out_drop;
 
+	printk(KERN_ERR "Default SYN Cookie validation, ref, req: %d, sk: %d\n",
+	       refcount_read(&req->rsk_refcnt), refcount_read(&sk->sk_refcnt));
+
 	ireq = inet_rsk(req);
 	treq = tcp_rsk(req);
+	req->mss		= mss;
+	req->ts_recent		= tcp_opt.saw_tstamp ? tcp_opt.rcv_tsval : 0;
+	ireq->snd_wscale	= tcp_opt.snd_wscale;
+	ireq->sack_ok		= tcp_opt.sack_ok;
+	ireq->wscale_ok		= tcp_opt.wscale_ok;
+	ireq->tstamp_ok		= tcp_opt.saw_tstamp;
+	treq->ts_off		= tsoff;
+aaa:
 	treq->rcv_isn		= ntohl(th->seq) - 1;
 	treq->snt_isn		= cookie;
-	treq->ts_off		= tsoff;
 	treq->txhash		= net_tx_rndhash();
-	req->mss		= mss;
 	ireq->ir_num		= ntohs(th->dest);
 	ireq->ir_rmt_port	= th->source;
 	sk_rcv_saddr_set(req_to_sk(req), ip_hdr(skb)->daddr);
 	sk_daddr_set(req_to_sk(req), ip_hdr(skb)->saddr);
 	ireq->ir_mark		= inet_request_mark(sk, skb);
-	ireq->snd_wscale	= tcp_opt.snd_wscale;
-	ireq->sack_ok		= tcp_opt.sack_ok;
-	ireq->wscale_ok		= tcp_opt.wscale_ok;
-	ireq->tstamp_ok		= tcp_opt.saw_tstamp;
-	req->ts_recent		= tcp_opt.saw_tstamp ? tcp_opt.rcv_tsval : 0;
 	treq->snt_synack	= 0;
 	treq->tfo_listener	= false;
 
@@ -449,7 +471,7 @@ struct sock *cookie_v4_check(struct sock *sk, struct sk_buff *skb)
 out:
 	return ret;
 out_free:
-	reqsk_free(req);
+	reqsk_put(req);
 out_drop:
 	return NULL;
 }
