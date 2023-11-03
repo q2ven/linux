@@ -4227,7 +4227,7 @@ int tcp_parse_options(const struct net *net, struct sk_buff *skb,
 					int ret;
 
 					if (th->syn) {
-						if (!estab && opsize == TCPOLEN_EXP_EDO_SUPPORTED)
+						if (opsize == TCPOLEN_EXP_EDO_SUPPORTED)
 							opt_rx->edo_ok = 1;
 
 						/* Ignore EDO Extension in SYN and SYN+ACK. */
