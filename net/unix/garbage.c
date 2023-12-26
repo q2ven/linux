@@ -109,6 +109,57 @@ void unix_init_vertex(struct unix_sock *u)
 	INIT_LIST_HEAD(&vertex->edges);
 }
 
+DEFINE_SPINLOCK(unix_gc_lock);
+static LIST_HEAD(unix_unvisited_vertices);
+
+void unix_add_edges(struct scm_fp_list *fpl, struct unix_sock *receiver)
+{
+	int i = 0, j = 0;
+
+	spin_lock(&unix_gc_lock);
+
+	while (i < fpl->count_unix) {
+		struct unix_sock *inflight = unix_get_socket(fpl->fp[j++]);
+		struct unix_edge *edge;
+
+		if (!inflight)
+			continue;
+
+		edge = fpl->edges + i++;
+		edge->predecessor = &inflight->vertex;
+		edge->successor = &receiver->vertex;
+
+		if (!edge->predecessor->out_degree++)
+			list_add_tail(&edge->predecessor->entry, &unix_unvisited_vertices);
+
+		list_add_tail(&edge->vertex_entry, &edge->predecessor->edges);
+	}
+
+	spin_unlock(&unix_gc_lock);
+
+	fpl->inflight = true;
+}
+
+void unix_del_edges(struct scm_fp_list *fpl)
+{
+	int i = 0;
+
+	spin_lock(&unix_gc_lock);
+
+	while (i < fpl->count_unix) {
+		struct unix_edge *edge = fpl->edges + i++;
+
+		list_del(&edge->vertex_entry);
+
+		if (!--edge->predecessor->out_degree)
+			list_del_init(&edge->predecessor->entry);
+	}
+
+	spin_unlock(&unix_gc_lock);
+
+	fpl->inflight = false;
+}
+
 int unix_alloc_edges(struct scm_fp_list *fpl)
 {
 	if (!fpl->count_unix)
@@ -124,10 +175,12 @@ int unix_alloc_edges(struct scm_fp_list *fpl)
 
 void unix_free_edges(struct scm_fp_list *fpl)
 {
+	if (fpl->inflight)
+		unix_del_edges(fpl);
+
 	kvfree(fpl->edges);
 }
 
-DEFINE_SPINLOCK(unix_gc_lock);
 unsigned int unix_tot_inflight;
 static LIST_HEAD(gc_candidates);
 static LIST_HEAD(gc_inflight_list);

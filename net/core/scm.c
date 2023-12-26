@@ -88,6 +88,7 @@ static int scm_fp_copy(struct cmsghdr *cmsg, struct scm_fp_list **fplp)
 		fpl->count = 0;
 		fpl->count_unix = 0;
 #if IS_ENABLED(CONFIG_UNIX)
+		fpl->inflight = false;
 		fpl->edges = NULL;
 #endif
 		fpl->max = SCM_MAX_FD;
@@ -381,6 +382,7 @@ struct scm_fp_list *scm_fp_dup(struct scm_fp_list *fpl)
 			get_file(fpl->fp[i]);
 
 #if IS_ENABLED(CONFIG_UNIX)
+		new_fpl->inflight = false;
 		new_fpl->edges = NULL;
 #endif
 		new_fpl->max = new_fpl->count;
