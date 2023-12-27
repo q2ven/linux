@@ -213,6 +213,81 @@ void unix_free_edges(struct scm_fp_list *fpl)
 	kvfree(fpl->edges);
 }
 
+enum unix_vertex_index {
+	UNIX_VERTEX_INDEX_UNVISITED,
+	UNIX_VERTEX_INDEX_START,
+};
+
+static LIST_HEAD(unix_visited_vertices);
+
+static void __unix_walk_scc(struct unix_vertex *vertex)
+{
+	unsigned long index = UNIX_VERTEX_INDEX_START;
+	LIST_HEAD(vertex_stack);
+	struct unix_edge *edge;
+	LIST_HEAD(edge_stack);
+
+next_vertex:
+	vertex->index = index;
+	vertex->lowlink = index;
+	index++;
+
+	vertex->on_stack = true;
+	list_add(&vertex->scc_entry, &vertex_stack);
+
+	list_for_each_entry(edge, &vertex->edges, vertex_entry) {
+		if (!edge->successor->out_degree)
+			continue;
+
+		if (edge->successor->index == UNIX_VERTEX_INDEX_UNVISITED) {
+			list_add(&edge->stack_entry, &edge_stack);
+
+			vertex = edge->successor;
+			goto next_vertex;
+prev_vertex:
+			edge = list_first_entry(&edge_stack, typeof(*edge), stack_entry);
+			list_del_init(&edge->stack_entry);
+
+			vertex = edge->predecessor;
+			vertex->lowlink = min(vertex->lowlink, edge->successor->lowlink);
+		} else if (edge->successor->on_stack) {
+			vertex->lowlink = min(vertex->lowlink, edge->successor->index);
+		}
+	}
+
+	if (vertex->index == vertex->lowlink) {
+		struct list_head scc;
+
+		__list_cut_position(&scc, &vertex_stack, &vertex->scc_entry);
+
+		list_for_each_entry_reverse(vertex, &scc, scc_entry) {
+			list_move_tail(&vertex->entry, &unix_visited_vertices);
+
+			vertex->on_stack = false;
+		}
+
+		list_del(&scc);
+	}
+
+	if (!list_empty(&edge_stack))
+		goto prev_vertex;
+}
+
+static void unix_walk_scc(void)
+{
+	struct unix_vertex *vertex;
+
+	list_for_each_entry(vertex, &unix_unvisited_vertices, entry)
+		vertex->index = UNIX_VERTEX_INDEX_UNVISITED;
+
+	while (!list_empty(&unix_unvisited_vertices)) {
+		vertex = list_first_entry(&unix_unvisited_vertices, typeof(*vertex), entry);
+		__unix_walk_scc(vertex);
+	}
+
+	list_replace_init(&unix_visited_vertices, &unix_unvisited_vertices);
+}
+
 static LIST_HEAD(gc_candidates);
 static LIST_HEAD(gc_inflight_list);
 
@@ -359,6 +434,8 @@ static void __unix_gc(struct work_struct *work)
 	struct list_head cursor;
 
 	spin_lock(&unix_gc_lock);
+
+	unix_walk_scc();
 
 	/* First, select candidates for garbage collection.  Only
 	 * in-flight sockets are considered, and from those only ones
