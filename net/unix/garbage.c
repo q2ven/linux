@@ -104,11 +104,14 @@ struct unix_sock *unix_get_socket(struct file *filp)
 void unix_init_vertex(struct unix_sock *u)
 {
 	struct unix_vertex *vertex = &u->vertex;
+	static int id;
 
 	vertex->out_degree = 0;
 	vertex->self_degree = 0;
 	INIT_LIST_HEAD(&vertex->edges);
 	INIT_LIST_HEAD(&vertex->scc_entry);
+
+	vertex->id = id++;
 }
 
 static bool unix_graph_maybe_cyclic;
@@ -170,6 +173,8 @@ void unix_add_edges(struct scm_fp_list *fpl, struct unix_sock *receiver)
 			list_add_tail(&edge->predecessor->entry, &unix_unvisited_vertices);
 		}
 
+		printk(KERN_ERR "add: %d -> %d\n", edge->predecessor->id, edge->successor->id);
+
 		list_add_tail(&edge->vertex_entry, &edge->predecessor->edges);
 
 		if (receiver->listener)
@@ -204,6 +209,8 @@ void unix_del_edges(struct scm_fp_list *fpl)
 
 		if (edge->predecessor == edge->successor)
 			edge->predecessor->self_degree--;
+
+		printk(KERN_ERR "del: %d -> %d\n", edge->predecessor->id, edge->successor->id);
 	}
 
 	WRITE_ONCE(unix_tot_inflight, unix_tot_inflight - fpl->count_unix);
@@ -226,7 +233,9 @@ void unix_update_edges(struct unix_sock *receiver)
 		if (edge->predecessor == edge->successor)
 			edge->predecessor->self_degree--;
 
+		printk(KERN_ERR "bfr: %d -> %d\n", edge->predecessor->id, edge->successor->id);
 		edge->successor = &receiver->vertex;
+		printk(KERN_ERR "aft: %d -> %d\n", edge->predecessor->id, edge->successor->id);
 	}
 
 	list_del_init(&receiver->vertex.edges);
@@ -286,10 +295,12 @@ static void unix_collect_skb(struct list_head *scc)
 {
 	struct unix_vertex *vertex;
 
+	printk(KERN_ERR "Dead SCC:");
 	list_for_each_entry_reverse(vertex, scc, scc_entry) {
 		struct unix_sock *u = container_of(vertex, typeof(*u), vertex);
 		struct sk_buff_head *queue = &u->sk.sk_receive_queue;
 
+		printk(KERN_ERR "\tv: %d (%lu, %lu)\n", vertex->id, vertex->index, vertex->scc_index);
 		spin_lock(&queue->lock);
 
 		if (u->sk.sk_state == TCP_LISTEN) {
@@ -315,6 +326,8 @@ static void unix_collect_skb(struct list_head *scc)
 
 		spin_unlock(&queue->lock);
 	}
+
+	printk(KERN_ERR "\n");
 }
 
 static bool unix_scc_cyclic(struct list_head *scc)
@@ -348,6 +361,8 @@ next_vertex:
 
 	list_add(&vertex->scc_entry, &vertex_stack);
 
+	printk(KERN_ERR "checking v: %d (%lu, %lu)\n", vertex->id, vertex->index, vertex->scc_index);
+
 	list_for_each_entry(edge, &vertex->edges, vertex_entry) {
 		if (!edge->successor->out_degree)
 			continue;
@@ -363,8 +378,10 @@ prev_vertex:
 
 			vertex = edge->predecessor;
 			vertex->scc_index = min(vertex->scc_index, edge->successor->scc_index);
+			printk(KERN_ERR "updating (ii) v: %d (%lu, %lu)\n", vertex->id, vertex->index, vertex->scc_index);
 		} else if (edge->successor->index != unix_vertex_grouped_index) {
 			vertex->scc_index = min(vertex->scc_index, edge->successor->scc_index);
+			printk(KERN_ERR "updating v: %d (%lu, %lu)\n", vertex->id, vertex->index, vertex->scc_index);
 		}
 	}
 
@@ -374,14 +391,20 @@ prev_vertex:
 
 		__list_cut_position(&scc, &vertex_stack, &vertex->scc_entry);
 
+		printk(KERN_ERR "Found SCC:");
+
 		list_for_each_entry_reverse(vertex, &scc, scc_entry) {
 			list_move_tail(&vertex->entry, &unix_visited_vertices);
 
 			vertex->index = unix_vertex_grouped_index;
 
+			printk(KERN_ERR "\tv: %d (%lu, %lu)\n", vertex->id, vertex->index, vertex->scc_index);
+
 			if (dead)
 				dead = unix_vertex_dead(vertex);
 		}
+
+		printk(KERN_ERR "\n");
 
 		if (dead)
 			unix_collect_skb(&scc);
@@ -422,12 +445,17 @@ static void unix_walk_scc_fast(void)
 		vertex = list_first_entry(&unix_unvisited_vertices, typeof(*vertex), entry);
 		list_add(&scc, &vertex->scc_entry);
 
+		printk(KERN_ERR "Known SCC:");
+
 		list_for_each_entry_reverse(vertex, &scc, scc_entry) {
 			list_move_tail(&vertex->entry, &unix_visited_vertices);
+
+			printk(KERN_ERR "\tv: %d (%lu, %lu)\n", vertex->id, vertex->index, vertex->scc_index);
 
 			if (dead)
 				dead = unix_vertex_dead(vertex);
 		}
+		printk(KERN_ERR "\n");
 
 		if (dead)
 			unix_collect_skb(&scc);
