@@ -953,6 +953,7 @@ static struct sock *unix_create1(struct net *net, struct socket *sock, int kern,
 {
 	struct unix_sock *u;
 	struct sock *sk;
+	static int id;
 	int err;
 
 	if (atomic_long_inc_return(&unix_nr_socks) > 2 * get_max_files()) {
@@ -978,6 +979,7 @@ static struct sock *unix_create1(struct net *net, struct socket *sock, int kern,
 	sk->sk_max_ack_backlog	= net->unx.sysctl_max_dgram_qlen;
 	sk->sk_destruct		= unix_sock_destructor;
 	u = unix_sk(sk);
+	u->id = id++;
 	u->listener = NULL;
 	u->vertex = NULL;
 	u->path.dentry = NULL;

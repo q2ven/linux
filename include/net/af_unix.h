@@ -81,6 +81,7 @@ struct unix_sock {
 	struct sock		*peer;
 	struct sock		*listener;
 	struct unix_vertex	*vertex;
+	int id;
 	spinlock_t		lock;
 	struct socket_wq	peer_wq;
 	wait_queue_entry_t	peer_wake;
