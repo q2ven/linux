@@ -955,8 +955,7 @@ static struct sock *unix_create1(struct net *net, struct socket *sock, int kern,
 	struct sock *sk;
 	int err;
 
-	atomic_long_inc(&unix_nr_socks);
-	if (atomic_long_read(&unix_nr_socks) > 2 * get_max_files()) {
+	if (atomic_long_inc_return(&unix_nr_socks) > 2 * get_max_files()) {
 		err = -ENFILE;
 		goto err;
 	}
