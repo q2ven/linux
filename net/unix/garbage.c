@@ -273,18 +273,18 @@ static bool unix_scc_cyclic(struct list_head *scc)
 
 static LIST_HEAD(unix_visited_vertices);
 static unsigned long unix_vertex_grouped_index = UNIX_VERTEX_INDEX_MARK2;
+static unsigned long unix_vertex_last_index = UNIX_VERTEX_INDEX_START;
 
 static void __unix_walk_scc(struct unix_vertex *vertex)
 {
-	unsigned long index = UNIX_VERTEX_INDEX_START;
 	LIST_HEAD(vertex_stack);
 	struct unix_edge *edge;
 	LIST_HEAD(edge_stack);
 
 next_vertex:
-	vertex->index = index;
-	vertex->lowlink = index;
-	index++;
+	vertex->index = unix_vertex_last_index;
+	vertex->scc_index = unix_vertex_last_index;
+	unix_vertex_last_index++;
 
 	list_add(&vertex->scc_entry, &vertex_stack);
 
@@ -302,13 +302,13 @@ prev_vertex:
 			list_del_init(&edge->stack_entry);
 
 			vertex = edge->predecessor;
-			vertex->lowlink = min(vertex->lowlink, edge->successor->lowlink);
+			vertex->scc_index = min(vertex->scc_index, edge->successor->scc_index);
 		} else if (edge->successor->index != unix_vertex_grouped_index) {
-			vertex->lowlink = min(vertex->lowlink, edge->successor->index);
+			vertex->scc_index = min(vertex->scc_index, edge->successor->scc_index);
 		}
 	}
 
-	if (vertex->index == vertex->lowlink) {
+	if (vertex->index == vertex->scc_index) {
 		struct list_head scc;
 
 		__list_cut_position(&scc, &vertex_stack, &vertex->scc_entry);
@@ -331,6 +331,7 @@ prev_vertex:
 
 static void unix_walk_scc(void)
 {
+	unix_vertex_last_index = UNIX_VERTEX_INDEX_START;
 	unix_graph_maybe_cyclic = false;
 
 	while (!list_empty(&unix_unvisited_vertices)) {
