@@ -257,6 +257,29 @@ void unix_free_edges(struct scm_fp_list *fpl)
 	kvfree(fpl->edges);
 }
 
+static bool unix_vertex_dead(struct unix_vertex *vertex)
+{
+	struct unix_edge *edge;
+	struct unix_sock *u;
+	long total_ref;
+
+	list_for_each_entry(edge, &vertex->edges, vertex_entry) {
+		if (!edge->successor->out_degree)
+			return false;
+
+		if (edge->successor->scc_index != vertex->scc_index)
+			return false;
+	}
+
+	u = container_of(vertex, typeof(*u), vertex);
+	total_ref = file_count(u->sk.sk_socket->file);
+
+	if (total_ref != vertex->out_degree)
+		return false;
+
+	return true;
+}
+
 static bool unix_scc_cyclic(struct list_head *scc)
 {
 	struct unix_vertex *vertex;
@@ -310,6 +333,7 @@ prev_vertex:
 
 	if (vertex->index == vertex->scc_index) {
 		struct list_head scc;
+		bool dead = true;
 
 		__list_cut_position(&scc, &vertex_stack, &vertex->scc_entry);
 
@@ -317,6 +341,9 @@ prev_vertex:
 			list_move_tail(&vertex->entry, &unix_visited_vertices);
 
 			vertex->index = unix_vertex_grouped_index;
+
+			if (dead)
+				dead = unix_vertex_dead(vertex);
 		}
 
 		if (!unix_graph_maybe_cyclic)
@@ -351,12 +378,17 @@ static void unix_walk_scc_fast(void)
 	while (!list_empty(&unix_unvisited_vertices)) {
 		struct unix_vertex *vertex;
 		struct list_head scc;
+		bool dead = true;
 
 		vertex = list_first_entry(&unix_unvisited_vertices, typeof(*vertex), entry);
 		list_add(&scc, &vertex->scc_entry);
 
-		list_for_each_entry_reverse(vertex, &scc, scc_entry)
+		list_for_each_entry_reverse(vertex, &scc, scc_entry) {
 			list_move_tail(&vertex->entry, &unix_visited_vertices);
+
+			if (dead)
+				dead = unix_vertex_dead(vertex);
+		}
 
 		list_del(&scc);
 	}
