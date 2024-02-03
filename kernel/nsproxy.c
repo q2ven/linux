@@ -584,6 +584,11 @@ out:
 	return err;
 }
 
+SYSCALL_DEFINE1(getns, int, flags)
+{
+	return -ENOTSUPP;
+}
+
 int __init nsproxy_cache_init(void)
 {
 	nsproxy_cachep = KMEM_CACHE(nsproxy, SLAB_PANIC|SLAB_ACCOUNT);
