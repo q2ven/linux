@@ -2015,12 +2015,12 @@ struct sock *
 __netlink_kernel_create(struct net *net, int unit, struct module *module,
 			struct netlink_kernel_cfg *cfg)
 {
-	struct socket *sock;
-	struct sock *sk;
-	struct netlink_sock *nlk;
-	struct listeners *listeners = NULL;
 	struct mutex *cb_mutex = cfg ? cfg->cb_mutex : NULL;
+	struct listeners *listeners = NULL;
+	struct netlink_sock *nlk;
+	struct socket *sock;
 	unsigned int groups;
+	struct sock *sk;
 
 	BUG_ON(!nl_table);
 
@@ -2044,14 +2044,15 @@ __netlink_kernel_create(struct net *net, int unit, struct module *module,
 	if (!listeners)
 		goto out_sock_release;
 
+	nlk = nlk_sk(sk);
+
 	sk->sk_data_ready = netlink_data_ready;
 	if (cfg && cfg->input)
-		nlk_sk(sk)->netlink_rcv = cfg->input;
+		nlk->netlink_rcv = cfg->input;
 
 	if (netlink_insert(sk, 0))
 		goto out_sock_release;
 
-	nlk = nlk_sk(sk);
 	set_bit(NETLINK_F_KERNEL_SOCKET, &nlk->flags);
 
 	netlink_table_grab();
