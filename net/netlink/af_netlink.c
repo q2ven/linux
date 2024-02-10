@@ -936,10 +936,10 @@ bool netlink_net_capable(const struct sk_buff *skb, int cap)
 }
 EXPORT_SYMBOL(netlink_net_capable);
 
-static inline int netlink_allowed(const struct socket *sock, unsigned int flag)
+static inline int netlink_allowed(const struct sock *sk, unsigned int flag)
 {
-	return (nl_table[sock->sk->sk_protocol].flags & flag) ||
-		ns_capable(sock_net(sock->sk)->user_ns, CAP_NET_ADMIN);
+	return (nl_table[sk->sk_protocol].flags & flag) ||
+		ns_capable(sock_net(sk)->user_ns, CAP_NET_ADMIN);
 }
 
 static void
@@ -1021,7 +1021,7 @@ static int netlink_bind(struct socket *sock, struct sockaddr *addr,
 
 	/* Only superuser is allowed to listen multicasts */
 	if (groups) {
-		if (!netlink_allowed(sock, NL_CFG_F_NONROOT_RECV))
+		if (!netlink_allowed(sk, NL_CFG_F_NONROOT_RECV))
 			return -EPERM;
 		err = netlink_realloc_groups(sk);
 		if (err)
@@ -1115,7 +1115,7 @@ static int netlink_connect(struct socket *sock, struct sockaddr *addr,
 		return -EINVAL;
 
 	if ((nladdr->nl_groups || nladdr->nl_pid) &&
-	    !netlink_allowed(sock, NL_CFG_F_NONROOT_SEND))
+	    !netlink_allowed(sk, NL_CFG_F_NONROOT_SEND))
 		return -EPERM;
 
 	/* No need for barriers here as we return to user-space without
@@ -1679,7 +1679,7 @@ static int netlink_setsockopt(struct socket *sock, int level, int optname,
 	case NETLINK_DROP_MEMBERSHIP: {
 		int err;
 
-		if (!netlink_allowed(sock, NL_CFG_F_NONROOT_RECV))
+		if (!netlink_allowed(sk, NL_CFG_F_NONROOT_RECV))
 			return -EPERM;
 		err = netlink_realloc_groups(sk);
 		if (err)
@@ -1857,7 +1857,7 @@ static int netlink_sendmsg(struct socket *sock, struct msghdr *msg, size_t len)
 		dst_group = ffs(addr->nl_groups);
 		err =  -EPERM;
 		if ((dst_group || dst_portid) &&
-		    !netlink_allowed(sock, NL_CFG_F_NONROOT_SEND))
+		    !netlink_allowed(sk, NL_CFG_F_NONROOT_SEND))
 			goto out;
 		netlink_skb_flags |= NETLINK_SKB_DST;
 	} else {
