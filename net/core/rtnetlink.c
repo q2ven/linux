@@ -412,6 +412,17 @@ static const struct rtnl_link_ops *__rtnl_privnet_link_ops_get(const char *kind)
 	return NULL;
 }
 
+static const struct rtnl_link_ops *rtnl_privnet_link_ops_get(const char *kind)
+{
+	const struct rtnl_link_ops *ops;
+
+	spin_lock(&privnet_ops_lock);
+	ops = __rtnl_privnet_link_ops_get(kind);
+	spin_unlock(&privnet_ops_lock);
+
+	return ops;
+}
+
 /**
  * __rtnl_link_register - Register rtnl_link_ops with rtnetlink.
  * @ops: struct rtnl_link_ops * to register
@@ -3763,6 +3774,161 @@ static int rtnl_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 	return ret;
 }
 
+int rtnl_configure_privlink(struct net_device *dev, const struct ifinfomsg *ifm,
+			    const struct nlmsghdr *nlh)
+{
+	int err;
+
+	if (ifm && ifm->ifi_flags & IFF_UP) {
+		err = dev_open_private(dev);
+		if (err)
+			return err;
+	}
+
+	dev->rtnl_link_state = RTNL_LINK_INITIALIZED;
+
+	return 0;
+}
+EXPORT_SYMBOL(rtnl_configure_privlink);
+
+static int rtnl_newprivlink(struct sk_buff *skb, struct nlmsghdr *nlh,
+			    struct netlink_ext_ack *extack)
+{
+	struct nlattr *data[RTNL_MAX_TYPE + 1] = {};
+	struct nlattr *linkinfo[IFLA_INFO_MAX + 1];
+	const struct rtnl_link_ops *ops;
+	struct nlattr *tb[IFLA_MAX + 1];
+	unsigned char name_assign_type;
+	char kind[MODULE_NAME_LEN];
+	struct net_device *dev;
+	struct ifinfomsg *ifm;
+	char ifname[IFNAMSIZ];
+	struct file *file;
+	struct net *net;
+	int ret;
+
+	ret = nlmsg_parse_deprecated(nlh, sizeof(*ifm), tb, IFLA_MAX,
+				     ifla_policy, extack);
+	if (ret < 0)
+		goto out;
+
+	ifm = nlmsg_data(nlh);
+	if (ifm->ifi_index != 0 || tb[IFLA_IFNAME] || tb[IFLA_ALT_IFNAME]) {
+		NL_SET_ERR_MSG(extack, "device is specified");
+		goto out;
+	}
+
+	if (!tb[IFLA_NET_NS_FD]) {
+		NL_SET_ERR_MSG(extack, "netns fd attribute not specified");
+		goto out;
+	}
+
+	if (!tb[IFLA_LINKINFO]) {
+		NL_SET_ERR_MSG(extack, "Unknown device type");
+		goto out;
+	}
+
+	ret = nla_parse_nested_deprecated(linkinfo, IFLA_INFO_MAX,
+					  tb[IFLA_LINKINFO], ifla_info_policy, NULL);
+	if (ret < 0)
+		goto out;
+
+	if (!linkinfo[IFLA_INFO_KIND]) {
+		NL_SET_ERR_MSG(extack, "Unknown device type");
+		goto out;
+	}
+
+	net = get_private_net_ns(nla_get_s32(tb[IFLA_NET_NS_FD]), &file);
+	if (!net) {
+		ret = -EBADF;
+		goto out;
+	}
+
+	if (!netlink_ns_capable(skb, net->user_ns, CAP_NET_ADMIN)) {
+		ret = -EPERM;
+		goto put_net;
+	}
+
+	nla_strscpy(kind, linkinfo[IFLA_INFO_KIND], sizeof(kind));
+
+	ops = rtnl_privnet_link_ops_get(kind);
+	if (!ops) {
+		request_module("rtnl-link-%s", kind);
+
+		ops = rtnl_privnet_link_ops_get(kind);
+		if (!ops) {
+			NL_SET_ERR_MSG(extack, "Unknown device type");
+			ret = -EOPNOTSUPP;
+			goto put_net;
+		}
+	}
+
+	if (!ops->alloc && !ops->setup) {
+		ret = -EOPNOTSUPP;
+		goto put_net;
+	}
+
+	if (ops->maxtype > RTNL_MAX_TYPE) {
+		ret = -EINVAL;
+		goto put_net;
+	}
+
+	if (ops->maxtype && linkinfo[IFLA_INFO_DATA]) {
+		ret = nla_parse_nested_deprecated(data, ops->maxtype,
+						  linkinfo[IFLA_INFO_DATA],
+						  ops->policy, extack);
+		if (ret < 0)
+			goto put_net;
+
+		if (ops->validate) {
+			ret = ops->validate(tb, data, extack);
+			if (ret < 0)
+				goto put_net;
+		}
+	}
+
+	if (tb[IFLA_IFNAME]) {
+		nla_strscpy(ifname, tb[IFLA_IFNAME], IFNAMSIZ);
+		name_assign_type = NET_NAME_USER;
+	} else {
+		snprintf(ifname, IFNAMSIZ, "%s%%d", ops->kind);
+		name_assign_type = NET_NAME_ENUM;
+	}
+
+	dev = rtnl_create_link(net, ifname, name_assign_type, ops, tb, extack);
+	if (IS_ERR(dev)) {
+		ret = PTR_ERR(dev);
+		goto put_net;
+	}
+
+	dev->ifindex = ifm->ifi_index;
+
+	if (ops->newprivlink)
+		ret = ops->newprivlink(net, dev, tb, data, extack);
+	else
+		ret = register_private_netdevice(dev);
+	if (ret < 0)
+		goto free_netdev;
+
+	ret = rtnl_configure_privlink(dev, ifm, nlh);
+	if (ret < 0)
+		goto unregister_netdevice;
+
+put_net:
+	put_private_net_ns(file);
+out:
+	return ret;
+
+unregister_netdevice:
+	if (ops->delprivlink)
+		ops->delprivlink(dev);
+	else
+		unregister_private_netdevice(dev);
+free_netdev:
+	free_netdev(dev);
+	goto put_net;
+}
+
 static int rtnl_valid_getlink_req(struct sk_buff *skb,
 				  const struct nlmsghdr *nlh,
 				  struct nlattr **tb,
@@ -6757,4 +6923,7 @@ void __init rtnetlink_init(void)
 	rtnl_register(PF_BRIDGE, RTM_NEWMDB, rtnl_mdb_add, NULL, 0);
 	rtnl_register(PF_BRIDGE, RTM_DELMDB, rtnl_mdb_del, NULL,
 		      RTNL_FLAG_BULK_DEL_SUPPORTED);
+
+	rtnl_register(PF_UNSPEC, RTM_NEWPRIVLINK, rtnl_newprivlink, NULL,
+		      RTNL_FLAG_DOIT_UNLOCKED);
 }

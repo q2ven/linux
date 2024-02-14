@@ -198,6 +198,8 @@ struct net_device *rtnl_create_link(struct net *net, const char *ifname,
 int rtnl_delete_link(struct net_device *dev, u32 portid, const struct nlmsghdr *nlh);
 int rtnl_configure_link(struct net_device *dev, const struct ifinfomsg *ifm,
 			u32 portid, const struct nlmsghdr *nlh);
+int rtnl_configure_privlink(struct net_device *dev, const struct ifinfomsg *ifm,
+			    const struct nlmsghdr *nlh);
 
 int rtnl_nla_parse_ifinfomsg(struct nlattr **tb, const struct nlattr *nla_peer,
 			     struct netlink_ext_ack *exterr);

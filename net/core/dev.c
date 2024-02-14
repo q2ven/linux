@@ -1428,6 +1428,34 @@ static int napi_kthread_create(struct napi_struct *n)
 	return err;
 }
 
+int dev_open_private(struct net_device *dev)
+{
+	const struct net_device_ops *ops = dev->netdev_ops;
+	int ret = 0;
+
+	dev_addr_check(dev);
+
+	set_bit(__LINK_STATE_START, &dev->state);
+
+	if (ops->ndo_validate_addr)
+		ret = ops->ndo_validate_addr(dev);
+
+//	if (!ret && ops->ndo_open)
+//		ret = ops->ndo_open(dev);
+
+	if (ret) {
+		clear_bit(__LINK_STATE_START, &dev->state);
+	} else {
+		dev->flags |= IFF_UP;
+		dev_set_rx_mode(dev);
+		//dev_activate(dev);
+		add_device_randomness(dev->dev_addr, dev->addr_len);
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(dev_open_private);
+
 static int __dev_open(struct net_device *dev, struct netlink_ext_ack *extack)
 {
 	const struct net_device_ops *ops = dev->netdev_ops;
@@ -11716,7 +11744,10 @@ static void __net_exit netdev_exit_private(struct net *net)
 	struct net_device *dev, *aux;
 
 	for_each_netdev_safe(net, dev, aux) {
-		unregister_private_netdevice(dev);
+		if (dev->rtnl_link_ops && dev->rtnl_link_ops->delprivlink)
+			dev->rtnl_link_ops->delprivlink(dev);
+		else
+			unregister_private_netdevice(dev);
 		free_netdev(dev);
 	}
 
