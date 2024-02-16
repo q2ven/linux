@@ -473,6 +473,16 @@ void net_drop_ns(void *p)
 		net_free(net);
 }
 
+static void __release_net_ns(struct net *net)
+{
+	dec_net_namespaces(net->ucounts);
+#ifdef CONFIG_KEYS
+	key_remove_domain(net->key_domain);
+#endif
+	put_user_ns(net->user_ns);
+	net_free(net);
+}
+
 static struct net *__create_net_ns(struct user_namespace *user_ns)
 {
 	struct ucounts *ucounts;
@@ -485,8 +495,8 @@ static struct net *__create_net_ns(struct user_namespace *user_ns)
 
 	net = net_alloc();
 	if (!net) {
-		rv = -ENOMEM;
-		goto dec_ucounts;
+		dec_net_namespaces(net->ucounts);
+		return ERR_PTR(-ENOMEM);
 	}
 
 	preinit_net(net);
@@ -504,13 +514,7 @@ static struct net *__create_net_ns(struct user_namespace *user_ns)
 
 	if (rv < 0) {
 put_userns:
-#ifdef CONFIG_KEYS
-		key_remove_domain(net->key_domain);
-#endif
-		put_user_ns(user_ns);
-		net_free(net);
-dec_ucounts:
-		dec_net_namespaces(ucounts);
+		__release_net_ns(net);
 		return ERR_PTR(rv);
 	}
 	return net;
@@ -655,12 +659,7 @@ static void cleanup_net(struct work_struct *work)
 	/* Finally it is safe to free my network namespace structure */
 	list_for_each_entry_safe(net, tmp, &net_exit_list, exit_list) {
 		list_del_init(&net->exit_list);
-		dec_net_namespaces(net->ucounts);
-#ifdef CONFIG_KEYS
-		key_remove_domain(net->key_domain);
-#endif
-		put_user_ns(net->user_ns);
-		net_free(net);
+		__release_net_ns(net);
 	}
 }
 
