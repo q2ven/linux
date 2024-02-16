@@ -26,6 +26,7 @@
 #include <linux/syscalls.h>
 #include <linux/cgroup.h>
 #include <linux/perf_event.h>
+#include <linux/anon_inodes.h>
 
 static struct kmem_cache *nsproxy_cachep;
 
@@ -584,9 +585,72 @@ out:
 	return err;
 }
 
+static int nsfd_release(struct inode *inode, struct file *file)
+{
+	struct nsset *nsset = file->private_data;
+
+	/* getns() failed. */
+	if (!nsset)
+		goto out;
+
+	kmem_cache_free(nsproxy_cachep, nsset->nsproxy);
+	kfree(nsset);
+out:
+	return 0;
+}
+
+const struct file_operations nsfd_fops = {
+	.release = nsfd_release,
+};
+
 SYSCALL_DEFINE1(getns, int, flags)
 {
-	return -ENOTSUPP;
+	struct nsset *nsset;
+	struct nsproxy *ns;
+	struct file *file;
+	int fd;
+
+	if (flags) {
+		fd = -ENOTSUPP;
+		goto out;
+	}
+
+	fd = get_unused_fd_flags(O_CLOEXEC);
+	if (fd < 0)
+		goto out;
+
+	file = anon_inode_getfile("[nsfd]", &nsfd_fops, NULL, O_CLOEXEC);
+	if (IS_ERR(file)) {
+		fd = PTR_ERR(file);
+		goto put_fd;
+	}
+
+	ns = create_nsproxy();
+	if (!ns) {
+		fd = -ENOMEM;
+		goto put_file;
+	}
+
+	nsset = kzalloc(sizeof(*nsset), GFP_KERNEL);
+	if (!nsset) {
+		fd = -ENOMEM;
+		kmem_cache_free(nsproxy_cachep, ns);
+		goto put_file;
+	}
+
+	nsset->flags = 0;
+	nsset->nsproxy = ns;
+	file->private_data = nsset;
+
+	fd_install(fd, file);
+out:
+	return fd;
+
+put_file:
+	fput(file);
+put_fd:
+	put_unused_fd(fd);
+	goto out;
 }
 
 int __init nsproxy_cache_init(void)
