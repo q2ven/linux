@@ -473,15 +473,11 @@ void net_drop_ns(void *p)
 		net_free(net);
 }
 
-struct net *copy_net_ns(unsigned long flags,
-			struct user_namespace *user_ns, struct net *old_net)
+static struct net *__create_net_ns(struct user_namespace *user_ns)
 {
 	struct ucounts *ucounts;
 	struct net *net;
 	int rv;
-
-	if (!(flags & CLONE_NEWNET))
-		return get_net(old_net);
 
 	ucounts = inc_net_namespaces(user_ns);
 	if (!ucounts)
@@ -518,6 +514,15 @@ dec_ucounts:
 		return ERR_PTR(rv);
 	}
 	return net;
+}
+
+struct net *copy_net_ns(unsigned long flags, struct user_namespace *user_ns,
+			struct net *old_net)
+{
+	if (!(flags & CLONE_NEWNET))
+		return get_net(old_net);
+
+	return __create_net_ns(user_ns);
 }
 
 /**
