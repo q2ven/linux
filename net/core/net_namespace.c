@@ -314,14 +314,8 @@ static __net_init void preinit_net(struct net *net)
 /*
  * setup_net runs the initializers for the network namespace object.
  */
-static __net_init int setup_net(struct net *net, struct user_namespace *user_ns)
+static __net_init void setup_net(struct net *net, struct user_namespace *user_ns)
 {
-	/* Must be called with pernet_ops_rwsem held */
-	const struct pernet_operations *ops, *saved_ops;
-	LIST_HEAD(net_exit_list);
-	LIST_HEAD(dev_kill_list);
-	int error = 0;
-
 	refcount_set(&net->ns.count, 1);
 	ref_tracker_dir_init(&net->refcnt_tracker, 128, "net refcnt");
 
@@ -335,12 +329,22 @@ static __net_init int setup_net(struct net *net, struct user_namespace *user_ns)
 	idr_init(&net->netns_ids);
 	spin_lock_init(&net->nsid_lock);
 	mutex_init(&net->ipv4.ra_mutex);
+}
+
+static __net_init int publish_net(struct net *net)
+{
+	/* Must be called with pernet_ops_rwsem held */
+	const struct pernet_operations *ops, *saved_ops;
+	LIST_HEAD(net_exit_list);
+	LIST_HEAD(dev_kill_list);
+	int error = 0;
 
 	list_for_each_entry(ops, &pernet_list, list) {
 		error = ops_init(ops, net);
 		if (error < 0)
 			goto out_undo;
 	}
+
 	down_write(&net_rwsem);
 	list_add_tail_rcu(&net->list, &net_namespace_list);
 	up_write(&net_rwsem);
@@ -503,12 +507,13 @@ static struct net *__create_net_ns(struct user_namespace *user_ns)
 	refcount_set(&net->passive, 1);
 	net->ucounts = ucounts;
 	get_user_ns(user_ns);
+	setup_net(net, user_ns);
 
 	rv = down_read_killable(&pernet_ops_rwsem);
 	if (rv < 0)
 		goto put_userns;
 
-	rv = setup_net(net, user_ns);
+	rv = publish_net(net);
 
 	up_read(&pernet_ops_rwsem);
 
@@ -1195,9 +1200,11 @@ void __init net_ns_init(void)
 #ifdef CONFIG_KEYS
 	init_net.key_domain = &init_net_key_domain;
 #endif
-	down_write(&pernet_ops_rwsem);
 	preinit_net(&init_net);
-	if (setup_net(&init_net, &init_user_ns))
+	setup_net(&init_net, &init_user_ns);
+	down_write(&pernet_ops_rwsem);
+
+	if (publish_net(&init_net))
 		panic("Could not setup the initial network namespace");
 
 	init_net_initialized = true;
