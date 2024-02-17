@@ -448,6 +448,9 @@ struct pernet_operations {
 	 * be used, since a synchronize_rcu() is guaranteed between
 	 * the calls.
 	 */
+	int (*init_private)(struct net *net);
+	void (*exit_private)(struct net *net);
+	int (*publish)(struct net *net);
 	int (*init)(struct net *net);
 	void (*pre_exit)(struct net *net);
 	void (*exit)(struct net *net);

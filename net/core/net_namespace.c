@@ -37,6 +37,8 @@ static struct list_head *first_device = &pernet_list;
 LIST_HEAD(net_namespace_list);
 EXPORT_SYMBOL_GPL(net_namespace_list);
 
+static LIST_HEAD(net_namespace_private_list);
+
 /* Protects net_namespace_list. Nests iside rtnl_lock() */
 DECLARE_RWSEM(net_rwsem);
 EXPORT_SYMBOL_GPL(net_rwsem);
@@ -148,6 +150,17 @@ cleanup:
 
 out:
 	return err;
+}
+
+static void ops_exit_private_list(const struct pernet_operations *ops,
+				  struct list_head *net_exit_list)
+{
+	struct net *net;
+
+	if (ops->exit_private) {
+		list_for_each_entry(net, net_exit_list, exit_list)
+			ops->exit_private(net);
+	}
 }
 
 static void ops_pre_exit_list(const struct pernet_operations *ops,
@@ -1249,9 +1262,10 @@ static void free_exit_list(struct pernet_operations *ops, struct list_head *net_
 static int __register_pernet_operations(struct list_head *list,
 					struct pernet_operations *ops)
 {
+	LIST_HEAD(net_exit_private_list);
+	LIST_HEAD(net_exit_list);
 	struct net *net;
 	int error;
-	LIST_HEAD(net_exit_list);
 
 	list_add_tail(&ops->list, list);
 	if (ops->init || (ops->id && ops->size)) {
@@ -1265,21 +1279,40 @@ static int __register_pernet_operations(struct list_head *list,
 			list_add_tail(&net->exit_list, &net_exit_list);
 		}
 	}
+
+	if (ops->init_private) {
+		list_for_each_entry(net, &net_namespace_private_list, list) {
+			error = ops->init_private(net);
+			if (error)
+				goto out_undo_private;
+
+			list_add_tail(&net->exit_list, &net_exit_private_list);
+		}
+	}
+
 	return 0;
 
+out_undo_private:
+	ops_exit_private_list(ops, &net_exit_private_list);
 out_undo:
-	/* If I have an error cleanup all namespaces I initialized */
-	list_del(&ops->list);
 	free_exit_list(ops, &net_exit_list);
+	list_del(&ops->list);
 	return error;
 }
 
 static void __unregister_pernet_operations(struct pernet_operations *ops)
 {
-	struct net *net;
+	LIST_HEAD(net_exit_private_list);
 	LIST_HEAD(net_exit_list);
+	struct net *net;
 
 	list_del(&ops->list);
+
+	list_for_each_entry(net, &net_namespace_private_list, list)
+		list_add_tail(&net->exit_list, &net_exit_private_list);
+
+	ops_exit_private_list(ops, &net_exit_private_list);
+
 	/* See comment in __register_pernet_operations() */
 	for_each_net(net)
 		list_add_tail(&net->exit_list, &net_exit_list);
