@@ -1916,6 +1916,97 @@ err_register_peer:
 	return err;
 }
 
+static int veth_newprivlink(struct net *net, struct net_device *dev,
+			    struct nlattr *tb[], struct nlattr *data[],
+			    struct netlink_ext_ack *extack)
+{
+	struct nlattr *peer_tb[IFLA_MAX + 1], **tbp;
+	unsigned char name_assign_type;
+	struct net_device *peer;
+	struct ifinfomsg *ifmp;
+	struct veth_priv *priv;
+	char ifname[IFNAMSIZ];
+	int err;
+
+	if (data != NULL && data[VETH_INFO_PEER] != NULL) {
+		struct nlattr *nla_peer;
+
+		nla_peer = data[VETH_INFO_PEER];
+		ifmp = nla_data(nla_peer);
+		err = rtnl_nla_parse_ifinfomsg(peer_tb, nla_peer, extack);
+		if (err < 0)
+			return err;
+
+		err = veth_validate(peer_tb, NULL, extack);
+		if (err < 0)
+			return err;
+
+		tbp = peer_tb;
+	} else {
+		ifmp = NULL;
+		tbp = tb;
+	}
+
+	if (ifmp && tbp[IFLA_IFNAME]) {
+		nla_strscpy(ifname, tbp[IFLA_IFNAME], IFNAMSIZ);
+		name_assign_type = NET_NAME_USER;
+	} else {
+		snprintf(ifname, IFNAMSIZ, DRV_NAME "%%d");
+		name_assign_type = NET_NAME_ENUM;
+	}
+
+	peer = rtnl_create_link(net, ifname, name_assign_type,
+				&veth_link_ops, tbp, extack);
+	if (IS_ERR(peer))
+		return PTR_ERR(peer);
+
+	if (!ifmp || !tbp[IFLA_ADDRESS])
+		eth_hw_addr_random(peer);
+
+	if (ifmp && dev->ifindex != 0)
+		peer->ifindex = ifmp->ifi_index;
+
+	netif_inherit_tso_max(peer, dev);
+
+	veth_init_queues(peer, tbp);
+
+	err = register_private_netdevice(peer);
+	if (err < 0)
+		goto free_peer;
+
+	err = rtnl_configure_privlink(peer, ifmp, NULL);
+	if (err < 0)
+		goto unregister_peer;
+
+	if (tb[IFLA_ADDRESS] == NULL)
+		eth_hw_addr_random(dev);
+
+	veth_init_queues(dev, tbp);
+/*
+	if (tb[IFLA_IFNAME])
+		nla_strscpy(dev->name, tb[IFLA_IFNAME], IFNAMSIZ);
+	else
+		snprintf(dev->name, IFNAMSIZ, DRV_NAME "%%d");
+*/
+	err = register_private_netdevice(dev);
+	if (err < 0)
+		goto unregister_peer;
+
+	priv = netdev_priv(dev);
+	rcu_assign_pointer(priv->peer, peer);
+
+	priv = netdev_priv(peer);
+	rcu_assign_pointer(priv->peer, dev);
+
+	return 0;
+
+unregister_peer:
+	unregister_private_netdevice(peer);
+free_peer:
+	free_netdev(peer);
+	return err;
+}
+
 static void veth_dellink(struct net_device *dev, struct list_head *head)
 {
 	struct veth_priv *priv;
@@ -1936,6 +2027,47 @@ static void veth_dellink(struct net_device *dev, struct list_head *head)
 		RCU_INIT_POINTER(priv->peer, NULL);
 		unregister_netdevice_queue(peer, head);
 	}
+}
+
+static void veth_delprivlink(struct net_device *dev)
+{
+	struct net_device *peer;
+	struct veth_priv *priv;
+
+	priv = netdev_priv(dev);
+	peer = priv->peer;
+
+	RCU_INIT_POINTER(priv->peer, NULL);
+	unregister_private_netdevice(dev);
+
+	priv = netdev_priv(peer);
+
+	RCU_INIT_POINTER(priv->peer, NULL);
+	unregister_private_netdevice(peer);
+}
+
+static int veth_pubprivlink(struct net_device *dev)
+{
+	struct veth_priv *priv = netdev_priv(dev);
+	struct net_device *peer = priv->peer;
+
+	rtnl_lock();
+
+	veth_disable_gro(dev);
+
+	if (dev->flags & IFF_UP && peer->flags & IFF_UP) {
+		netif_carrier_on(dev);
+		dev_activate(dev);
+	} else {
+		netif_carrier_off(dev);
+	}
+
+	netdev_update_features(dev);
+	veth_set_xdp_features(dev);
+
+	rtnl_unlock();
+
+	return 0;
 }
 
 static const struct nla_policy veth_policy[VETH_INFO_MAX + 1] = {
@@ -1960,6 +2092,30 @@ static unsigned int veth_get_num_queues(void)
 	return queues;
 }
 
+static int veth_net_init_private(struct net *net)
+{
+	/* Guarantee rtnl_link_ops safety for private netns. */
+	__module_get(THIS_MODULE);
+	return 0;
+}
+
+static void veth_net_exit_private(struct net *net)
+{
+	module_put(THIS_MODULE);
+}
+
+static int veth_net_publish(struct net *net)
+{
+	module_put(THIS_MODULE);
+	return 0;
+}
+
+static struct pernet_operations veth_net_ops = {
+	.init_private = veth_net_init_private,
+	.exit_private = veth_net_exit_private,
+	.publish = veth_net_publish,
+};
+
 static struct rtnl_link_ops veth_link_ops = {
 	.kind		= DRV_NAME,
 	.priv_size	= sizeof(struct veth_priv),
@@ -1967,6 +2123,9 @@ static struct rtnl_link_ops veth_link_ops = {
 	.validate	= veth_validate,
 	.newlink	= veth_newlink,
 	.dellink	= veth_dellink,
+	.newprivlink	= veth_newprivlink,
+	.delprivlink	= veth_delprivlink,
+	.pubprivlink	= veth_pubprivlink,
 	.policy		= veth_policy,
 	.maxtype	= VETH_INFO_MAX,
 	.get_link_net	= veth_get_link_net,
@@ -1980,11 +2139,22 @@ static struct rtnl_link_ops veth_link_ops = {
 
 static __init int veth_init(void)
 {
-	return rtnl_link_register(&veth_link_ops);
+	int err;
+
+	err = register_pernet_subsys(&veth_net_ops);
+	if (err)
+		goto out;
+
+	err = rtnl_link_register(&veth_link_ops);
+	if (err)
+		unregister_pernet_subsys(&veth_net_ops);
+out:
+	return err;
 }
 
 static __exit void veth_exit(void)
 {
+	unregister_pernet_subsys(&veth_net_ops);
 	rtnl_link_unregister(&veth_link_ops);
 }
 
