@@ -117,6 +117,8 @@ struct net {
 	 */
 	u32			hash_mix;
 
+	bool			private;
+
 	struct net_device       *loopback_dev;          /* The loopback */
 
 	/* core fib_rules */

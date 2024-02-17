@@ -344,6 +344,36 @@ static __net_init void setup_net(struct net *net, struct user_namespace *user_ns
 	mutex_init(&net->ipv4.ra_mutex);
 }
 
+static __net_init int setup_private_net(struct net *net)
+{
+	const struct pernet_operations *ops;
+	int error = 0;
+
+	net->private = true;
+
+	list_for_each_entry(ops, &pernet_list, list) {
+		if (ops->init_private) {
+			error = ops->init_private(net);
+			if (error < 0)
+				goto out_undo;
+		}
+	}
+
+	down_write(&net_rwsem);
+	list_add_tail_rcu(&net->list, &net_namespace_private_list);
+	up_write(&net_rwsem);
+out:
+	return error;
+
+out_undo:
+	list_for_each_entry_continue_reverse(ops, &pernet_list, list) {
+		if (ops->init_private)
+			ops->exit_private(net);
+	}
+
+	goto out;
+}
+
 static __net_init void unpublish_net(struct net *net,
 				     const struct pernet_operations *saved_ops)
 {
@@ -508,7 +538,7 @@ static void __release_net_ns(struct net *net)
 	net_free(net);
 }
 
-static struct net *__create_net_ns(struct user_namespace *user_ns)
+static struct net *__create_net_ns(struct user_namespace *user_ns, bool private)
 {
 	struct ucounts *ucounts;
 	struct net *net;
@@ -534,7 +564,10 @@ static struct net *__create_net_ns(struct user_namespace *user_ns)
 	if (rv < 0)
 		goto put_userns;
 
-	rv = publish_net(net);
+	if (private)
+		rv = setup_private_net(net);
+	else
+		rv = publish_net(net);
 
 	up_read(&pernet_ops_rwsem);
 
@@ -552,7 +585,7 @@ struct net *copy_net_ns(unsigned long flags, struct user_namespace *user_ns,
 	if (!(flags & CLONE_NEWNET))
 		return get_net(old_net);
 
-	return __create_net_ns(user_ns);
+	return __create_net_ns(user_ns, false);
 }
 
 /**
@@ -784,6 +817,8 @@ static __net_exit void net_ns_net_exit(struct net *net)
 }
 
 static struct pernet_operations __net_initdata net_ns_ops = {
+	.init_private = net_ns_net_init,
+	.exit_private = net_ns_net_exit,
 	.init = net_ns_net_init,
 	.exit = net_ns_net_exit,
 };
@@ -1530,10 +1565,28 @@ const struct proc_ns_operations netns_operations = {
 
 struct net *create_net_ns(void)
 {
-	return ERR_PTR(-ENOTSUPP);
+	struct user_namespace *user_ns = task_cred_xxx(current, user_ns);
+
+	return __create_net_ns(user_ns, true);
 }
 
 void release_net_ns(struct net *net)
 {
+	const struct pernet_operations *ops;
+
+	down_read(&pernet_ops_rwsem);
+
+	down_write(&net_rwsem);
+	list_del_rcu(&net->list);
+	up_write(&net_rwsem);
+
+	list_for_each_entry_reverse(ops, &pernet_list, list) {
+		if (ops->exit_private)
+			ops->exit_private(net);
+	}
+
+	up_read(&pernet_ops_rwsem);
+
+	__release_net_ns(net);
 }
 #endif
