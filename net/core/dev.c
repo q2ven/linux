@@ -11725,8 +11725,31 @@ static void __net_exit netdev_exit_private(struct net *net)
 
 static int __net_init netdev_publish(struct net *net)
 {
+	struct net_device *dev, *aux;
+	int err;
+
 	RAW_INIT_NOTIFIER_HEAD(&net->netdev_chain);
+
+	for_each_netdev(net, dev) {
+		if (!dev->rtnl_link_ops || !dev->rtnl_link_ops->pubprivlink)
+			continue;
+
+		err = dev->rtnl_link_ops->pubprivlink(dev);
+		if (err)
+			goto err;
+	}
+
 	return 0;
+
+err:
+	for_each_netdev_safe_continue(net, dev, aux) {
+		if (!dev->rtnl_link_ops || !dev->rtnl_link_ops->delprivlink)
+			continue;
+
+		dev->rtnl_link_ops->delprivlink(dev);
+	}
+
+	return err;
 }
 
 /* Initialize per network namespace state */
@@ -11735,7 +11758,9 @@ static int __net_init netdev_init(struct net *net)
 	if (netdev_init_private(net))
 		return -ENOMEM;
 
-	return netdev_publish(net);
+	RAW_INIT_NOTIFIER_HEAD(&net->netdev_chain);
+
+	return 0;
 }
 
 static void __net_exit netdev_exit(struct net *net)

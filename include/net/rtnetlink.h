@@ -77,6 +77,7 @@ static inline int rtnl_msg_family(const struct nlmsghdr *nlh)
  */
 struct rtnl_link_ops {
 	struct list_head	list;
+	struct list_head	privnet_list;
 
 	const char		*kind;
 
@@ -106,6 +107,13 @@ struct rtnl_link_ops {
 					      struct netlink_ext_ack *extack);
 	void			(*dellink)(struct net_device *dev,
 					   struct list_head *head);
+	int			(*newprivlink)(struct net *src_net,
+					       struct net_device *dev,
+					       struct nlattr *tb[],
+					       struct nlattr *data[],
+					       struct netlink_ext_ack *extack);
+	int			(*pubprivlink)(struct net_device *dev);
+	void			(*delprivlink)(struct net_device *dev);
 
 	size_t			(*get_size)(const struct net_device *dev);
 	int			(*fill_info)(struct sk_buff *skb,

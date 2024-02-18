@@ -385,6 +385,8 @@ void rtnl_unregister_all(int protocol)
 EXPORT_SYMBOL_GPL(rtnl_unregister_all);
 
 static LIST_HEAD(link_ops);
+static LIST_HEAD(privnet_link_ops);
+static DEFINE_SPINLOCK(privnet_ops_lock);
 
 static const struct rtnl_link_ops *rtnl_link_ops_get(const char *kind)
 {
@@ -394,6 +396,19 @@ static const struct rtnl_link_ops *rtnl_link_ops_get(const char *kind)
 		if (!strcmp(ops->kind, kind))
 			return ops;
 	}
+	return NULL;
+}
+
+/* The caller must guarantee ops safety without rtnl_lock(). */
+static const struct rtnl_link_ops *__rtnl_privnet_link_ops_get(const char *kind)
+{
+	const struct rtnl_link_ops *ops;
+
+	list_for_each_entry(ops, &privnet_link_ops, privnet_list) {
+		if (!strcmp(ops->kind, kind))
+			return ops;
+	}
+
 	return NULL;
 }
 
@@ -411,6 +426,19 @@ int __rtnl_link_register(struct rtnl_link_ops *ops)
 {
 	if (rtnl_link_ops_get(ops->kind))
 		return -EEXIST;
+
+	if (ops->newprivlink && ops->delprivlink) {
+		spin_lock(&privnet_ops_lock);
+
+		if (__rtnl_privnet_link_ops_get(ops->kind)) {
+			spin_unlock(&privnet_ops_lock);
+			return -EEXIST;
+		}
+
+		list_add_tail(&ops->privnet_list, &privnet_link_ops);
+
+		spin_unlock(&privnet_ops_lock);
+	}
 
 	/* The check for alloc/setup is here because if ops
 	 * does not have that filled up, it is not possible
@@ -470,6 +498,12 @@ static void __rtnl_kill_links(struct net *net, struct rtnl_link_ops *ops)
 void __rtnl_link_unregister(struct rtnl_link_ops *ops)
 {
 	struct net *net;
+
+	if (ops->newprivlink && ops->delprivlink) {
+		spin_lock(&privnet_ops_lock);
+		list_del(&ops->privnet_list);
+		spin_unlock(&privnet_ops_lock);
+	}
 
 	for_each_net(net) {
 		__rtnl_kill_links(net, ops);

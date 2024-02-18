@@ -3004,6 +3004,8 @@ int call_netdevice_notifiers_info(unsigned long val,
 		list_for_each_entry_rcu(d, &(net)->dev_base_head, dev_list)
 #define for_each_netdev_safe(net, d, n)	\
 		list_for_each_entry_safe(d, n, &(net)->dev_base_head, dev_list)
+#define for_each_netdev_safe_continue(net, d, n)	\
+		list_for_each_entry_safe_continue(d, n, &(net)->dev_base_head, dev_list)
 #define for_each_netdev_continue(net, d)		\
 		list_for_each_entry_continue(d, &(net)->dev_base_head, dev_list)
 #define for_each_netdev_continue_reverse(net, d)		\
