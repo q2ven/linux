@@ -411,6 +411,40 @@ static void unlist_netdevice(struct net_device *dev)
 	dev_base_seq_inc(dev_net(dev));
 }
 
+static void list_private_netdevice(struct net_device *dev)
+{
+	struct netdev_name_node *name_node;
+	struct net *net = dev_net(dev);
+
+	list_add_tail_rcu(&dev->dev_list, &net->dev_base_head);
+	netdev_name_node_add(net, dev->name_node);
+	hlist_add_head_rcu(&dev->index_hlist, dev_index_hash(net, dev->ifindex));
+
+	netdev_for_each_altname(dev, name_node)
+		netdev_name_node_add(net, name_node);
+
+	xa_store(&net->dev_by_index, dev->ifindex, dev, GFP_KERNEL);
+
+	dev_base_seq_inc(net);
+}
+
+static void unlist_private_netdevice(struct net_device *dev)
+{
+	struct netdev_name_node *name_node;
+	struct net *net = dev_net(dev);
+
+	xa_erase(&net->dev_by_index, dev->ifindex);
+
+	netdev_for_each_altname(dev, name_node)
+		netdev_name_node_del(name_node);
+
+	hlist_del_rcu(&dev->index_hlist);
+	netdev_name_node_del(dev->name_node);
+	list_del_rcu(&dev->dev_list);
+
+	dev_base_seq_inc(net);
+}
+
 /*
  *	Our notifier list
  */
@@ -10155,6 +10189,51 @@ static void netdev_do_free_pcpu_stats(struct net_device *dev)
 	}
 }
 
+static void netdev_init_features(struct net_device *dev)
+{
+	/* Transfer changeable features to wanted_features and enable
+	 * software offloads (GSO and GRO).
+	 */
+	dev->hw_features |= (NETIF_F_SOFT_FEATURES | NETIF_F_SOFT_FEATURES_OFF);
+	dev->features |= NETIF_F_SOFT_FEATURES;
+
+	if (dev->udp_tunnel_nic_info) {
+		dev->features |= NETIF_F_RX_UDP_TUNNEL_PORT;
+		dev->hw_features |= NETIF_F_RX_UDP_TUNNEL_PORT;
+	}
+
+	dev->wanted_features = dev->features & dev->hw_features;
+
+	if (!(dev->flags & IFF_LOOPBACK))
+		dev->hw_features |= NETIF_F_NOCACHE_COPY;
+
+	/* If IPv4 TCP segmentation offload is supported we should also
+	 * allow the device to enable segmenting the frame with the option
+	 * of ignoring a static IP ID value.  This doesn't enable the
+	 * feature itself but allows the user to enable it later.
+	 */
+	if (dev->hw_features & NETIF_F_TSO)
+		dev->hw_features |= NETIF_F_TSO_MANGLEID;
+	if (dev->vlan_features & NETIF_F_TSO)
+		dev->vlan_features |= NETIF_F_TSO_MANGLEID;
+	if (dev->mpls_features & NETIF_F_TSO)
+		dev->mpls_features |= NETIF_F_TSO_MANGLEID;
+	if (dev->hw_enc_features & NETIF_F_TSO)
+		dev->hw_enc_features |= NETIF_F_TSO_MANGLEID;
+
+	/* Make NETIF_F_HIGHDMA inheritable to VLAN devices.
+	 */
+	dev->vlan_features |= NETIF_F_HIGHDMA;
+
+	/* Make NETIF_F_SG inheritable to tunnel devices.
+	 */
+	dev->hw_enc_features |= NETIF_F_SG | NETIF_F_GSO_PARTIAL;
+
+	/* Make NETIF_F_SG inheritable to MPLS.
+	 */
+	dev->mpls_features |= NETIF_F_SG;
+}
+
 /**
  * register_netdevice() - register a network device
  * @dev: device to register
@@ -10224,47 +10303,7 @@ int register_netdevice(struct net_device *dev)
 		goto err_free_pcpu;
 	dev->ifindex = ret;
 
-	/* Transfer changeable features to wanted_features and enable
-	 * software offloads (GSO and GRO).
-	 */
-	dev->hw_features |= (NETIF_F_SOFT_FEATURES | NETIF_F_SOFT_FEATURES_OFF);
-	dev->features |= NETIF_F_SOFT_FEATURES;
-
-	if (dev->udp_tunnel_nic_info) {
-		dev->features |= NETIF_F_RX_UDP_TUNNEL_PORT;
-		dev->hw_features |= NETIF_F_RX_UDP_TUNNEL_PORT;
-	}
-
-	dev->wanted_features = dev->features & dev->hw_features;
-
-	if (!(dev->flags & IFF_LOOPBACK))
-		dev->hw_features |= NETIF_F_NOCACHE_COPY;
-
-	/* If IPv4 TCP segmentation offload is supported we should also
-	 * allow the device to enable segmenting the frame with the option
-	 * of ignoring a static IP ID value.  This doesn't enable the
-	 * feature itself but allows the user to enable it later.
-	 */
-	if (dev->hw_features & NETIF_F_TSO)
-		dev->hw_features |= NETIF_F_TSO_MANGLEID;
-	if (dev->vlan_features & NETIF_F_TSO)
-		dev->vlan_features |= NETIF_F_TSO_MANGLEID;
-	if (dev->mpls_features & NETIF_F_TSO)
-		dev->mpls_features |= NETIF_F_TSO_MANGLEID;
-	if (dev->hw_enc_features & NETIF_F_TSO)
-		dev->hw_enc_features |= NETIF_F_TSO_MANGLEID;
-
-	/* Make NETIF_F_HIGHDMA inheritable to VLAN devices.
-	 */
-	dev->vlan_features |= NETIF_F_HIGHDMA;
-
-	/* Make NETIF_F_SG inheritable to tunnel devices.
-	 */
-	dev->hw_enc_features |= NETIF_F_SG | NETIF_F_GSO_PARTIAL;
-
-	/* Make NETIF_F_SG inheritable to MPLS.
-	 */
-	dev->mpls_features |= NETIF_F_SG;
+	netdev_init_features(dev);
 
 	ret = call_netdevice_notifiers(NETDEV_POST_INIT, dev);
 	ret = notifier_to_errno(ret);
@@ -11174,6 +11213,123 @@ void unregister_netdev(struct net_device *dev)
 }
 EXPORT_SYMBOL(unregister_netdev);
 
+
+int register_private_netdevice(struct net_device *dev)
+{
+	struct net *net = dev_net(dev);
+	int ret;
+
+	might_sleep();
+	WARN_ON(dev->reg_state != NETREG_UNINITIALIZED);
+
+	ret = ethtool_check_ops(dev->ethtool_ops);
+	if (ret)
+		return ret;
+
+	if (!dev_valid_name(dev->name))
+		return -EINVAL;
+
+	ret = dev_index_reserve(net, dev->ifindex);
+	if (ret < 0)
+		return ret;
+
+	dev->ifindex = ret;
+
+	dev->name_node = netdev_name_node_head_alloc(dev);
+	if (!dev->name_node) {
+		ret = -ENOMEM;
+		goto release_index;
+	}
+
+	ret = netdev_do_alloc_pcpu_stats(dev);
+	if (ret)
+		goto free_name_node;
+
+	if (dev->netdev_ops->ndo_init) {
+		ret = dev->netdev_ops->ndo_init(dev);
+		if (ret) {
+			if (ret > 0)
+				ret = -EIO;
+			goto free_pcpu_stats;
+		}
+	}
+
+	spin_lock_init(&dev->addr_list_lock);
+	netdev_set_addr_lockdep_class(dev);
+	netdev_init_features(dev);
+
+	mutex_lock(&net->dev_base_mutex);
+
+	if (strchr(dev->name, '%'))
+		ret = __dev_alloc_name(net, dev->name, dev->name);
+	else if (netdev_name_in_use(net, dev->name))
+		ret = -EEXIST;
+
+	if (ret < 0)
+		goto ndo_uninit;
+
+	ret = netdev_register_kobject(dev);
+	if (ret) {
+		dev->reg_state = NETREG_UNREGISTERED;
+		goto ndo_uninit;
+	}
+
+	dev->reg_state = NETREG_REGISTERED;
+	list_private_netdevice(dev);
+
+	mutex_unlock(&net->dev_base_mutex);
+
+	set_bit(__LINK_STATE_PRESENT, &dev->state);
+	dev_init_scheduler(dev);
+	netdev_hold(dev, &dev->dev_registered_tracker, GFP_KERNEL);
+
+	if (dev->addr_assign_type == NET_ADDR_PERM)
+		memcpy(dev->perm_addr, dev->dev_addr, dev->addr_len);
+
+	return 0;
+
+ndo_uninit:
+	mutex_unlock(&net->dev_base_mutex);
+	if (dev->netdev_ops->ndo_uninit)
+		dev->netdev_ops->ndo_uninit(dev);
+	if (dev->priv_destructor)
+		dev->priv_destructor(dev);
+free_pcpu_stats:
+	netdev_do_free_pcpu_stats(dev);
+free_name_node:
+	netdev_name_node_free(dev->name_node);
+release_index:
+	dev_index_release(net, dev->ifindex);
+
+	return ret;
+}
+EXPORT_SYMBOL(register_private_netdevice);
+
+void unregister_private_netdevice(struct net_device *dev)
+{
+	struct net *net = dev_net(dev);
+
+	clear_bit(__LINK_STATE_START, &dev->state);
+
+	mutex_lock(&net->dev_base_mutex);
+
+	netdev_unregister_kobject(dev);
+	unlist_private_netdevice(dev);
+	dev->reg_state = NETREG_UNREGISTERED;
+
+	mutex_unlock(&net->dev_base_mutex);
+
+	if (dev->netdev_ops->ndo_uninit)
+		dev->netdev_ops->ndo_uninit(dev);
+	if (dev->priv_destructor)
+		dev->priv_destructor(dev);
+
+	netdev_do_free_pcpu_stats(dev);
+	netdev_name_node_free(dev->name_node);
+	netdev_put(dev, &dev->dev_registered_tracker);
+}
+EXPORT_SYMBOL(unregister_private_netdevice);
+
 /**
  *	__dev_change_net_namespace - move device to different nethost namespace
  *	@dev: device
@@ -11557,6 +11713,13 @@ static void __net_exit netdev_exit_common(struct net *net)
 
 static void __net_exit netdev_exit_private(struct net *net)
 {
+	struct net_device *dev, *aux;
+
+	for_each_netdev_safe(net, dev, aux) {
+		unregister_private_netdevice(dev);
+		free_netdev(dev);
+	}
+
 	netdev_exit_common(net);
 }
 

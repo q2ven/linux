@@ -3115,6 +3115,9 @@ static inline void unregister_netdevice(struct net_device *dev)
 	unregister_netdevice_queue(dev, NULL);
 }
 
+int register_private_netdevice(struct net_device *dev);
+void unregister_private_netdevice(struct net_device *dev);
+
 int netdev_refcnt_read(const struct net_device *dev);
 void free_netdev(struct net_device *dev);
 void netdev_freemem(struct net_device *dev);
