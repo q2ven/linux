@@ -1616,6 +1616,53 @@ const struct proc_ns_operations netns_operations = {
 	.owner		= netns_owner,
 };
 
+struct net *get_private_net_ns(int fd, struct file **filp)
+{
+	struct file *file = fget(fd);
+	struct nsset *nsset;
+	struct net *net;
+
+	if (!file)
+		goto err;
+
+	if (!nsfd_file(file))
+		goto put_file;
+
+	nsset = file->private_data;
+
+	/* prevent setns(). */
+	down_read(&nsset->nsfd_rwsem);
+
+	if (!(nsset->flags & CLONE_NEWNET))
+		goto unlock;
+
+	net = nsset->nsproxy->net_ns;
+	if (!net->private)
+		goto unlock;
+
+	*filp = file;
+
+	/* no fput() to prevent calling release_net_ns(). */
+	return net;
+
+unlock:
+	up_read(&nsset->nsfd_rwsem);
+put_file:
+	fput(file);
+err:
+	return NULL;
+}
+EXPORT_SYMBOL_GPL(get_private_net_ns);
+
+void put_private_net_ns(struct file *file)
+{
+	struct nsset *nsset = file->private_data;
+
+	up_read(&nsset->nsfd_rwsem);
+	fput(file);
+}
+EXPORT_SYMBOL_GPL(put_private_net_ns);
+
 struct net *create_net_ns(void)
 {
 	struct user_namespace *user_ns = task_cred_xxx(current, user_ns);

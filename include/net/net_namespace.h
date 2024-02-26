@@ -209,6 +209,9 @@ void net_ns_barrier(void);
 struct ns_common *get_net_ns(struct ns_common *ns);
 struct net *get_net_ns_by_fd(int fd);
 
+struct net *get_private_net_ns(int fd, struct file **file);
+void put_private_net_ns(struct file *file);
+
 struct net *create_net_ns(void);
 void release_net_ns(struct net *net);
 
