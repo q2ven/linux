@@ -11538,6 +11538,7 @@ static int __net_init netdev_init_private(struct net *net)
 		goto err_idx;
 
 	xa_init_flags(&net->dev_by_index, XA_FLAGS_ALLOC1);
+	mutex_init(&net->dev_base_mutex);
 
 	return 0;
 

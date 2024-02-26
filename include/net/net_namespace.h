@@ -117,6 +117,7 @@ struct net {
 	 */
 	u32			hash_mix;
 
+	struct mutex		dev_base_mutex;
 	bool			private;
 
 	struct net_device       *loopback_dev;          /* The loopback */
