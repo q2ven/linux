@@ -411,6 +411,43 @@ static __net_init void unpublish_net(struct net *net,
 	rcu_barrier();
 }
 
+static __net_init int publish_private_net(struct net *net)
+{
+	const struct pernet_operations *ops, *last_ops;
+	int error;
+
+	list_for_each_entry(ops, &pernet_list, list) {
+		if (ops->publish)
+			error = ops->publish(net);
+		else if (!ops->init_private && ops->init)
+			error = ops_init(ops, net);
+		if (error < 0)
+			goto out_undo;
+	}
+
+	net->private = false;
+
+	down_write(&net_rwsem);
+	list_del_rcu(&net->list);
+	list_add_tail_rcu(&net->list, &net_namespace_list);
+	up_write(&net_rwsem);
+out:
+	return error;
+
+out_undo:
+	down_write(&net_rwsem);
+	list_del_rcu(&net->list);
+	up_write(&net_rwsem);
+
+	last_ops = list_last_entry(&pernet_list, typeof(*last_ops), list);
+	list_for_each_entry_from_reverse(last_ops, &ops->list, list)
+		if (ops->exit_private)
+			ops->exit_private(net);
+
+	unpublish_net(net, ops);
+	goto out;
+}
+
 static __net_init int publish_net(struct net *net)
 {
 	/* Must be called with pernet_ops_rwsem held */
@@ -1545,8 +1582,20 @@ static int netns_install(struct nsset *nsset, struct ns_common *ns,
 	    !ns_capable(nsset->cred->user_ns, CAP_SYS_ADMIN))
 		return -EPERM;
 
-	if (private)
-		return -ENOTSUPP;
+	if (private) {
+		int ret = down_read_killable(&pernet_ops_rwsem);
+
+		if (ret < 0)
+			return ret;
+
+		*private = false;
+		ret = publish_private_net(net);
+
+		up_read(&pernet_ops_rwsem);
+
+		if (ret)
+			return ret;
+	}
 
 	put_net(nsproxy->net_ns);
 	nsproxy->net_ns = get_net(net);
@@ -1577,6 +1626,11 @@ struct net *create_net_ns(void)
 void release_net_ns(struct net *net)
 {
 	const struct pernet_operations *ops;
+
+	if (!net->private) {
+		put_net(net);
+		return;
+	}
 
 	down_read(&pernet_ops_rwsem);
 
