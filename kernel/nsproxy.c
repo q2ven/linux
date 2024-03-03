@@ -611,6 +611,11 @@ static int nsfd_release(struct inode *inode, struct file *file)
 	if (!nsset)
 		goto out;
 
+#ifdef CONFIG_NET_NS
+	if (nsset->flags & CLONE_NEWNET)
+		release_net_ns(nsset->nsproxy->net_ns);
+#endif
+
 	kmem_cache_free(nsproxy_cachep, nsset->nsproxy);
 	kfree(nsset);
 out:
@@ -633,7 +638,7 @@ SYSCALL_DEFINE1(getns, int, flags)
 	struct file *file;
 	int fd;
 
-	if (flags) {
+	if (flags & ~CLONE_NEWNET) {
 		fd = -ENOTSUPP;
 		goto out;
 	}
@@ -666,6 +671,17 @@ SYSCALL_DEFINE1(getns, int, flags)
 	nsset->private = true;
 	init_rwsem(&nsset->nsfd_rwsem);
 	file->private_data = nsset;
+
+#ifdef CONFIG_NET_NS
+	if (flags & CLONE_NEWNET) {
+		nsset->nsproxy->net_ns = create_net_ns();
+		if (IS_ERR(nsset->nsproxy->net_ns)) {
+			fd = PTR_ERR(nsset->nsproxy->net_ns);
+			goto put_file;
+		}
+		nsset->flags |= CLONE_NEWNET;
+	}
+#endif
 
 	fd_install(fd, file);
 out:

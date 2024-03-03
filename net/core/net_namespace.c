@@ -1494,4 +1494,13 @@ const struct proc_ns_operations netns_operations = {
 	.install	= netns_install,
 	.owner		= netns_owner,
 };
+
+struct net *create_net_ns(void)
+{
+	return ERR_PTR(-ENOTSUPP);
+}
+
+void release_net_ns(struct net *net)
+{
+}
 #endif
