@@ -4,6 +4,7 @@
 
 #include <linux/refcount.h>
 #include <linux/spinlock.h>
+#include <linux/rwsem.h>
 #include <linux/sched.h>
 
 struct mnt_namespace;
@@ -56,6 +57,8 @@ struct nsset {
 	struct nsproxy *nsproxy;
 	struct fs_struct *fs;
 	const struct cred *cred;
+	struct rw_semaphore nsfd_rwsem;
+	bool private;
 };
 
 static inline struct cred *nsset_cred(struct nsset *set)
@@ -112,4 +115,5 @@ static inline void get_nsproxy(struct nsproxy *ns)
 	refcount_inc(&ns->count);
 }
 
+bool nsfd_file(struct file *file);
 #endif

@@ -501,6 +501,17 @@ out:
 	return ret;
 }
 
+static int validate_nsfd(struct nsset *nsset, struct nsset *nsfd_nsset)
+{
+	down_write(&nsfd_nsset->nsfd_rwsem);
+
+	nsfd_nsset->private = false;
+
+	up_write(&nsfd_nsset->nsfd_rwsem);
+
+	return -ENOTSUPP;
+}
+
 /*
  * This is the point of no return. There are just a few namespaces
  * that do some actual work here and it's sufficiently minimal that
@@ -546,9 +557,10 @@ static void commit_nsset(struct nsset *nsset)
 
 SYSCALL_DEFINE2(setns, int, fd, int, flags)
 {
-	struct fd f = fdget(fd);
 	struct ns_common *ns = NULL;
+	struct nsset *nsfd_nsset;
 	struct nsset nsset = {};
+	struct fd f = fdget(fd);
 	int err = 0;
 
 	if (!f.file)
@@ -559,6 +571,10 @@ SYSCALL_DEFINE2(setns, int, fd, int, flags)
 		if (flags && (ns->ops->type != flags))
 			err = -EINVAL;
 		flags = ns->ops->type;
+	} else if (nsfd_file(f.file)) {
+		nsfd_nsset = f.file->private_data;
+		if (!(flags & nsfd_nsset->flags))
+			err = -EINVAL;
 	} else if (!IS_ERR(pidfd_pid(f.file))) {
 		err = check_setns_flags(flags);
 	} else {
@@ -573,6 +589,8 @@ SYSCALL_DEFINE2(setns, int, fd, int, flags)
 
 	if (proc_ns_file(f.file))
 		err = validate_ns(&nsset, ns);
+	else if (nsfd_file(f.file))
+		err = validate_nsfd(&nsset, nsfd_nsset);
 	else
 		err = validate_nsset(&nsset, pidfd_pid(f.file));
 	if (!err) {
@@ -602,6 +620,11 @@ out:
 const struct file_operations nsfd_fops = {
 	.release = nsfd_release,
 };
+
+bool nsfd_file(struct file *file)
+{
+	return file->f_op == &nsfd_fops;
+}
 
 SYSCALL_DEFINE1(getns, int, flags)
 {
@@ -640,6 +663,8 @@ SYSCALL_DEFINE1(getns, int, flags)
 
 	nsset->flags = 0;
 	nsset->nsproxy = ns;
+	nsset->private = true;
+	init_rwsem(&nsset->nsfd_rwsem);
 	file->private_data = nsset;
 
 	fd_install(fd, file);
