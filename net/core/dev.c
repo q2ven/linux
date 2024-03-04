@@ -11426,47 +11426,6 @@ netdev_features_t netdev_increment_features(netdev_features_t all,
 }
 EXPORT_SYMBOL(netdev_increment_features);
 
-static struct hlist_head * __net_init netdev_create_hash(void)
-{
-	int i;
-	struct hlist_head *hash;
-
-	hash = kmalloc_array(NETDEV_HASHENTRIES, sizeof(*hash), GFP_KERNEL);
-	if (hash != NULL)
-		for (i = 0; i < NETDEV_HASHENTRIES; i++)
-			INIT_HLIST_HEAD(&hash[i]);
-
-	return hash;
-}
-
-/* Initialize per network namespace state */
-static int __net_init netdev_init(struct net *net)
-{
-	BUILD_BUG_ON(GRO_HASH_BUCKETS >
-		     8 * sizeof_field(struct napi_struct, gro_bitmask));
-
-	INIT_LIST_HEAD(&net->dev_base_head);
-
-	net->dev_name_head = netdev_create_hash();
-	if (net->dev_name_head == NULL)
-		goto err_name;
-
-	net->dev_index_head = netdev_create_hash();
-	if (net->dev_index_head == NULL)
-		goto err_idx;
-
-	xa_init_flags(&net->dev_by_index, XA_FLAGS_ALLOC1);
-
-	RAW_INIT_NOTIFIER_HEAD(&net->netdev_chain);
-
-	return 0;
-
-err_idx:
-	kfree(net->dev_name_head);
-err_name:
-	return -ENOMEM;
-}
-
 /**
  *	netdev_drivername - network driver for the device
  *	@dev: network device
@@ -11550,16 +11509,83 @@ define_netdev_printk_level(netdev_warn, KERN_WARNING);
 define_netdev_printk_level(netdev_notice, KERN_NOTICE);
 define_netdev_printk_level(netdev_info, KERN_INFO);
 
+static struct hlist_head * __net_init netdev_create_hash(void)
+{
+	int i;
+	struct hlist_head *hash;
+
+	hash = kmalloc_array(NETDEV_HASHENTRIES, sizeof(*hash), GFP_KERNEL);
+	if (hash != NULL)
+		for (i = 0; i < NETDEV_HASHENTRIES; i++)
+			INIT_HLIST_HEAD(&hash[i]);
+
+	return hash;
+}
+
+static int __net_init netdev_init_private(struct net *net)
+{
+	BUILD_BUG_ON(GRO_HASH_BUCKETS >
+		     8 * sizeof_field(struct napi_struct, gro_bitmask));
+
+	INIT_LIST_HEAD(&net->dev_base_head);
+
+	net->dev_name_head = netdev_create_hash();
+	if (net->dev_name_head == NULL)
+		goto err_name;
+
+	net->dev_index_head = netdev_create_hash();
+	if (net->dev_index_head == NULL)
+		goto err_idx;
+
+	xa_init_flags(&net->dev_by_index, XA_FLAGS_ALLOC1);
+
+	return 0;
+
+err_idx:
+	kfree(net->dev_name_head);
+err_name:
+	return -ENOMEM;
+}
+
+static void __net_exit netdev_exit_common(struct net *net)
+{
+	xa_destroy(&net->dev_by_index);
+	kfree(net->dev_index_head);
+	kfree(net->dev_name_head);
+}
+
+static void __net_exit netdev_exit_private(struct net *net)
+{
+	netdev_exit_common(net);
+}
+
+static int __net_init netdev_publish(struct net *net)
+{
+	RAW_INIT_NOTIFIER_HEAD(&net->netdev_chain);
+	return 0;
+}
+
+/* Initialize per network namespace state */
+static int __net_init netdev_init(struct net *net)
+{
+	if (netdev_init_private(net))
+		return -ENOMEM;
+
+	return netdev_publish(net);
+}
+
 static void __net_exit netdev_exit(struct net *net)
 {
-	kfree(net->dev_name_head);
-	kfree(net->dev_index_head);
-	xa_destroy(&net->dev_by_index);
+	netdev_exit_common(net);
+
 	if (net != &init_net)
 		WARN_ON_ONCE(!list_empty(&net->dev_base_head));
 }
 
 static struct pernet_operations __net_initdata netdev_net_ops = {
+	.init_private = netdev_init_private,
+	.exit_private = netdev_exit_private,
+	.publish = netdev_publish,
 	.init = netdev_init,
 	.exit = netdev_exit,
 };
