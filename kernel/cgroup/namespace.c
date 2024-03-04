@@ -95,7 +95,8 @@ static inline struct cgroup_namespace *to_cg_ns(struct ns_common *ns)
 	return container_of(ns, struct cgroup_namespace, ns);
 }
 
-static int cgroupns_install(struct nsset *nsset, struct ns_common *ns)
+static int cgroupns_install(struct nsset *nsset, struct ns_common *ns,
+			    bool *private)
 {
 	struct nsproxy *nsproxy = nsset->nsproxy;
 	struct cgroup_namespace *cgroup_ns = to_cg_ns(ns);

@@ -361,9 +361,15 @@ out:
 	return -ENOMEM;
 }
 
+static inline int __validate_ns(struct nsset *nsset, struct ns_common *ns,
+				bool *private)
+{
+	return ns->ops->install(nsset, ns, private);
+}
+
 static inline int validate_ns(struct nsset *nsset, struct ns_common *ns)
 {
-	return ns->ops->install(nsset, ns);
+	return __validate_ns(nsset, ns, NULL);
 }
 
 /*

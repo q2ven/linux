@@ -230,7 +230,8 @@ static void ipcns_put(struct ns_common *ns)
 	return put_ipc_ns(to_ipc_ns(ns));
 }
 
-static int ipcns_install(struct nsset *nsset, struct ns_common *new)
+static int ipcns_install(struct nsset *nsset, struct ns_common *new,
+			 bool *private)
 {
 	struct nsproxy *nsproxy = nsset->nsproxy;
 	struct ipc_namespace *ns = to_ipc_ns(new);

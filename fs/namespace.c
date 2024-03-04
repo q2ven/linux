@@ -5390,7 +5390,8 @@ static void mntns_put(struct ns_common *ns)
 	put_mnt_ns(to_mnt_ns(ns));
 }
 
-static int mntns_install(struct nsset *nsset, struct ns_common *ns)
+static int mntns_install(struct nsset *nsset, struct ns_common *ns,
+			 bool *private)
 {
 	struct nsproxy *nsproxy = nsset->nsproxy;
 	struct fs_struct *fs = nsset->fs;

@@ -301,7 +301,8 @@ void timens_commit(struct task_struct *tsk, struct time_namespace *ns)
 	vdso_join_timens(tsk, ns);
 }
 
-static int timens_install(struct nsset *nsset, struct ns_common *new)
+static int timens_install(struct nsset *nsset, struct ns_common *new,
+			  bool *private)
 {
 	struct nsproxy *nsproxy = nsset->nsproxy;
 	struct time_namespace *ns = to_time_ns(new);

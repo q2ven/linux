@@ -137,7 +137,8 @@ static void utsns_put(struct ns_common *ns)
 	put_uts_ns(to_uts_ns(ns));
 }
 
-static int utsns_install(struct nsset *nsset, struct ns_common *new)
+static int utsns_install(struct nsset *nsset, struct ns_common *new,
+			 bool *private)
 {
 	struct nsproxy *nsproxy = nsset->nsproxy;
 	struct uts_namespace *ns = to_uts_ns(new);
