@@ -509,13 +509,33 @@ out:
 
 static int validate_nsfd(struct nsset *nsset, struct nsset *nsfd_nsset)
 {
+	bool *private_ptr = NULL;
+	int ret = -EBADF;
+	bool private;
+
 	down_write(&nsfd_nsset->nsfd_rwsem);
 
-	nsfd_nsset->private = false;
+	if (nsfd_nsset->private)
+		private_ptr = &private;
 
+#ifdef CONFIG_NET_NS
+	if (nsfd_nsset->flags & CLONE_NEWNET) {
+		private = nsfd_nsset->private;
+
+		ret = __validate_ns(nsset, &nsfd_nsset->nsproxy->net_ns->ns,
+				    private_ptr);
+		if (ret) {
+			if (private_ptr && !private)
+				nsfd_nsset->flags &= ~CLONE_NEWNET;
+			goto unlock;
+		}
+	}
+#endif
+	nsfd_nsset->private = false;
+unlock:
 	up_write(&nsfd_nsset->nsfd_rwsem);
 
-	return -ENOTSUPP;
+	return ret;
 }
 
 /*

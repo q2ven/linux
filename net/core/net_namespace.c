@@ -1545,6 +1545,9 @@ static int netns_install(struct nsset *nsset, struct ns_common *ns,
 	    !ns_capable(nsset->cred->user_ns, CAP_SYS_ADMIN))
 		return -EPERM;
 
+	if (private)
+		return -ENOTSUPP;
+
 	put_net(nsproxy->net_ns);
 	nsproxy->net_ns = get_net(net);
 	return 0;
