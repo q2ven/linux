@@ -217,7 +217,11 @@ static __net_init int loopback_net_init(struct net *net)
 		goto out;
 
 	dev_net_set(dev, net);
-	err = register_netdev(dev);
+
+	if (net->private)
+		err = register_private_netdevice(dev);
+	else
+		err = register_netdev(dev);
 	if (err)
 		goto out_free_netdev;
 
@@ -235,6 +239,7 @@ out:
 
 /* Registered in net/core/dev.c */
 struct pernet_operations __net_initdata loopback_net_ops = {
+	.init_private = loopback_net_init,
 	.init = loopback_net_init,
 };
 
