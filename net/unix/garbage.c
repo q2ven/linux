@@ -374,10 +374,8 @@ static void unix_collect_skb(struct list_head *scc, struct sk_buff_head *hitlist
 			skb_queue_splice_init(queue, hitlist);
 
 #if IS_ENABLED(CONFIG_AF_UNIX_OOB)
-			if (u->oob_skb) {
-				kfree_skb(u->oob_skb);
-				u->oob_skb = NULL;
-			}
+			WARN_ON_ONCE(skb_unref(u->oob_skb));
+			u->oob_skb = NULL;
 #endif
 		}
 
