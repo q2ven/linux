@@ -272,12 +272,11 @@ void unix_update_edges(struct unix_sock *receiver)
 int unix_prepare_fpl(struct scm_fp_list *fpl)
 {
 	struct unix_vertex *vertex;
-	int i;
 
 	if (!fpl->count_unix)
 		return 0;
 
-	for (i = 0; i < fpl->count_unix; i++) {
+	for (int i = 0; i < fpl->count_unix; i++) {
 		vertex = kmalloc(sizeof(*vertex), GFP_KERNEL);
 		if (!vertex)
 			goto err;
