@@ -102,6 +102,7 @@ struct net {
 	struct ctl_table_set	sysctls;
 #endif
 
+	struct mutex		rtnl_mutex;
 	struct sock 		*rtnl;			/* rtnetlink socket */
 	struct sock		*genl_sock;
 

@@ -49,6 +49,21 @@ extern bool refcount_dec_and_rtnl_lock(refcount_t *r);
 
 DEFINE_LOCK_GUARD_0(rtnl, rtnl_lock(), rtnl_unlock())
 
+/* Once rtnl_net_lock() is added in all necessary places within
+ * rtnl_lock() scope, replace it with rtnl_lock_deprecated() so
+ * that we need not work on the scope and can finally remove all
+ * rtnl_lock_deprecated() in the future.
+ */
+#define rtnl_lock_deprecated() rtnl_lock()
+#define rtnl_unlock_deprecated() rtnl_unlock()
+#define rtnl_trylock_deprecated() rtnl_trylock()
+#define rtnl_lock_killable_deprecated() rtnl_lock_killable()
+
+void rtnl_net_lock(struct net *net);
+void rtnl_net_unlock(struct net *net);
+void rtnl_net_double_lock(struct net *net_a, struct net *net_b);
+void rtnl_net_double_unlock(struct net *net_a, struct net *net_b);
+
 extern wait_queue_head_t netdev_unregistering_wq;
 extern atomic_t dev_unreg_count;
 extern struct rw_semaphore pernet_ops_rwsem;
@@ -56,6 +71,7 @@ extern struct rw_semaphore net_rwsem;
 
 #ifdef CONFIG_PROVE_LOCKING
 extern bool lockdep_rtnl_is_held(void);
+int rtnl_net_lock_cmp_fn(const struct lockdep_map *a, const struct lockdep_map *b);
 #else
 static inline bool lockdep_rtnl_is_held(void)
 {
