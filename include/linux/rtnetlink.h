@@ -164,8 +164,22 @@ static inline void rtnl_across_net_unlock(struct net *net_a, struct net *net_b)
 
 #ifdef CONFIG_PROVE_LOCKING
 extern bool lockdep_rtnl_is_held(void);
+#ifdef CONFIG_NET_SPLIT_RTNL_LOCK
+extern int rtnl_net_is_locked(struct net *net);
+extern bool lockdep_rtnl_net_is_held(struct net *net);
 #else
+#define rtnl_net_is_locked(net) rtnl_is_locked()
+#define lockdep_rtnl_net_is_held(net) lockdep_rtnl_is_held()
+#endif
+#else
+#define rtnl_net_is_locked(net) rtnl_is_locked()
+
 static inline bool lockdep_rtnl_is_held(void)
+{
+	return true;
+}
+
+static inline bool lockdep_rtnl_net_is_held(struct net *net)
 {
 	return true;
 }
@@ -203,6 +217,13 @@ static inline bool lockdep_rtnl_is_held(void)
 #define rcu_replace_pointer_rtnl(rp, p)			\
 	rcu_replace_pointer(rp, p, lockdep_rtnl_is_held())
 
+#define rcu_dereference_rtnl_net(net, p)				\
+	rcu_dereference_check(p, lockdep_rtnl_net_is_held(net))
+#define rtnl_net_dereference(net, p)					\
+	rcu_dereference_protected(p, lockdep_rtnl_net_is_held(net))
+#define rcu_replace_pointer_rtnl_net(net, rp, p)			\
+	rcu_replace_pointer(rp, p, lockdep_rtnl_net_is_held(net))
+
 static inline struct netdev_queue *dev_ingress_queue(struct net_device *dev)
 {
 	return rtnl_dereference(dev->ingress_queue);
@@ -233,6 +254,10 @@ void rtnl_kfree_skbs(struct sk_buff *head, struct sk_buff *tail);
 #define ASSERT_RTNL() \
 	WARN_ONCE(!rtnl_is_locked(), \
 		  "RTNL: assertion failed at %s (%d)\n", __FILE__,  __LINE__)
+
+#define ASSERT_RTNL_NET(net) \
+	WARN_ONCE(!rtnl_net_is_locked(net), \
+		  "RTNL_NET: assertion failed at %s (%d)\n", __FILE__,  __LINE__)
 
 extern int ndo_dflt_fdb_dump(struct sk_buff *skb,
 			     struct netlink_callback *cb,
