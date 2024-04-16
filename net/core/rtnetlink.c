@@ -227,6 +227,12 @@ void rtnl_net_double_unlock(struct net *net_a, struct net *net_b)
 }
 EXPORT_SYMBOL(rtnl_net_double_unlock);
 
+bool rtnl_net_is_locked(struct net *net)
+{
+	return mutex_is_locked(&net->rtnl_mutex);
+}
+EXPORT_SYMBOL(rtnl_net_is_locked);
+
 #ifdef CONFIG_PROVE_LOCKING
 bool lockdep_rtnl_is_held(void)
 {
@@ -243,6 +249,12 @@ int rtnl_net_lock_cmp_fn(const struct lockdep_map *a, const struct lockdep_map *
 
 	return rtnl_net_cmp_locks(net_a, net_b);
 }
+
+bool lockdep_rtnl_net_is_held(struct net *net)
+{
+	return lockdep_rtnl_is_held() && lockdep_is_held(&net->rtnl_mutex);
+}
+EXPORT_SYMBOL(lockdep_rtnl_net_is_held);
 #endif /* #ifdef CONFIG_PROVE_LOCKING */
 
 static struct rtnl_link __rcu *__rcu *rtnl_msg_handlers[RTNL_FAMILY_MAX + 1];
