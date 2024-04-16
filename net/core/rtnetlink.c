@@ -165,6 +165,12 @@ int rtnl_is_locked(void)
 }
 EXPORT_SYMBOL(rtnl_is_locked);
 
+int rtnl_net_is_locked(struct net *net)
+{
+	return mutex_is_locked(&net->rtnl_mutex);
+}
+EXPORT_SYMBOL(rtnl_net_is_locked);
+
 bool refcount_dec_and_rtnl_lock(refcount_t *r)
 {
 	return refcount_dec_and_mutex_lock(r, &rtnl_mutex);
@@ -177,6 +183,12 @@ bool lockdep_rtnl_is_held(void)
 	return lockdep_is_held(&rtnl_mutex);
 }
 EXPORT_SYMBOL(lockdep_rtnl_is_held);
+
+bool lockdep_rtnl_net_is_held(struct net *net)
+{
+	return lockdep_rtnl_is_held() && lockdep_is_held(&net->rtnl_mutex);
+}
+EXPORT_SYMBOL(lockdep_rtnl_net_is_held);
 #endif /* #ifdef CONFIG_PROVE_LOCKING */
 
 static struct rtnl_link __rcu *__rcu *rtnl_msg_handlers[RTNL_FAMILY_MAX + 1];
