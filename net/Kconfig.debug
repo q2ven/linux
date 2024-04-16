@@ -24,3 +24,14 @@ config DEBUG_NET
 	help
 	  Enable extra sanity checks in networking.
 	  This is mostly used by fuzzers, but is safe to select.
+
+config NET_SPLIT_RTNL_LOCK
+	bool "Add extra per-netns RTNL locking"
+	depends on DEBUG_KERNEL && LOCKDEP && NET
+	help
+	  Add extra per-netns RTNL locking inside the rtnl_lock()
+	  critical section for future removal of the big lock.
+
+	  Once all rtnl_lock() instances were replaced with
+	  rtnl_net_lock(net) or rtnl_across_net_lock(net1, net2),
+	  rtnl_lock() would be removed completely.
