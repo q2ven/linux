@@ -49,6 +49,58 @@ extern bool refcount_dec_and_rtnl_lock(refcount_t *r);
 
 DEFINE_LOCK_GUARD_0(rtnl, rtnl_lock(), rtnl_unlock())
 
+/* Once rtnl_net_lock() is added in all necessary places within
+ * rtnl_lock() scope, replace it with rtnl_lock_deprecated() so
+ * that we need not work on the scope and can mechanically remove
+ * it in the future.
+ */
+#define rtnl_lock_deprecated() rtnl_lock()
+#define rtnl_unlock_deprecated() rtnl_unlock()
+
+static inline void rtnl_net_lock(struct net *net)
+{
+	mutex_lock(&net->rtnl_mutex);
+}
+
+static inline void rtnl_net_unlock(struct net *net)
+{
+	mutex_unlock(&net->rtnl_mutex);
+}
+
+static inline bool rtnl_net_lock_need_swap(struct net *net_a, struct net *net_b)
+{
+	/* always init_net first */
+	if (net_eq(net_b, &init_net))
+		return true;
+
+	/* otherwise lock in ascending order */
+	if (net_a > net_b)
+		return true;
+
+	return false;
+}
+
+static inline void rtnl_across_net_lock(struct net *net_a, struct net *net_b)
+{
+	if (net_eq(net_a, net_b))
+		return rtnl_net_lock(net_a);
+
+	if (rtnl_net_lock_need_swap(net_a, net_b))
+		swap(net_a, net_b);
+
+	rtnl_net_lock(net_a);
+	rtnl_net_lock(net_b);
+}
+
+static inline void rtnl_across_net_unlock(struct net *net_a, struct net *net_b)
+{
+	if (net_eq(net_a, net_b))
+		return rtnl_net_unlock(net_a);
+
+	rtnl_net_unlock(net_b);
+	rtnl_net_unlock(net_a);
+}
+
 extern wait_queue_head_t netdev_unregistering_wq;
 extern atomic_t dev_unreg_count;
 extern struct rw_semaphore pernet_ops_rwsem;
