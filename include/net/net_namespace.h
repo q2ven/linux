@@ -188,6 +188,10 @@ struct net {
 #if IS_ENABLED(CONFIG_SMC)
 	struct netns_smc	smc;
 #endif
+#ifdef CONFIG_NET_SPLIT_RTNL_LOCK
+	/* Move to hot spot when rtnl_lock() removal is completed. */
+	struct mutex		rtnl_lock;
+#endif
 } __randomize_layout;
 
 #include <linux/seq_file_net.h>
