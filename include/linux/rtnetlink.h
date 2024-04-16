@@ -54,6 +54,114 @@ extern atomic_t dev_unreg_count;
 extern struct rw_semaphore pernet_ops_rwsem;
 extern struct rw_semaphore net_rwsem;
 
+#ifdef CONFIG_NET_SPLIT_RTNL_LOCK
+static inline void __rtnl_net_lock(struct net *net)
+{
+	lockdep_assert_not_held(&net->rtnl_lock);
+	mutex_lock(&net->rtnl_lock);
+}
+
+static inline void __rtnl_net_unlock(struct net *net)
+{
+	lockdep_assert_held(&net->rtnl_lock);
+	mutex_unlock(&net->rtnl_lock);
+}
+
+static inline void rtnl_net_lock(struct net *net)
+{
+	rtnl_lock();
+	__rtnl_net_lock(net);
+}
+
+static inline int rtnl_net_lock_killable(struct net *net)
+{
+	int ret = rtnl_lock_killable();
+
+	if (!ret)
+		__rtnl_net_lock(net);
+
+	return ret;
+}
+
+static inline void rtnl_net_unlock(struct net *net)
+{
+	__rtnl_net_unlock(net);
+	rtnl_unlock();
+}
+
+static inline bool rtnl_net_lock_need_swap(struct net *net_a, struct net *net_b)
+{
+	/* always init_net first */
+	if (net_eq(net_b, &init_net))
+		return true;
+
+	/* otherwise lock in ascending order */
+	if (net_a > net_b)
+		return true;
+
+	return false;
+}
+
+static inline void __rtnl_across_net_lock(struct net *net_a, struct net *net_b)
+{
+	__rtnl_net_lock(net_a);
+	__rtnl_net_lock(net_b);
+}
+
+static inline void __rtnl_across_net_unlock(struct net *net_a, struct net *net_b)
+{
+	__rtnl_net_unlock(net_a);
+	__rtnl_net_unlock(net_b);
+}
+
+static inline void rtnl_across_net_lock(struct net *net_a, struct net *net_b)
+{
+	if (net_eq(net_a, net_b))
+		return rtnl_net_lock(net_a);
+
+	if (rtnl_net_lock_need_swap(net_a, net_b))
+		swap(net_a, net_b);
+
+	rtnl_lock();
+	__rtnl_across_net_lock(net_a, net_b);
+}
+
+static inline int rtnl_across_net_lock_killable(struct net *net_a, struct net *net_b)
+{
+	int ret;
+
+	if (net_eq(net_a, net_b))
+		return rtnl_net_lock_killable(net_a);
+
+	if (rtnl_net_lock_need_swap(net_a, net_b))
+		swap(net_a, net_b);
+
+	ret = rtnl_lock_killable();
+	if (!ret)
+		__rtnl_across_net_lock(net_a, net_b);
+
+	return ret;
+}
+
+static inline void rtnl_across_net_unlock(struct net *net_a, struct net *net_b)
+{
+	if (net_eq(net_a, net_b))
+		return rtnl_net_unlock(net_a);
+
+	__rtnl_across_net_unlock(net_a, net_b);
+	rtnl_unlock();
+}
+#else
+#define __rtnl_net_lock(net)
+#define __rtnl_net_unlock(net)
+#define rtnl_net_lock(net) rtnl_lock()
+#define rtnl_net_lock_killable(net) rtnl_lock_killable()
+#define rtnl_net_unlock(net) rtnl_unlock()
+#define rtnl_across_net_lock(net_a, net_b) rtnl_lock()
+#define rtnl_across_net_lock_killable(net_a, net_b) rtnl_lock_killable()
+#define rtnl_across_net_unlock(net_a, net_b) rtnl_unlock()
+#endif
+
 #ifdef CONFIG_PROVE_LOCKING
 extern bool lockdep_rtnl_is_held(void);
 #else
