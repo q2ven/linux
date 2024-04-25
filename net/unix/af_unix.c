@@ -3700,6 +3700,8 @@ static int __init af_unix_init(void)
 		INIT_HLIST_HEAD(&bsd_socket_buckets[i]);
 	}
 
+	unix_gc_init();
+
 	rc = proto_register(&unix_dgram_proto, 1);
 	if (rc != 0) {
 		pr_crit("%s: Cannot create unix_sock SLAB cache!\n", __func__);

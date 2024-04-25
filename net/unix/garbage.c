@@ -575,7 +575,7 @@ static void unix_walk_scc_fast(struct sk_buff_head *hitlist)
 
 static bool gc_in_progress;
 
-static void __unix_gc(struct work_struct *work)
+static void __unix_gc(void *data)
 {
 	struct sk_buff_head hitlist;
 	struct sk_buff *skb;
@@ -601,7 +601,22 @@ static void __unix_gc(struct work_struct *work)
 	WRITE_ONCE(gc_in_progress, false);
 }
 
-static DECLARE_WORK(unix_gc_work, __unix_gc);
+static int unix_gc(void *data)
+{
+	while (!kthread_should_stop()) {
+		__unix_gc();
+
+		if (kthread_should_park())
+			kthread_parkme();
+
+		set_current_state(TASK_IDLE);
+		schedule();
+	}
+
+	return 0;
+}
+
+struct task_struct *unix_gc_kthread;
 
 #define UNIX_INFLIGHT_SANE_CIRCLES (1 << 10)
 #define UNIX_INFLIGHT_SANE_SOCKETS (1 << 14)
@@ -636,16 +651,29 @@ static void __unix_schedule_gc(struct scm_fp_list *fpl)
 		wait = true;
 
 schedule:
-	if (!READ_ONCE(gc_in_progress)) {
+	if (READE_ONCE(gc_in_progress)) {
+		if (wait)
+			kthread_park(unix_gc_kthread);
+	} else {
 		WRITE_ONCE(gc_in_progress, true);
-		queue_work(system_unbound_wq, &unix_gc_work);
-	}
 
-	if (wait)
-		flush_work(&unix_gc_work);
+		if (wait)
+			kthread_park(unix_gc_kthread);
+		else
+			wake_up_process(unix_gc_kthread);
+	}
 }
 
 void unix_schedule_gc(void)
 {
 	__unix_schedule_gc(NULL);
+}
+
+int __init unix_gc_init(void)
+{
+	unix_gc_kthread = kthread_create(unix_gc, NULL, "unix_gc");
+	if (IS_ERR(unix_gc_kthread))
+		return PTR_ERR(unix_gc_kthread);
+
+	return 0;
 }

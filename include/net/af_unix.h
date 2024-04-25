@@ -23,6 +23,7 @@ void unix_update_edges(struct unix_sock *receiver);
 int unix_prepare_fpl(struct scm_fp_list *fpl);
 void unix_destroy_fpl(struct scm_fp_list *fpl);
 void unix_schedule_gc(void);
+int unix_gc_init(void);
 
 struct unix_vertex {
 	struct list_head edges;
