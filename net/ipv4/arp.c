@@ -1062,8 +1062,8 @@ static int arp_req_set_proxy(struct net *net, struct net_device *dev, int on)
 		IPV4_DEVCONF_ALL(net, PROXY_ARP) = on;
 		return 0;
 	}
-	if (__in_dev_get_rtnl(dev)) {
-		IN_DEV_CONF_SET(__in_dev_get_rtnl(dev), PROXY_ARP, on);
+	if (__in_dev_get_rtnl_net(dev)) {
+		IN_DEV_CONF_SET(__in_dev_get_rtnl_net(dev), PROXY_ARP, on);
 		return 0;
 	}
 	return -ENXIO;
@@ -1293,14 +1293,14 @@ int arp_ioctl(struct net *net, unsigned int cmd, void __user *arg)
 
 	switch (cmd) {
 	case SIOCDARP:
-		rtnl_lock();
+		rtnl_net_lock(net);
 		err = arp_req_delete(net, &r);
-		rtnl_unlock();
+		rtnl_net_unlock(net);
 		break;
 	case SIOCSARP:
-		rtnl_lock();
+		rtnl_net_lock(net);
 		err = arp_req_set(net, &r);
-		rtnl_unlock();
+		rtnl_net_unlock(net);
 		break;
 	case SIOCGARP:
 		rcu_read_lock();
@@ -1333,7 +1333,7 @@ static int arp_netdev_event(struct notifier_block *this, unsigned long event,
 		if (change_info->flags_changed & IFF_NOARP)
 			neigh_changeaddr(&arp_tbl, dev);
 
-		in_dev = __in_dev_get_rtnl(dev);
+		in_dev = __in_dev_get_rtnl_net(dev);
 		if (!in_dev)
 			evict_nocarrier = true;
 		else
