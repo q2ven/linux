@@ -3756,24 +3756,27 @@ replay:
 	if (dev) {
 		err = rtnl_setlink_via_newlink(skb, nlh, tbs, extack, dev, ops);
 		dev_put(dev);
-		return err;
+		goto put_ops;
 	}
 
 	if (!(nlh->nlmsg_flags & NLM_F_CREATE)) {
 		/* No dev found and NLM_F_CREATE not set. Requested dev does not exist,
 		 * or it's for a group
 		*/
-		if (link_specified)
-			return -ENODEV;
-		if (tb[IFLA_GROUP])
-			return rtnl_group_changelink(skb, net,
-						nla_get_u32(tb[IFLA_GROUP]),
-						ifm, extack, tb);
-		return -ENODEV;
+		if (link_specified || !tb[IFLA_GROUP]) {
+			err = -ENODEV;
+			goto put_ops;
+		}
+
+		err = rtnl_group_changelink(skb, net, nla_get_u32(tb[IFLA_GROUP]),
+					    ifm, extack, tb);
+		goto put_ops;
 	}
 
-	if (tb[IFLA_MAP] || tb[IFLA_PROTINFO])
-		return -EOPNOTSUPP;
+	if (tb[IFLA_MAP] || tb[IFLA_PROTINFO]) {
+		err = -EOPNOTSUPP;
+		goto put_ops;
+	}
 
 	if (!ops) {
 #ifdef CONFIG_MODULES
@@ -3790,7 +3793,10 @@ replay:
 		return -EOPNOTSUPP;
 	}
 
-	return rtnl_newlink_create(skb, ifm, ops, nlh, tbs, extack);
+	err = rtnl_newlink_create(skb, ifm, ops, nlh, tbs, extack);
+
+put_ops:
+	return err;
 }
 
 static int rtnl_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
