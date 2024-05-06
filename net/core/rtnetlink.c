@@ -397,16 +397,39 @@ void rtnl_unregister_all(int protocol)
 EXPORT_SYMBOL_GPL(rtnl_unregister_all);
 
 static LIST_HEAD(link_ops);
+static DEFINE_SPINLOCK(link_ops_lock);
 
-static const struct rtnl_link_ops *rtnl_link_ops_get(const char *kind)
+static struct rtnl_link_ops *__rtnl_link_ops_get(const char *kind)
 {
-	const struct rtnl_link_ops *ops;
+	struct rtnl_link_ops *ops;
 
 	list_for_each_entry(ops, &link_ops, list) {
 		if (!strcmp(ops->kind, kind))
 			return ops;
 	}
+
 	return NULL;
+}
+
+static struct rtnl_link_ops *rtnl_link_ops_get(const char *kind)
+{
+	struct rtnl_link_ops *ops;
+
+	spin_lock(&link_ops_lock);
+
+	ops = __rtnl_link_ops_get(kind);
+	if (ops && !refcount_inc_not_zero(&ops->refcnt))
+		ops = NULL;
+
+	spin_unlock(&link_ops_lock);
+
+	return ops;
+}
+
+static void rtnl_link_ops_put(struct rtnl_link_ops *ops)
+{
+	if (refcount_dec_and_test(&ops->refcnt))
+		wake_up(&ops->wait_queue);
 }
 
 /**
@@ -421,8 +444,14 @@ static const struct rtnl_link_ops *rtnl_link_ops_get(const char *kind)
  */
 int __rtnl_link_register(struct rtnl_link_ops *ops)
 {
-	if (rtnl_link_ops_get(ops->kind))
-		return -EEXIST;
+	int err = 0;
+
+	spin_lock(&link_ops_lock);
+
+	if (__rtnl_link_ops_get(ops->kind)) {
+		err = -EEXIST;
+		goto unlock;
+	}
 
 	/* The check for alloc/setup is here because if ops
 	 * does not have that filled up, it is not possible
@@ -432,8 +461,12 @@ int __rtnl_link_register(struct rtnl_link_ops *ops)
 	if ((ops->alloc || ops->setup) && !ops->dellink)
 		ops->dellink = unregister_netdevice_queue;
 
+	refcount_set(&ops->refcnt, 1);
 	list_add_tail(&ops->list, &link_ops);
-	return 0;
+unlock:
+	spin_unlock(&link_ops_lock);
+
+	return err;
 }
 EXPORT_SYMBOL_GPL(__rtnl_link_register);
 
@@ -486,7 +519,10 @@ void __rtnl_link_unregister(struct rtnl_link_ops *ops)
 	for_each_net(net) {
 		__rtnl_kill_links(net, ops);
 	}
+
+	spin_lock(&link_ops_lock);
 	list_del(&ops->list);
+	spin_unlock(&link_ops_lock);
 }
 EXPORT_SYMBOL_GPL(__rtnl_link_unregister);
 
@@ -518,6 +554,18 @@ static void rtnl_lock_unregistering_all(void)
  */
 void rtnl_link_unregister(struct rtnl_link_ops *ops)
 {
+	if (!refcount_dec_and_test(&ops->refcnt)) {
+		DEFINE_WAIT_FUNC(wait, woken_wake_function);
+
+		add_wait_queue_exclusive(&ops->wait_queue, &wait);
+
+		do {
+			wait_woken(&wait, TASK_UNINTERRUPTIBLE, MAX_SCHEDULE_TIMEOUT);
+		} while (refcount_read(&ops->refcnt));
+
+		remove_wait_queue(&ops->wait_queue, &wait);
+	}
+
 	/* Close the race with setup_net() and cleanup_net() */
 	down_write(&pernet_ops_rwsem);
 	rtnl_lock_unregistering_all();
@@ -2095,10 +2143,10 @@ static const struct nla_policy ifla_xdp_policy[IFLA_XDP_MAX + 1] = {
 	[IFLA_XDP_PROG_ID]	= { .type = NLA_U32 },
 };
 
-static const struct rtnl_link_ops *linkinfo_to_kind_ops(const struct nlattr *nla)
+static struct rtnl_link_ops *linkinfo_to_kind_ops(const struct nlattr *nla)
 {
-	const struct rtnl_link_ops *ops = NULL;
 	struct nlattr *linfo[IFLA_INFO_MAX + 1];
+	struct rtnl_link_ops *ops = NULL;
 
 	if (nla_parse_nested_deprecated(linfo, IFLA_INFO_MAX, nla, ifla_info_policy, NULL) < 0)
 		return NULL;
@@ -2227,8 +2275,8 @@ static int rtnl_valid_dump_ifinfo_req(const struct nlmsghdr *nlh,
 
 static int rtnl_dump_ifinfo(struct sk_buff *skb, struct netlink_callback *cb)
 {
-	const struct rtnl_link_ops *kind_ops = NULL;
 	struct netlink_ext_ack *extack = cb->extack;
+	struct rtnl_link_ops *kind_ops = NULL;
 	const struct nlmsghdr *nlh = cb->nlh;
 	struct net *net = sock_net(skb->sk);
 	unsigned int flags = NLM_F_MULTI;
@@ -2302,6 +2350,8 @@ walk_entries:
 	nl_dump_check_consistent(cb, nlmsg_hdr(skb));
 	if (netnsid >= 0)
 		put_net(tgt_net);
+	if (kind_ops)
+		rtnl_link_ops_put(kind_ops);
 
 	return err;
 }
@@ -3699,8 +3749,8 @@ static int __rtnl_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 	struct nlattr **linkinfo = tbs->linkinfo;
 	struct nlattr ** const tb = tbs->tb;
 	struct net *net = sock_net(skb->sk);
-	const struct rtnl_link_ops *ops;
 	char kind[MODULE_NAME_LEN];
+	struct rtnl_link_ops *ops;
 	struct net_device *dev;
 	struct ifinfomsg *ifm;
 	bool link_specified;
@@ -3785,8 +3835,10 @@ replay:
 			request_module("rtnl-link-%s", kind);
 			rtnl_lock();
 			ops = rtnl_link_ops_get(kind);
-			if (ops)
+			if (ops) {
+				rtnl_link_ops_put(ops);
 				goto replay;
+			}
 		}
 #endif
 		NL_SET_ERR_MSG(extack, "Unknown device type");
@@ -3796,6 +3848,9 @@ replay:
 	err = rtnl_newlink_create(skb, ifm, ops, nlh, tbs, extack);
 
 put_ops:
+	if (ops)
+		rtnl_link_ops_put(ops);
+
 	return err;
 }
 

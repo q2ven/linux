@@ -4,6 +4,7 @@
 
 #include <linux/rtnetlink.h>
 #include <net/netlink.h>
+#include <linux/refcount.h>
 
 typedef int (*rtnl_doit_func)(struct sk_buff *, struct nlmsghdr *,
 			      struct netlink_ext_ack *);
@@ -79,6 +80,8 @@ static inline int rtnl_msg_family(const struct nlmsghdr *nlh)
  */
 struct rtnl_link_ops {
 	struct list_head	list;
+	refcount_t		refcnt;
+	wait_queue_head_t	wait_queue;
 
 	const char		*kind;
 
