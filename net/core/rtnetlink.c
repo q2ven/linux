@@ -3174,6 +3174,18 @@ static struct net_device *rtnl_dev_get(struct net *net,
 	return __dev_get_by_name(net, ifname);
 }
 
+static struct net_device *rtnl_dev_get_hold(struct net *net, struct nlattr *tb[])
+{
+	char ifname[ALTIFNAMSIZ];
+
+	if (tb[IFLA_IFNAME])
+		nla_strscpy(ifname, tb[IFLA_IFNAME], IFNAMSIZ);
+	else
+		nla_strscpy(ifname, tb[IFLA_ALT_IFNAME], ALTIFNAMSIZ);
+
+	return dev_get_by_name(net, ifname);
+}
+
 static int rtnl_setlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 			struct netlink_ext_ack *extack)
 {
@@ -3707,18 +3719,9 @@ replay:
 		return err;
 
 	ifm = nlmsg_data(nlh);
-	if (ifm->ifi_index > 0) {
-		link_specified = true;
-		dev = __dev_get_by_index(net, ifm->ifi_index);
-	} else if (ifm->ifi_index < 0) {
+	if (ifm->ifi_index < 0) {
 		NL_SET_ERR_MSG(extack, "ifindex can't be negative");
 		return -EINVAL;
-	} else if (tb[IFLA_IFNAME] || tb[IFLA_ALT_IFNAME]) {
-		link_specified = true;
-		dev = rtnl_dev_get(net, tb);
-	} else {
-		link_specified = false;
-		dev = NULL;
 	}
 
 	if (tb[IFLA_LINKINFO]) {
@@ -3727,8 +3730,20 @@ replay:
 						  ifla_info_policy, NULL);
 		if (err < 0)
 			return err;
-	} else
+	} else {
 		memset(linkinfo, 0, sizeof(tbs->linkinfo));
+	}
+
+	if (ifm->ifi_index > 0) {
+		link_specified = true;
+		dev = dev_get_by_index(net, ifm->ifi_index);
+	} else if (tb[IFLA_IFNAME] || tb[IFLA_ALT_IFNAME]) {
+		link_specified = true;
+		dev = rtnl_dev_get_hold(net, tb);
+	} else {
+		link_specified = false;
+		dev = NULL;
+	}
 
 	if (linkinfo[IFLA_INFO_KIND]) {
 		nla_strscpy(kind, linkinfo[IFLA_INFO_KIND], sizeof(kind));
@@ -3738,8 +3753,11 @@ replay:
 		ops = NULL;
 	}
 
-	if (dev)
-		return rtnl_setlink_via_newlink(skb, nlh, tbs, extack, dev, ops);
+	if (dev) {
+		err = rtnl_setlink_via_newlink(skb, nlh, tbs, extack, dev, ops);
+		dev_put(dev);
+		return err;
+	}
 
 	if (!(nlh->nlmsg_flags & NLM_F_CREATE)) {
 		/* No dev found and NLM_F_CREATE not set. Requested dev does not exist,
