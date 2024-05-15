@@ -3804,8 +3804,10 @@ replay:
 	}
 
 	if (dev) {
+		rtnl_lock();
 		err = rtnl_setlink_via_newlink(skb, nlh, tbs, extack, dev, ops);
 		dev_put(dev);
+		rtnl_unlock();
 		goto put_ops;
 	}
 
@@ -3818,8 +3820,10 @@ replay:
 			goto put_ops;
 		}
 
+		rtnl_lock();
 		err = rtnl_group_changelink(skb, net, nla_get_u32(tb[IFLA_GROUP]),
 					    ifm, extack, tb);
+		rtnl_unlock();
 		goto put_ops;
 	}
 
@@ -3831,9 +3835,8 @@ replay:
 	if (!ops) {
 #ifdef CONFIG_MODULES
 		if (kind[0]) {
-			__rtnl_unlock();
 			request_module("rtnl-link-%s", kind);
-			rtnl_lock();
+
 			ops = rtnl_link_ops_get(kind);
 			if (ops) {
 				rtnl_link_ops_put(ops);
@@ -3845,7 +3848,9 @@ replay:
 		return -EOPNOTSUPP;
 	}
 
+	rtnl_lock();
 	err = rtnl_newlink_create(skb, ifm, ops, nlh, tbs, extack);
+	rtnl_unlock();
 
 put_ops:
 	if (ops)
