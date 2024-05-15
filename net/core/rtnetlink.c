@@ -3452,8 +3452,7 @@ static int rtnl_setlink_via_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 				    struct rtnl_newlink_tbs *tbs,
 				    struct netlink_ext_ack *extack,
 				    struct net_device *dev,
-				    const struct rtnl_link_ops *ops,
-				    struct nlattr **data)
+				    const struct rtnl_link_ops *ops)
 {
 	struct nlattr *slave_attr[RTNL_SLAVE_MAX_TYPE + 1];
 	const struct rtnl_link_ops *m_ops = NULL;
@@ -3496,8 +3495,29 @@ static int rtnl_setlink_via_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 		return err;
 
 	if (linkinfo[IFLA_INFO_DATA]) {
+		struct nlattr **data = NULL;
+
 		if (!ops || ops != dev->rtnl_link_ops || !ops->changelink)
 			return -EOPNOTSUPP;
+
+		if (ops->maxtype > RTNL_MAX_TYPE)
+			return -EINVAL;
+
+		if (ops->maxtype) {
+			err = nla_parse_nested_deprecated(tbs->attr, ops->maxtype,
+							  linkinfo[IFLA_INFO_DATA],
+							  ops->policy, extack);
+			if (err < 0)
+				return err;
+
+			data = tbs->attr;
+		}
+
+		if (ops->validate) {
+			err = ops->validate(tb, data, extack);
+			if (err < 0)
+				return err;
+		}
 
 		err = ops->changelink(dev, tb, data, extack);
 		if (err < 0)
@@ -3546,19 +3566,44 @@ static int rtnl_group_changelink(const struct sk_buff *skb,
 static int rtnl_newlink_create(struct sk_buff *skb, struct ifinfomsg *ifm,
 			       const struct rtnl_link_ops *ops,
 			       const struct nlmsghdr *nlh,
-			       struct nlattr **tb, struct nlattr **data,
+			       struct rtnl_newlink_tbs *tbs,
 			       struct netlink_ext_ack *extack)
 {
 	unsigned char name_assign_type = NET_NAME_USER;
 	struct net *net = sock_net(skb->sk);
 	u32 portid = NETLINK_CB(skb).portid;
 	struct net *dest_net, *link_net;
+	struct nlattr **tb = tbs->tb;
+	struct nlattr **data = NULL;
 	struct net_device *dev;
 	char ifname[IFNAMSIZ];
 	int err;
 
 	if (!ops->alloc && !ops->setup)
 		return -EOPNOTSUPP;
+
+	if (ops->newlink) {
+		struct nlattr **linkinfo = tbs->linkinfo;
+
+		if (ops->maxtype > RTNL_MAX_TYPE)
+			return -EINVAL;
+
+		if (ops->maxtype && linkinfo[IFLA_INFO_DATA]) {
+			err = nla_parse_nested_deprecated(tbs->attr, ops->maxtype,
+							  linkinfo[IFLA_INFO_DATA],
+							  ops->policy, extack);
+			if (err < 0)
+				return err;
+
+			data = tbs->attr;
+		}
+
+		if (ops->validate) {
+			err = ops->validate(tb, data, extack);
+			if (err < 0)
+				return err;
+		}
+	}
 
 	if (tb[IFLA_IFNAME]) {
 		nla_strscpy(ifname, tb[IFLA_IFNAME], IFNAMSIZ);
@@ -3646,7 +3691,6 @@ static int __rtnl_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 	char kind[MODULE_NAME_LEN];
 	struct net_device *dev;
 	struct ifinfomsg *ifm;
-	struct nlattr **data;
 	bool link_specified;
 	int err;
 
@@ -3694,28 +3738,8 @@ replay:
 		ops = NULL;
 	}
 
-	data = NULL;
-	if (ops) {
-		if (ops->maxtype > RTNL_MAX_TYPE)
-			return -EINVAL;
-
-		if (ops->maxtype && linkinfo[IFLA_INFO_DATA]) {
-			err = nla_parse_nested_deprecated(tbs->attr, ops->maxtype,
-							  linkinfo[IFLA_INFO_DATA],
-							  ops->policy, extack);
-			if (err < 0)
-				return err;
-			data = tbs->attr;
-		}
-		if (ops->validate) {
-			err = ops->validate(tb, data, extack);
-			if (err < 0)
-				return err;
-		}
-	}
-
 	if (dev)
-		return rtnl_setlink_via_newlink(skb, nlh, tbs, extack, dev, ops, data);
+		return rtnl_setlink_via_newlink(skb, nlh, tbs, extack, dev, ops);
 
 	if (!(nlh->nlmsg_flags & NLM_F_CREATE)) {
 		/* No dev found and NLM_F_CREATE not set. Requested dev does not exist,
@@ -3748,7 +3772,7 @@ replay:
 		return -EOPNOTSUPP;
 	}
 
-	return rtnl_newlink_create(skb, ifm, ops, nlh, tb, data, extack);
+	return rtnl_newlink_create(skb, ifm, ops, nlh, tbs, extack);
 }
 
 static int rtnl_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
