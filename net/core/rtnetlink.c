@@ -3694,11 +3694,13 @@ static int rtnl_newlink_create(struct sk_buff *skb, struct ifinfomsg *ifm,
 		link_net = NULL;
 	}
 
+	rtnl_across_net_lock(link_net ? : net, dest_net);
+
 	dev = rtnl_create_link(link_net ? : dest_net, ifname,
 			       name_assign_type, ops, tb, extack);
 	if (IS_ERR(dev)) {
 		err = PTR_ERR(dev);
-		goto out;
+		goto unlock;
 	}
 
 	dev->ifindex = ifm->ifi_index;
@@ -3709,7 +3711,7 @@ static int rtnl_newlink_create(struct sk_buff *skb, struct ifinfomsg *ifm,
 		err = register_netdevice(dev);
 	if (err < 0) {
 		free_netdev(dev);
-		goto out;
+		goto unlock;
 	}
 
 	err = rtnl_configure_link(dev, ifm, portid, nlh);
@@ -3725,6 +3727,9 @@ static int rtnl_newlink_create(struct sk_buff *skb, struct ifinfomsg *ifm,
 		if (err)
 			goto out_unregister;
 	}
+
+unlock:
+	rtnl_across_net_unlock(link_net ? : net, dest_net);
 out:
 	if (link_net)
 		put_net(link_net);
@@ -3739,7 +3744,7 @@ out_unregister:
 	} else {
 		unregister_netdevice(dev);
 	}
-	goto out;
+	goto unlock;
 }
 
 static int __rtnl_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
@@ -3848,9 +3853,9 @@ replay:
 		return -EOPNOTSUPP;
 	}
 
-	rtnl_lock();
+	rtnl_lock_deprecated();
 	err = rtnl_newlink_create(skb, ifm, ops, nlh, tbs, extack);
-	rtnl_unlock();
+	rtnl_unlock_deprecated();
 
 put_ops:
 	if (ops)
