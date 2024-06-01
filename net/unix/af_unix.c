@@ -1343,17 +1343,51 @@ static void unix_state_double_unlock(struct sock *sk1, struct sock *sk2)
 	unix_state_unlock(sk2);
 }
 
+static void unix_dgram_disconnect(struct sock *sk, int addr_len)
+{
+	struct sock *peer;
+
+	unix_state_lock(sk);
+
+	peer = unix_peer(sk);
+	if (!peer)
+		goto unlock;
+
+	/* 1003.1g breaking connected state with AF_UNSPEC */
+	WRITE_ONCE(sk->sk_state, TCP_CLOSE);
+	unix_peer(sk) = NULL;
+	unix_dgram_peer_wake_disconnect_wakeup(sk, peer);
+	unix_state_unlock(sk);
+
+	unix_dgram_disconnected(sk, peer);
+
+	unix_state_lock(peer);
+	if (!unix_peer(peer))
+		WRITE_ONCE(peer->sk_state, TCP_CLOSE);
+	unix_state_unlock(peer);
+
+	sock_put(peer);
+unlock:
+	unix_state_unlock(sk);
+}
+
 static int unix_dgram_connect(struct socket *sock, struct sockaddr *addr,
 			      int alen, int flags)
 {
 	struct sockaddr_un *sunaddr = (struct sockaddr_un *)addr;
 	struct sock *sk = sock->sk;
 	struct sock *other;
-	int err;
+	int err = 0;
 
-	err = -EINVAL;
-	if (alen < offsetofend(struct sockaddr, sa_family))
+	if (alen < offsetofend(struct sockaddr, sa_family)) {
+		err = -EINVAL;
 		goto out;
+	}
+
+	if (addr->sa_family == AF_UNSPEC) {
+		unix_dgram_disconnect(sk, alen);
+		goto out;
+	}
 
 	if (addr->sa_family != AF_UNSPEC) {
 		err = unix_validate_addr(sunaddr, alen);
@@ -1398,12 +1432,6 @@ restart:
 
 		WRITE_ONCE(sk->sk_state, TCP_ESTABLISHED);
 		WRITE_ONCE(other->sk_state, TCP_ESTABLISHED);
-	} else {
-		/*
-		 *	1003.1g breaking connected state with AF_UNSPEC
-		 */
-		other = NULL;
-		unix_state_double_lock(sk, other);
 	}
 
 	/*
@@ -1413,8 +1441,6 @@ restart:
 		struct sock *old_peer = unix_peer(sk);
 
 		unix_peer(sk) = other;
-		if (!other)
-			WRITE_ONCE(sk->sk_state, TCP_CLOSE);
 		unix_dgram_peer_wake_disconnect_wakeup(sk, old_peer);
 
 		unix_state_double_unlock(sk, other);
