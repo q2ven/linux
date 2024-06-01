@@ -1375,8 +1375,8 @@ static int unix_dgram_connect(struct socket *sock, struct sockaddr *addr,
 			      int alen, int flags)
 {
 	struct sockaddr_un *sunaddr = (struct sockaddr_un *)addr;
+	struct sock *other, *old_peer;
 	struct sock *sk = sock->sk;
-	struct sock *other;
 	int err = 0;
 
 	if (alen < offsetofend(struct sockaddr, sa_family)) {
@@ -1389,78 +1389,74 @@ static int unix_dgram_connect(struct socket *sock, struct sockaddr *addr,
 		goto out;
 	}
 
-	if (addr->sa_family != AF_UNSPEC) {
-		err = unix_validate_addr(sunaddr, alen);
+	err = unix_validate_addr(sunaddr, alen);
+	if (err)
+		goto out;
+
+	err = BPF_CGROUP_RUN_PROG_UNIX_CONNECT_LOCK(sk, addr, &alen);
+	if (err)
+		goto out;
+
+	if ((test_bit(SOCK_PASSCRED, &sock->flags) ||
+	     test_bit(SOCK_PASSPIDFD, &sock->flags)) &&
+	    !READ_ONCE(unix_sk(sk)->addr)) {
+		err = unix_autobind(sk);
 		if (err)
 			goto out;
-
-		err = BPF_CGROUP_RUN_PROG_UNIX_CONNECT_LOCK(sk, addr, &alen);
-		if (err)
-			goto out;
-
-		if ((test_bit(SOCK_PASSCRED, &sock->flags) ||
-		     test_bit(SOCK_PASSPIDFD, &sock->flags)) &&
-		    !READ_ONCE(unix_sk(sk)->addr)) {
-			err = unix_autobind(sk);
-			if (err)
-				goto out;
-		}
+	}
 
 restart:
-		other = unix_find_other(sock_net(sk), sunaddr, alen, sock->type);
-		if (IS_ERR(other)) {
-			err = PTR_ERR(other);
-			goto out;
-		}
+	other = unix_find_other(sock_net(sk), sunaddr, alen, sock->type);
+	if (IS_ERR(other)) {
+		err = PTR_ERR(other);
+		goto out;
+	}
 
-		unix_state_double_lock(sk, other);
+	unix_state_double_lock(sk, other);
 
-		/* Apparently VFS overslept socket death. Retry. */
-		if (sock_flag(other, SOCK_DEAD)) {
-			unix_state_double_unlock(sk, other);
-			sock_put(other);
-			goto restart;
-		}
+	/* Apparently VFS overslept socket death. Retry. */
+	if (sock_flag(other, SOCK_DEAD)) {
+		unix_state_double_unlock(sk, other);
+		sock_put(other);
+		goto restart;
+	}
 
+	if (!unix_may_send(sk, other)) {
 		err = -EPERM;
-		if (!unix_may_send(sk, other))
-			goto out_unlock;
-
-		err = security_unix_may_send(sk->sk_socket, other->sk_socket);
-		if (err)
-			goto out_unlock;
-
-		WRITE_ONCE(sk->sk_state, TCP_ESTABLISHED);
-		WRITE_ONCE(other->sk_state, TCP_ESTABLISHED);
+		goto out_unlock;
 	}
 
-	/*
-	 * If it was connected, reconnect.
-	 */
-	if (unix_peer(sk)) {
-		struct sock *old_peer = unix_peer(sk);
+	err = security_unix_may_send(sk->sk_socket, other->sk_socket);
+	if (err)
+		goto out_unlock;
 
-		unix_peer(sk) = other;
-		unix_dgram_peer_wake_disconnect_wakeup(sk, old_peer);
+	WRITE_ONCE(sk->sk_state, TCP_ESTABLISHED);
+	WRITE_ONCE(other->sk_state, TCP_ESTABLISHED);
 
-		unix_state_double_unlock(sk, other);
-
-		if (other != old_peer) {
-			unix_dgram_disconnected(sk, old_peer);
-
-			unix_state_lock(old_peer);
-			if (!unix_peer(old_peer))
-				WRITE_ONCE(old_peer->sk_state, TCP_CLOSE);
-			unix_state_unlock(old_peer);
-		}
-
-		sock_put(old_peer);
-	} else {
+	old_peer = unix_peer(sk);
+	if (likely(!old_peer)) {
 		unix_peer(sk) = other;
 		unix_state_double_unlock(sk, other);
+		goto out;
 	}
 
-	return 0;
+	/* it was connected, reconnect. */
+	unix_peer(sk) = other;
+	unix_dgram_peer_wake_disconnect_wakeup(sk, old_peer);
+
+	unix_state_double_unlock(sk, other);
+
+	if (other != old_peer) {
+		unix_dgram_disconnected(sk, old_peer);
+
+		unix_state_lock(old_peer);
+		if (!unix_peer(old_peer))
+			WRITE_ONCE(old_peer->sk_state, TCP_CLOSE);
+		unix_state_unlock(old_peer);
+	}
+
+	sock_put(old_peer);
+	goto out;
 
 out_unlock:
 	unix_state_double_unlock(sk, other);
