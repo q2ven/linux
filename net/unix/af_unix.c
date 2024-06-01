@@ -1421,6 +1421,9 @@ restart:
 		goto restart;
 	}
 
+	if (unix_peer(sk) == other)
+		goto out_unlock;
+
 	if (!unix_may_send(sk, other)) {
 		err = -EPERM;
 		goto out_unlock;
@@ -1446,14 +1449,12 @@ restart:
 
 	unix_state_double_unlock(sk, other);
 
-	if (other != old_peer) {
-		unix_dgram_disconnected(sk, old_peer);
+	unix_dgram_disconnected(sk, old_peer);
 
-		unix_state_lock(old_peer);
-		if (!unix_peer(old_peer))
-			WRITE_ONCE(old_peer->sk_state, TCP_CLOSE);
-		unix_state_unlock(old_peer);
-	}
+	unix_state_lock(old_peer);
+	if (!unix_peer(old_peer))
+		WRITE_ONCE(old_peer->sk_state, TCP_CLOSE);
+	unix_state_unlock(old_peer);
 
 	sock_put(old_peer);
 	goto out;
