@@ -2063,13 +2063,17 @@ restart_locked:
 			unix_state_unlock(sk);
 			err = -EPIPE;
 		} else if (unix_peer(sk) == other) {
+			if (skb_queue_empty(&sk->sk_receive_queue)) {
+				skb_queue_purge(&sk->sk_receive_queue);
+				wake_up_interruptible_all(&u->peer_wait);
+			}
+
 			unix_peer(sk) = NULL;
 			unix_dgram_peer_wake_disconnect_wakeup(sk, other);
 
 			WRITE_ONCE(sk->sk_state, TCP_CLOSE);
 			unix_state_unlock(sk);
 
-			unix_dgram_disconnected(sk, other);
 			sock_put(other);
 			err = -ECONNREFUSED;
 		} else {
