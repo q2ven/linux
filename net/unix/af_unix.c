@@ -1445,6 +1445,12 @@ restart:
 
 	/* it was connected, reconnect. */
 	unix_peer(sk) = other;
+
+	if (!skb_queue_empty_lockless(&sk->sk_receive_queue)) {
+		skb_queue_purge(&sk->sk_receive_queue);
+		wake_up_interruptible_all(&unix_sk(sk)->peer_wait);
+	}
+
 	unix_dgram_peer_wake_disconnect_wakeup(sk, old_peer);
 
 	unix_state_double_unlock(sk, other);
