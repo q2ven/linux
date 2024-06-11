@@ -102,16 +102,20 @@ int __skb_wait_for_more_packets(struct sock *sk, struct sk_buff_head *queue,
 		goto out;
 
 	/* Socket shut down? */
-	if (sk->sk_shutdown & RCV_SHUTDOWN)
+	if (READ_ONCE(sk->sk_shutdown) & RCV_SHUTDOWN)
 		goto out_noerr;
 
 	/* Sequenced packets can come disconnected.
 	 * If so we report the problem
 	 */
-	error = -ENOTCONN;
-	if (connection_based(sk) &&
-	    !(sk->sk_state == TCP_ESTABLISHED || sk->sk_state == TCP_LISTEN))
-		goto out_err;
+	if (connection_based(sk)) {
+		unsigned char state = READ_ONCE(sk->sk_state);
+
+		if(state != TCP_ESTABLISHED && state != TCP_LISTEN) {
+			error = -ENOTCONN;
+			goto out_err;
+		}
+	}
 
 	/* handle signals */
 	if (signal_pending(current))
