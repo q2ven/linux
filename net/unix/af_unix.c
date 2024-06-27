@@ -994,6 +994,8 @@ struct proto unix_stream_proto = {
 #endif
 };
 
+static atomic_t unix_id;
+
 static struct sock *unix_create1(struct net *net, struct socket *sock, int kern, int type)
 {
 	struct unix_sock *u;
@@ -1026,6 +1028,7 @@ static struct sock *unix_create1(struct net *net, struct socket *sock, int kern,
 	lock_set_cmp_fn(&sk->sk_receive_queue.lock, unix_recvq_lock_cmp_fn, NULL);
 
 	u = unix_sk(sk);
+	u->id = atomic_inc_return(&unix_id);
 	u->listener = NULL;
 	u->vertex = NULL;
 	u->path.dentry = NULL;

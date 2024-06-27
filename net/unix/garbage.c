@@ -160,7 +160,7 @@ static void unix_add_edge(struct scm_fp_list *fpl, struct unix_edge *edge)
 		list_move_tail(&vertex->entry, &unix_unvisited_vertices);
 		edge->predecessor->vertex = vertex;
 	}
-
+	printk(KERN_ERR "add: %d -> %d\n", edge->predecessor->id, edge->successor->id);
 	vertex->out_degree++;
 	list_add_tail(&edge->vertex_entry, &vertex->edges);
 
@@ -171,8 +171,10 @@ static void unix_del_edge(struct scm_fp_list *fpl, struct unix_edge *edge)
 {
 	struct unix_vertex *vertex = edge->predecessor->vertex;
 
-	if (!fpl->dead)
+	if (!fpl->dead) {
 		unix_update_graph(unix_edge_successor(edge));
+		printk(KERN_ERR "del: %d -> %d\n", edge->predecessor->id, edge->successor->id);
+	}
 
 	list_del(&edge->vertex_entry);
 	vertex->out_degree--;
@@ -401,6 +403,16 @@ static bool unix_scc_cyclic(struct list_head *scc)
 
 static LIST_HEAD(unix_visited_vertices);
 static unsigned long unix_vertex_grouped_index = UNIX_VERTEX_INDEX_MARK2;
+static void *vp;
+
+static struct unix_sock *vertex_sk(struct unix_vertex *vertex)
+{
+	struct unix_edge *edge;
+
+	edge = list_first_entry(&vertex->edges, typeof(*edge), vertex_entry);
+
+	return edge->predecessor;
+}
 
 static void __unix_walk_scc(struct unix_vertex *vertex, unsigned long *last_index,
 			    struct sk_buff_head *hitlist)
@@ -408,8 +420,11 @@ static void __unix_walk_scc(struct unix_vertex *vertex, unsigned long *last_inde
 	LIST_HEAD(vertex_stack);
 	struct unix_edge *edge;
 	LIST_HEAD(edge_stack);
-
+	vp = NULL;
+	printk(KERN_ERR "__unix_walk_scc()\n");
 next_vertex:
+	printk(KERN_ERR "vertex: %d\n", vertex_sk(vertex)->id);
+
 	/* Push vertex to vertex_stack and mark it as on-stack
 	 * (index >= UNIX_VERTEX_INDEX_START).
 	 * The vertex will be popped when finalising SCC later.
@@ -424,6 +439,7 @@ next_vertex:
 	list_for_each_entry(edge, &vertex->edges, vertex_entry) {
 		struct unix_vertex *next_vertex = unix_edge_successor(edge);
 
+		printk(KERN_ERR "Checking  %d -> %d\n", edge->predecessor->id, edge->successor->id);
 		if (!next_vertex)
 			continue;
 
@@ -434,7 +450,6 @@ next_vertex:
 			 *      the successor to vertex for the next iteration.
 			 */
 			list_add(&edge->stack_entry, &edge_stack);
-
 			vertex = next_vertex;
 			goto next_vertex;
 
@@ -444,8 +459,9 @@ next_vertex:
 prev_vertex:
 			edge = list_first_entry(&edge_stack, typeof(*edge), stack_entry);
 			list_del_init(&edge->stack_entry);
-
+			printk(KERN_ERR "Backtracking  %d -> %d\n", edge->predecessor->id, edge->successor->id);
 			next_vertex = vertex;
+			WARN_ON(next_vertex == vp);
 			vertex = edge->predecessor->vertex;
 
 			/* If the successor has a smaller scc_index, two vertices
@@ -471,6 +487,9 @@ prev_vertex:
 		struct list_head scc;
 		bool scc_dead = true;
 
+		printk(KERN_ERR "SCC Found, vertex: %px\n", vertex);
+
+		vp = container_of(&scc, struct unix_vertex, scc_entry);
 		/* SCC finalised.
 		 *
 		 * If the scc_index was not updated, all the vertices above on
@@ -479,6 +498,7 @@ prev_vertex:
 		__list_cut_position(&scc, &vertex_stack, &vertex->scc_entry);
 
 		list_for_each_entry_reverse(v, &scc, scc_entry) {
+			printk(KERN_ERR "\t%d (%px)\n", vertex_sk(v)->id, vertex);
 			/* Don't restart DFS from this vertex in unix_walk_scc(). */
 			list_move_tail(&v->entry, &unix_visited_vertices);
 
@@ -489,12 +509,15 @@ prev_vertex:
 				scc_dead = unix_vertex_dead(v);
 		}
 
+		vertex = list_last_entry(&scc, struct unix_vertex, scc_entry);
+
 		if (scc_dead)
 			unix_collect_skb(&scc, hitlist);
 		else if (!unix_graph_maybe_cyclic)
 			unix_graph_maybe_cyclic = unix_scc_cyclic(&scc);
 
 		list_del(&scc);
+		printk(KERN_ERR "vertex: %px, scc: %px, id: %d\n", vertex, &scc, vertex_sk(vertex)->id);
 	}
 
 	/* Need backtracking ? */
