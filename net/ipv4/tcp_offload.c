@@ -293,6 +293,45 @@ struct tcphdr *tcp_gro_pull_header(struct sk_buff *skb)
 	return th;
 }
 
+static bool tcp_gro_parse_options(const struct tcphdr *th, unsigned int thlen)
+{
+	const unsigned char *ptr = (const unsigned char *)(th + 1);
+	int length = thlen - sizeof(*th);
+
+	while (length > 0) {
+		unsigned char opcode = *ptr++;
+		unsigned char opsize;
+
+		switch (opcode) {
+		case TCPOPT_EOL:
+			goto out;
+		case TCPOPT_NOP:
+			length--;
+			continue;
+		}
+
+		if (unlikely(length < 2))
+			goto out;
+
+		opsize = *ptr++;
+		if (unlikely(opsize < 2))
+			goto out;
+		if (unlikely(opsize > length))
+			goto out;
+
+		if (opcode == TCPOPT_EXP &&
+		    opsize >= TCPOLEN_EXP_EDO_EXT_HDR &&
+		    get_unaligned_be16(ptr) == TCPOPT_EDO_MAGIC)
+			return true;
+
+		ptr += opsize - 2;
+		length -= opsize;
+	}
+
+out:
+	return false;
+}
+
 struct sk_buff *tcp_gro_receive(struct list_head *head, struct sk_buff *skb,
 				struct tcphdr *th)
 {
@@ -303,46 +342,75 @@ struct sk_buff *tcp_gro_receive(struct list_head *head, struct sk_buff *skb,
 	unsigned int len;
 	__be32 flags;
 	unsigned int mss = 1;
-	int flush = 1;
+	int flush = 0;
+	bool edo;
 	int i;
+
+	edo = tcp_gro_parse_options(th, thlen);
+#define kuniyu								\
+	do {								\
+		if (edo) {						\
+			printk(KERN_ERR "flush: %d at %s:%d\n",		\
+			       flush, __FUNCTION__, __LINE__);		\
+		}							\
+	} while (0)
 
 	len = skb_gro_len(skb);
 	flags = tcp_flag_word(th);
 
+	kuniyu;
 	p = tcp_gro_lookup(head, th);
-	if (!p)
+	if (!p) {
+		flush = 1;
 		goto out_check_final;
+	}
+	kuniyu;
 
 	th2 = tcp_hdr(p);
 	flush = (__force int)(flags & TCP_FLAG_CWR);
+	kuniyu;
 	flush |= (__force int)((flags ^ tcp_flag_word(th2)) &
 		  ~(TCP_FLAG_CWR | TCP_FLAG_FIN | TCP_FLAG_PSH));
+	kuniyu;
 	flush |= (__force int)(th->ack_seq ^ th2->ack_seq);
+	kuniyu;
 	for (i = sizeof(*th); i < thlen; i += 4)
 		flush |= *(u32 *)((u8 *)th + i) ^
 			 *(u32 *)((u8 *)th2 + i);
+	kuniyu;
 
 	flush |= gro_receive_network_flush(th, th2, p);
 
+	kuniyu;
 	mss = skb_shinfo(p)->gso_size;
 
 	/* If skb is a GRO packet, make sure its gso_size matches prior packet mss.
 	 * If it is a single frame, do not aggregate it if its length
 	 * is bigger than our mss.
 	 */
-	if (unlikely(skb_is_gso(skb)))
+	if (unlikely(skb_is_gso(skb))) {
 		flush |= (mss != skb_shinfo(skb)->gso_size);
-	else
+		kuniyu;
+	} else{
 		flush |= (len - 1) >= mss;
+		kuniyu;
+	}
 
 	flush |= (ntohl(th2->seq) + skb_gro_len(p)) ^ ntohl(th->seq);
+	kuniyu;
+
 	flush |= skb_cmp_decrypted(p, skb);
+	kuniyu;
 
 	if (unlikely(NAPI_GRO_CB(p)->is_flist)) {
 		flush |= (__force int)(flags ^ tcp_flag_word(th2));
+	kuniyu;
 		flush |= skb->ip_summed != p->ip_summed;
+	kuniyu;
 		flush |= skb->csum_level != p->csum_level;
+	kuniyu;
 		flush |= NAPI_GRO_CB(p)->count >= 64;
+	kuniyu;
 
 		if (flush || skb_gro_receive_list(p, skb))
 			mss = 1;
@@ -350,7 +418,9 @@ struct sk_buff *tcp_gro_receive(struct list_head *head, struct sk_buff *skb,
 		goto out_check_final;
 	}
 
+	kuniyu;
 	if (flush || skb_gro_receive(p, skb)) {
+	kuniyu;
 		mss = 1;
 		goto out_check_final;
 	}
@@ -359,14 +429,18 @@ struct sk_buff *tcp_gro_receive(struct list_head *head, struct sk_buff *skb,
 
 out_check_final:
 	/* Force a flush if last segment is smaller than mss. */
-	if (unlikely(skb_is_gso(skb)))
+	if (unlikely(skb_is_gso(skb))) {
 		flush = len != NAPI_GRO_CB(skb)->count * skb_shinfo(skb)->gso_size;
-	else
+		kuniyu;
+	} else {
 		flush = len < mss;
+		kuniyu;
+	}
 
 	flush |= (__force int)(flags & (TCP_FLAG_URG | TCP_FLAG_PSH |
 					TCP_FLAG_RST | TCP_FLAG_SYN |
 					TCP_FLAG_FIN));
+	kuniyu;
 
 	if (p && (!NAPI_GRO_CB(skb)->same_flow || flush))
 		pp = p;
