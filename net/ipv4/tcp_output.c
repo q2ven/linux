@@ -1469,7 +1469,8 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 		/* Calculate the MD5 hash, as we have all we need now */
 		sk_gso_disable(sk);
 		tp->af_specific->calc_md5_hash(opts.hash_location,
-					       key.md5_key, sk, skb);
+					       key.md5_key, sk, skb,
+					       tcp_header_size);
 #endif
 	} else if (tcp_key_is_ao(&key)) {
 		int err;
@@ -3880,7 +3881,8 @@ struct sk_buff *tcp_make_synack(const struct sock *sk, struct dst_entry *dst,
 	if (tcp_key_is_md5(&key)) {
 #ifdef CONFIG_TCP_MD5SIG
 		tcp_rsk(req)->af_specific->calc_md5_hash(opts.hash_location,
-					key.md5_key, req_to_sk(req), skb);
+							 key.md5_key, req_to_sk(req),
+							 skb, th->doff << 2);
 #endif
 	} else if (tcp_key_is_ao(&key)) {
 #ifdef CONFIG_TCP_AO

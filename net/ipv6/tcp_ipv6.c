@@ -745,7 +745,8 @@ clear_hash_nostart:
 static int tcp_v6_md5_hash_skb(char *md5_hash,
 			       const struct tcp_md5sig_key *key,
 			       const struct sock *sk,
-			       const struct sk_buff *skb)
+			       const struct sk_buff *skb,
+			       u16 hdr_len)
 {
 	const struct tcphdr *th = tcp_hdr(skb);
 	const struct in6_addr *saddr, *daddr;
@@ -768,7 +769,7 @@ static int tcp_v6_md5_hash_skb(char *md5_hash,
 
 	if (tcp_v6_md5_hash_headers(&hp, daddr, saddr, th, skb->len))
 		goto clear_hash;
-	if (tcp_sigpool_hash_skb_data(&hp, skb, th->doff << 2))
+	if (tcp_sigpool_hash_skb_data(&hp, skb, hdr_len))
 		goto clear_hash;
 	if (tcp_md5_hash_key(&hp, key))
 		goto clear_hash;
@@ -1103,7 +1104,7 @@ static void tcp_v6_send_reset(const struct sock *sk, struct sk_buff *skb,
 			goto out;
 		key.type = TCP_KEY_MD5;
 
-		genhash = tcp_v6_md5_hash_skb(newhash, key.md5_key, NULL, skb);
+		genhash = tcp_v6_md5_hash_skb(newhash, key.md5_key, NULL, skb, th->doff << 2);
 		if (genhash || memcmp(md5_hash_location, newhash, 16) != 0)
 			goto out;
 	}
