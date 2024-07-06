@@ -881,7 +881,7 @@ void tcp_ao_syncookie(struct sock *sk, struct sk_buff *skb,
 
 	treq->used_tcp_ao = false;
 
-	if (tcp_parse_auth_options(skb, NULL, &aoh) || !aoh)
+	if (tcp_parse_auth_options(skb, NULL, &aoh, false) || !aoh)
 		return;
 
 	l3index = l3mdev_master_ifindex_by_index(sock_net(sk), inet_rsk(req)->ir_iif);

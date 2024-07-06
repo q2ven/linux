@@ -2796,12 +2796,13 @@ static inline u64 tcp_transmit_time(const struct sock *sk)
 
 static inline int tcp_parse_auth_options(struct sk_buff *skb,
 					 const u8 **md5_hash,
-					 const struct tcp_ao_hdr **aoh)
+					 const struct tcp_ao_hdr **aoh,
+					 bool parse_edo_ext)
 {
 	const u8 *md5_tmp, *ao_tmp;
 	int ret;
 
-	ret = tcp_do_parse_auth_options(skb, &md5_tmp, &ao_tmp);
+	ret = tcp_do_parse_auth_options(skb, &md5_tmp, &ao_tmp, parse_edo_ext);
 	if (ret)
 		return ret;
 

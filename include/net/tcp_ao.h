@@ -342,10 +342,12 @@ static inline int tcp_ao_set_repair(struct sock *sk,
 
 #if defined(CONFIG_TCP_MD5SIG) || defined(CONFIG_TCP_AO)
 int tcp_do_parse_auth_options(struct sk_buff *skb,
-			      const u8 **md5_hash, const u8 **ao_hash);
+			      const u8 **md5_hash, const u8 **ao_hash,
+			      bool parse_edo_ext);
 #else
 static inline int tcp_do_parse_auth_options(struct sk_buff *skb,
-					    const u8 **md5_hash, const u8 **ao_hash)
+					    const u8 **md5_hash, const u8 **ao_hash,
+					    bool parse_edo_ext)
 {
 	*md5_hash = NULL;
 	*ao_hash = NULL;

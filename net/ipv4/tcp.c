@@ -4827,7 +4827,7 @@ tcp_inbound_hash(struct sock *sk, const struct request_sock *req,
 	int l3index;
 
 	/* Invalid option or two times meet any of auth options */
-	if (tcp_parse_auth_options(skb, &md5_location, &aoh)) {
+	if (tcp_parse_auth_options(skb, &md5_location, &aoh, false)) {
 		trace_tcp_hash_bad_header(sk, skb);
 		return SKB_DROP_REASON_TCP_AUTH_HDR;
 	}
