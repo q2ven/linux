@@ -4032,11 +4032,6 @@ ao_parse:
 			break;
 		}
 
-		if (sk_is_mptcp(sk)) {
-			err = -EOPNOTSUPP;
-			break;
-		}
-
 		tcp_get_current_key(sk, &key);
 		if (!tcp_key_is_none(&key)) {
 			err = -EOPNOTSUPP;
