@@ -813,7 +813,8 @@ struct sock *mptcp_sk_clone_init(const struct sock *sk,
 				 struct sock *ssk,
 				 struct request_sock *req);
 void mptcp_get_options(const struct sk_buff *skb,
-		       struct mptcp_options_received *mp_opt);
+		       struct mptcp_options_received *mp_opt,
+		       bool parse_edo_ext);
 
 void mptcp_finish_connect(struct sock *sk);
 void __mptcp_sync_state(struct sock *sk, int state);

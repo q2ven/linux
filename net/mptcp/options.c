@@ -21,7 +21,7 @@ static bool mptcp_cap_flag_sha256(u8 flags)
 }
 
 static void mptcp_parse_option(const struct sk_buff *skb,
-			       const unsigned char *ptr, int opsize,
+			       const unsigned char *ptr, int opsize, int hdr_len,
 			       struct mptcp_options_received *mp_opt)
 {
 	u8 subtype = *ptr >> 4;
@@ -35,7 +35,7 @@ static void mptcp_parse_option(const struct sk_buff *skb,
 	case MPTCPOPT_MP_CAPABLE:
 		/* strict size checking */
 		if (!(TCP_SKB_CB(skb)->tcp_flags & TCPHDR_SYN)) {
-			if (skb->len > tcp_hdr(skb)->doff << 2)
+			if (skb->len > hdr_len)
 				expected_opsize = TCPOLEN_MPTCP_MPC_ACK_DATA;
 			else
 				expected_opsize = TCPOLEN_MPTCP_MPC_ACK;
@@ -363,16 +363,18 @@ static void mptcp_parse_option(const struct sk_buff *skb,
 }
 
 void mptcp_get_options(const struct sk_buff *skb,
-		       struct mptcp_options_received *mp_opt)
+		       struct mptcp_options_received *mp_opt,
+		       bool parse_edo_ext)
 {
 	const struct tcphdr *th = tcp_hdr(skb);
 	const unsigned char *ptr;
-	int length;
+	int hdr_len, length;
 
 	/* initialize option status */
 	mp_opt->suboptions = 0;
 
-	length = (th->doff * 4) - sizeof(struct tcphdr);
+	hdr_len = th->doff * 4;
+	length = hdr_len - sizeof(struct tcphdr);
 	ptr = (const unsigned char *)(th + 1);
 
 	while (length > 0) {
@@ -393,8 +395,22 @@ void mptcp_get_options(const struct sk_buff *skb,
 				return;
 			if (opsize > length)
 				return;	/* don't parse partial options */
-			if (opcode == TCPOPT_MPTCP)
-				mptcp_parse_option(skb, ptr, opsize, mp_opt);
+			if (opcode == TCPOPT_MPTCP) {
+				mptcp_parse_option(skb, ptr, opsize, hdr_len, mp_opt);
+			} else if (parse_edo_ext && !th->syn &&
+				   opcode == TCPOPT_EXP_EDO &&
+				   (opsize == TCPOLEN_EXP_EDO_EXT_HDR ||
+				    opsize == TCPOLEN_EXP_EDO_EXT_SEG) &&
+				   get_unaligned_be16(ptr) == TCPOPT_EDO_MAGIC) {
+				u8 parsed = hdr_len - length;
+
+				/* Here, we have already pulled EDO Header Length */
+				hdr_len = get_unaligned_be16(ptr + 2);
+				length = hdr_len - parsed;
+				parse_edo_ext = false;
+
+				DEBUG_NET_WARN_ON_ONCE(ptr != (typeof(ptr))th + parsed + 2);
+			}
 			ptr += opsize - 2;
 			length -= opsize;
 		}
@@ -1140,7 +1156,8 @@ bool mptcp_incoming_options(struct sock *sk, struct sk_buff *skb)
 		return true;
 	}
 
-	mptcp_get_options(skb, &mp_opt);
+	mptcp_get_options(skb, &mp_opt,
+			  tcp_sk(sk)->edo && sk->sk_state != TCP_SYN_SENT);
 
 	/* The subflow can be in close state only if check_fully_established()
 	 * just sent a reset. If so, tell the caller to ignore the current packet.
