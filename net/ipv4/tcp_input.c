@@ -4444,16 +4444,18 @@ static int tcp_fast_parse_options(const struct net *net, struct sk_buff *skb,
 /*
  * Parse Signature options
  */
-int tcp_do_parse_auth_options(const struct tcphdr *th,
+int tcp_do_parse_auth_options(struct sk_buff *skb,
 			      const u8 **md5_hash, const u8 **ao_hash)
 {
-	int length = (th->doff << 2) - sizeof(*th);
+	const struct tcphdr *th = tcp_hdr(skb);
 	const u8 *ptr = (const u8 *)(th + 1);
 	unsigned int minlen = TCPOLEN_MD5SIG;
+	int length;
 
 	if (IS_ENABLED(CONFIG_TCP_AO))
 		minlen = sizeof(struct tcp_ao_hdr) + 1;
 
+	length = (th->doff << 2) - sizeof(*th);
 	*md5_hash = NULL;
 	*ao_hash = NULL;
 
@@ -7432,7 +7434,7 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 		NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPEDOFALLBACKSYN);
 
 #ifdef CONFIG_TCP_AO
-	if (tcp_parse_auth_options(tcp_hdr(skb), NULL, &aoh))
+	if (tcp_parse_auth_options(skb, NULL, &aoh))
 		goto drop_and_release; /* Invalid TCP options */
 	if (aoh) {
 		tcp_rsk(req)->used_tcp_ao = true;

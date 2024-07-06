@@ -861,11 +861,10 @@ static struct tcp_ao_key *tcp_ao_inbound_lookup(unsigned short int family,
 	}
 }
 
-void tcp_ao_syncookie(struct sock *sk, const struct sk_buff *skb,
+void tcp_ao_syncookie(struct sock *sk, struct sk_buff *skb,
 		      struct request_sock *req, unsigned short int family)
 {
 	struct tcp_request_sock *treq = tcp_rsk(req);
-	const struct tcphdr *th = tcp_hdr(skb);
 	const struct tcp_ao_hdr *aoh;
 	struct tcp_ao_key *key;
 	int l3index;
@@ -882,7 +881,7 @@ void tcp_ao_syncookie(struct sock *sk, const struct sk_buff *skb,
 
 	treq->used_tcp_ao = false;
 
-	if (tcp_parse_auth_options(th, NULL, &aoh) || !aoh)
+	if (tcp_parse_auth_options(skb, NULL, &aoh) || !aoh)
 		return;
 
 	l3index = l3mdev_master_ifindex_by_index(sock_net(sk), inet_rsk(req)->ir_iif);

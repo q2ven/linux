@@ -4819,17 +4819,15 @@ tcp_inbound_md5_hash(const struct sock *sk, const struct sk_buff *skb,
 /* Called with rcu_read_lock() */
 enum skb_drop_reason
 tcp_inbound_hash(struct sock *sk, const struct request_sock *req,
-		 const struct sk_buff *skb,
-		 const void *saddr, const void *daddr,
+		 struct sk_buff *skb, const void *saddr, const void *daddr,
 		 int family, int dif, int sdif)
 {
-	const struct tcphdr *th = tcp_hdr(skb);
 	const struct tcp_ao_hdr *aoh;
 	const __u8 *md5_location;
 	int l3index;
 
 	/* Invalid option or two times meet any of auth options */
-	if (tcp_parse_auth_options(th, &md5_location, &aoh)) {
+	if (tcp_parse_auth_options(skb, &md5_location, &aoh)) {
 		trace_tcp_hash_bad_header(sk, skb);
 		return SKB_DROP_REASON_TCP_AUTH_HDR;
 	}

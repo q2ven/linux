@@ -2794,13 +2794,14 @@ static inline u64 tcp_transmit_time(const struct sock *sk)
 	return 0;
 }
 
-static inline int tcp_parse_auth_options(const struct tcphdr *th,
-		const u8 **md5_hash, const struct tcp_ao_hdr **aoh)
+static inline int tcp_parse_auth_options(struct sk_buff *skb,
+					 const u8 **md5_hash,
+					 const struct tcp_ao_hdr **aoh)
 {
 	const u8 *md5_tmp, *ao_tmp;
 	int ret;
 
-	ret = tcp_do_parse_auth_options(th, &md5_tmp, &ao_tmp);
+	ret = tcp_do_parse_auth_options(skb, &md5_tmp, &ao_tmp);
 	if (ret)
 		return ret;
 
@@ -2845,8 +2846,9 @@ static inline bool tcp_ao_required(struct sock *sk, const void *saddr,
 }
 
 enum skb_drop_reason tcp_inbound_hash(struct sock *sk,
-		const struct request_sock *req, const struct sk_buff *skb,
-		const void *saddr, const void *daddr,
-		int family, int dif, int sdif);
+				      const struct request_sock *req,
+				      struct sk_buff *skb,
+				      const void *saddr, const void *daddr,
+				      int family, int dif, int sdif);
 
 #endif	/* _TCP_H */
