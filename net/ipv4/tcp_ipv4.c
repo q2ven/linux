@@ -821,13 +821,15 @@ static void tcp_v4_send_reset(const struct sock *sk, struct sk_buff *skb,
 	net = sk ? sock_net(sk) : dev_net(skb_dst(skb)->dev);
 
 	/* Invalid TCP option size or twice included auth */
-	if (tcp_parse_auth_options(skb, &md5_hash_location, &aoh, false))
+	if (tcp_parse_auth_options(skb, &md5_hash_location, &aoh, !!edo))
 		return;
 
 	if (aoh && tcp_v4_ao_sign_reset(sk, skb, aoh, &arg, &rep.th, rep.opt))
 		return;
 
 #ifdef CONFIG_TCP_MD5SIG
+	th = tcp_hdr(skb);
+
 	rcu_read_lock();
 	if (sk && sk_fullsock(sk)) {
 		const union tcp_md5_addr *addr;
@@ -1100,7 +1102,7 @@ static void tcp_v4_timewait_ack(struct sock *sk, struct sk_buff *skb)
 		if (ao_info) {
 			const struct tcp_ao_hdr *aoh;
 
-			if (tcp_parse_auth_options(skb, NULL, &aoh, false)) {
+			if (tcp_parse_auth_options(skb, NULL, &aoh, !!tw->tw_edo)) {
 				inet_twsk_put(tw);
 				return;
 			}

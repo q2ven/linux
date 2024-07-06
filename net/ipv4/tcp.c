@@ -4824,10 +4824,13 @@ tcp_inbound_hash(struct sock *sk, const struct request_sock *req,
 {
 	const struct tcp_ao_hdr *aoh;
 	const __u8 *md5_location;
+	bool parse_edo_ext;
 	int l3index;
 
+	parse_edo_ext = req ? !!tcp_rsk(req)->edo : !!tcp_sk(sk)->edo;
+
 	/* Invalid option or two times meet any of auth options */
-	if (tcp_parse_auth_options(skb, &md5_location, &aoh, false)) {
+	if (tcp_parse_auth_options(skb, &md5_location, &aoh, parse_edo_ext)) {
 		trace_tcp_hash_bad_header(sk, skb);
 		return SKB_DROP_REASON_TCP_AUTH_HDR;
 	}

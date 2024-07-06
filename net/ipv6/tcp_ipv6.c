@@ -1058,13 +1058,39 @@ static void tcp_v6_send_reset(const struct sock *sk, struct sk_buff *skb,
 		return;
 
 	net = sk ? sock_net(sk) : dev_net(skb_dst(skb)->dev);
+
+	if (sk) {
+		oif = sk->sk_bound_dev_if;
+		if (sk_fullsock(sk)) {
+			if ((1 << sk->sk_state) &
+			    ~(TCPF_SYN_SENT | TCPF_SYN_RECV | TCPF_LISTEN))
+				edo = tcp_sk(sk)->edo;
+			if (inet6_test_bit(REPFLOW, sk))
+				label = ip6_flowlabel(ipv6h);
+			priority = READ_ONCE(sk->sk_priority);
+			txhash = sk->sk_txhash;
+		}
+		if (sk->sk_state == TCP_TIME_WAIT) {
+			edo = inet_twsk(sk)->tw_edo;
+			label = cpu_to_be32(inet_twsk(sk)->tw_flowlabel);
+			priority = inet_twsk(sk)->tw_priority;
+			txhash = inet_twsk(sk)->tw_txhash;
+		}
+	} else {
+		if (net->ipv6.sysctl.flowlabel_reflect & FLOWLABEL_REFLECT_TCP_RESET)
+			label = ip6_flowlabel(ipv6h);
+	}
+
 	/* Invalid TCP option size or twice included auth */
-	if (tcp_parse_auth_options(skb, &md5_hash_location, &aoh, false))
+	if (tcp_parse_auth_options(skb, &md5_hash_location, &aoh, edo))
 		return;
 #if defined(CONFIG_TCP_MD5SIG) || defined(CONFIG_TCP_AO)
 	rcu_read_lock();
 #endif
 #ifdef CONFIG_TCP_MD5SIG
+	th = tcp_hdr(skb);
+	ipv6h = ipv6_hdr(skb);
+
 	if (sk && sk_fullsock(sk)) {
 		int l3index;
 
@@ -1130,28 +1156,6 @@ static void tcp_v6_send_reset(const struct sock *sk, struct sk_buff *skb,
 	}
 #endif
 
-	if (sk) {
-		oif = sk->sk_bound_dev_if;
-		if (sk_fullsock(sk)) {
-			if ((1 << sk->sk_state) &
-			    ~(TCPF_SYN_SENT | TCPF_SYN_RECV | TCPF_LISTEN))
-				edo = tcp_sk(sk)->edo;
-			if (inet6_test_bit(REPFLOW, sk))
-				label = ip6_flowlabel(ipv6h);
-			priority = READ_ONCE(sk->sk_priority);
-			txhash = sk->sk_txhash;
-		}
-		if (sk->sk_state == TCP_TIME_WAIT) {
-			edo = inet_twsk(sk)->tw_edo;
-			label = cpu_to_be32(inet_twsk(sk)->tw_flowlabel);
-			priority = inet_twsk(sk)->tw_priority;
-			txhash = inet_twsk(sk)->tw_txhash;
-		}
-	} else {
-		if (net->ipv6.sysctl.flowlabel_reflect & FLOWLABEL_REFLECT_TCP_RESET)
-			label = ip6_flowlabel(ipv6h);
-	}
-
 	trace_tcp_send_reset(sk, skb, reason);
 
 	tcp_v6_send_response(sk, skb, seq, ack_seq, 0, 0, 0, oif, 1,
@@ -1191,7 +1195,7 @@ static void tcp_v6_timewait_ack(struct sock *sk, struct sk_buff *skb)
 			const struct tcp_ao_hdr *aoh;
 
 			/* Invalid TCP option size or twice included auth */
-			if (tcp_parse_auth_options(skb, NULL, &aoh, false))
+			if (tcp_parse_auth_options(skb, NULL, &aoh, tw->tw_edo))
 				goto out;
 			if (aoh)
 				key.ao_key = tcp_ao_established_key(ao_info,
