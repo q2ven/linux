@@ -885,7 +885,7 @@ static void tcp_v6_send_response(const struct sock *sk, struct sk_buff *skb, u32
 		tot_len += tcp_ao_len_aligned(key->ao_key);
 
 #ifdef CONFIG_MPTCP
-	if (rst && !tcp_key_is_md5(key)) {
+	if (rst && (!tcp_key_is_md5(key) || edo)) {
 		mrst = mptcp_reset_option(skb);
 
 		if (mrst)

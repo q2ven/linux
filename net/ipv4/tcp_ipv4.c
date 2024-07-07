@@ -753,6 +753,7 @@ static void tcp_v4_send_reset(const struct sock *sk, struct sk_buff *skb,
 	int genhash;
 #endif
 	u64 transmit_time = 0;
+	u8 edo = TCP_EDO_OFF;
 	struct sock *ctl_sk;
 	struct net *net;
 	u32 txhash = 0;
@@ -788,8 +789,6 @@ static void tcp_v4_send_reset(const struct sock *sk, struct sk_buff *skb,
 	arg.iov[0].iov_len  = sizeof(rep.th);
 
 	if (sk) {
-		u8 edo = TCP_EDO_OFF;
-
 		if (sk->sk_state == TCP_TIME_WAIT)
 			edo = inet_twsk(sk)->tw_edo;
 		else if ((1 << sk->sk_state) & ~(TCPF_SYN_SENT | TCPF_SYN_RECV |
@@ -892,7 +891,7 @@ static void tcp_v4_send_reset(const struct sock *sk, struct sk_buff *skb,
 	}
 #endif
 	/* Can't co-exist with TCPMD5, hence check rep.opt[0] */
-	if (rep.opt[0] == 0) {
+	if (rep.opt[0] == 0 || edo) {
 		__be32 mrst = mptcp_reset_option(skb);
 
 		if (mrst) {
