@@ -3952,10 +3952,7 @@ ao_parse:
 #ifdef CONFIG_TCP_MD5SIG
 	case TCP_MD5SIG:
 	case TCP_MD5SIG_EXT:
-		if (tp->edo)
-			err = -EOPNOTSUPP;
-		else
-			err = tp->af_specific->md5_parse(sk, optname, optval, optlen);
+		err = tp->af_specific->md5_parse(sk, optname, optval, optlen);
 		break;
 #endif
 	case TCP_FASTOPEN:
@@ -4033,7 +4030,7 @@ ao_parse:
 		}
 
 		tcp_get_current_key(sk, &key);
-		if (!tcp_key_is_none(&key)) {
+		if (tcp_key_is_ao(&key)) {
 			err = -EOPNOTSUPP;
 			break;
 		}
