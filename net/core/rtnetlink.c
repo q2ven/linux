@@ -3808,6 +3808,13 @@ static int __rtnl_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 	struct ifinfomsg *ifm;
 	bool link_specified;
 
+	if (link_net) {
+		if (!(nlh->nlmsg_flags & NLM_F_CREATE))
+			return -EINVAL;
+
+		goto newlink;
+	}
+
 	ifm = nlmsg_data(nlh);
 	if (ifm->ifi_index > 0) {
 		link_specified = true;
@@ -3837,7 +3844,7 @@ static int __rtnl_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 					     nla_get_u32(tb[IFLA_GROUP]),
 					     ifm, extack, tb);
 	}
-
+newlink:
 	if (tb[IFLA_MAP] || tb[IFLA_PROTINFO])
 		return -EOPNOTSUPP;
 
@@ -3890,9 +3897,7 @@ static int rtnl_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 		ops = rtnl_link_ops_get(kind);
 #ifdef CONFIG_MODULES
 		if (!ops) {
-			__rtnl_unlock();
 			request_module("rtnl-link-%s", kind);
-			rtnl_lock();
 			ops = rtnl_link_ops_get(kind);
 		}
 #endif
@@ -3941,7 +3946,13 @@ static int rtnl_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 		}
 	}
 
+	rtnl_lock_deprecated();
+	rtnl_net_double_lock(link_net ? : sock_net(skb->sk), tgt_net);
+
 	ret = __rtnl_newlink(skb, nlh, ops, tgt_net, link_net, tbs, data, extack);
+
+	rtnl_net_double_unlock(link_net ? : sock_net(skb->sk), tgt_net);
+	rtnl_unlock_deprecated();
 
 	if (link_net)
 		put_net(link_net);
@@ -6957,7 +6968,8 @@ void __init rtnetlink_init(void)
 		      rtnl_dump_ifinfo, RTNL_FLAG_DUMP_SPLIT_NLM_DONE);
 	rtnl_register(PF_UNSPEC, RTM_SETLINK, rtnl_setlink, NULL,
 		      RTNL_FLAG_DOIT_LOCKED_PERNET);
-	rtnl_register(PF_UNSPEC, RTM_NEWLINK, rtnl_newlink, NULL, 0);
+	rtnl_register(PF_UNSPEC, RTM_NEWLINK, rtnl_newlink, NULL,
+		      RTNL_FLAG_DOIT_LOCKED_PERNET);
 	rtnl_register(PF_UNSPEC, RTM_DELLINK, rtnl_dellink, NULL,
 		      RTNL_FLAG_DOIT_LOCKED_PERNET);
 
