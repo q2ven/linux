@@ -57,7 +57,9 @@ static struct vport *gre_tnl_create(const struct vport_parms *parms)
 
 	err = dev_change_flags(dev, dev->flags | IFF_UP, NULL);
 	if (err < 0) {
+		rtnl_net_lock(net);
 		rtnl_delete_link(dev, 0, NULL);
+		rtnl_net_unlock(net);
 		rtnl_unlock();
 		ovs_vport_free(vport);
 		return ERR_PTR(err);

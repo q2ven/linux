@@ -3460,6 +3460,8 @@ int rtnl_delete_link(struct net_device *dev, u32 portid, const struct nlmsghdr *
 	const struct rtnl_link_ops *ops;
 	LIST_HEAD(list_kill);
 
+	ASSERT_RTNL_NET(dev_net(dev));
+
 	ops = dev->rtnl_link_ops;
 	if (!ops || !ops->dellink)
 		return -EOPNOTSUPP;
