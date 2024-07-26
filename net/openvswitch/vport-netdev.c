@@ -178,8 +178,13 @@ void ovs_netdev_tunnel_destroy(struct vport *vport)
 	 * underlying netdev deregistration; delete the link only
 	 * if it's not already shutting down.
 	 */
-	if (vport->dev->reg_state == NETREG_REGISTERED)
+	if (vport->dev->reg_state == NETREG_REGISTERED) {
+		struct net *net = dev_net(vport->dev);
+
+		rtnl_net_lock(net);
 		rtnl_delete_link(vport->dev, 0, NULL);
+		rtnl_net_unlock(net);
+	}
 	netdev_put(vport->dev, &vport->dev_tracker);
 	vport->dev = NULL;
 	rtnl_unlock();
