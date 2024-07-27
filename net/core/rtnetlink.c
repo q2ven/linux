@@ -710,19 +710,29 @@ static size_t rtnl_link_get_size(const struct net_device *dev)
 }
 
 static LIST_HEAD(rtnl_af_ops);
+static DEFINE_SPINLOCK(rtnl_af_ops_lock);
 
-static const struct rtnl_af_ops *rtnl_af_lookup(const int family)
+static struct rtnl_af_ops *rtnl_af_lookup(const int family)
 {
-	const struct rtnl_af_ops *ops;
+	struct rtnl_af_ops *ops = NULL;
 
-	ASSERT_RTNL();
+	spin_lock(&rtnl_af_ops_lock);
 
 	list_for_each_entry(ops, &rtnl_af_ops, list) {
-		if (ops->family == family)
-			return ops;
+		if (ops->family == family) {
+			refcount_inc(&ops->refcnt);
+			break;
+		}
 	}
 
-	return NULL;
+	spin_unlock(&rtnl_af_ops_lock);
+
+	return ops;
+}
+
+static void rtnl_af_put(struct rtnl_af_ops *ops)
+{
+	refcount_dec(&ops->refcnt);
 }
 
 /**
@@ -733,9 +743,11 @@ static const struct rtnl_af_ops *rtnl_af_lookup(const int family)
  */
 void rtnl_af_register(struct rtnl_af_ops *ops)
 {
-	rtnl_lock();
+	refcount_set(&ops->refcnt, 1);
+
+	spin_lock(&rtnl_af_ops_lock);
 	list_add_tail_rcu(&ops->list, &rtnl_af_ops);
-	rtnl_unlock();
+	spin_unlock(&rtnl_af_ops_lock);
 }
 EXPORT_SYMBOL_GPL(rtnl_af_register);
 
@@ -745,11 +757,14 @@ EXPORT_SYMBOL_GPL(rtnl_af_register);
  */
 void rtnl_af_unregister(struct rtnl_af_ops *ops)
 {
-	rtnl_lock();
+	spin_lock(&rtnl_af_ops_lock);
 	list_del_rcu(&ops->list);
-	rtnl_unlock();
+	spin_unlock(&rtnl_af_ops_lock);
 
 	synchronize_rcu();
+
+	while (refcount_read(&ops->refcnt) != 1)
+		schedule();
 }
 EXPORT_SYMBOL_GPL(rtnl_af_unregister);
 
@@ -2609,23 +2624,24 @@ static int validate_linkmsg(struct net_device *dev, struct nlattr *tb[],
 
 	if (tb[IFLA_AF_SPEC]) {
 		struct nlattr *af;
-		int rem, err;
+		int rem, err = 0;
 
 		nla_for_each_nested(af, tb[IFLA_AF_SPEC], rem) {
-			const struct rtnl_af_ops *af_ops;
+			struct rtnl_af_ops *af_ops;
 
 			af_ops = rtnl_af_lookup(nla_type(af));
 			if (!af_ops)
 				return -EAFNOSUPPORT;
 
 			if (!af_ops->set_link_af)
-				return -EOPNOTSUPP;
-
-			if (af_ops->validate_link_af) {
+				err = -EOPNOTSUPP;
+			else if (af_ops->validate_link_af)
 				err = af_ops->validate_link_af(dev, af, extack);
-				if (err < 0)
-					return err;
-			}
+
+			rtnl_af_put(af_ops);
+
+			if (err < 0)
+				return err;
 		}
 	}
 
@@ -3216,11 +3232,12 @@ static int do_setlink(const struct sk_buff *skb,
 		int rem;
 
 		nla_for_each_nested(af, tb[IFLA_AF_SPEC], rem) {
-			const struct rtnl_af_ops *af_ops;
+			struct rtnl_af_ops *af_ops;
 
-			BUG_ON(!(af_ops = rtnl_af_lookup(nla_type(af))));
-
+			af_ops = rtnl_af_lookup(nla_type(af));
 			err = af_ops->set_link_af(dev, af, extack);
+			rtnl_af_put(af_ops);
+
 			if (err < 0)
 				goto errout;
 

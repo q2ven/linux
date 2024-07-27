@@ -202,6 +202,7 @@ static inline void rtnl_link_dellink(struct net_device *dev, struct list_head *l
 struct rtnl_af_ops {
 	struct list_head	list;
 	int			family;
+	refcount_t		refcnt;
 
 	int			(*fill_link_af)(struct sk_buff *skb,
 						const struct net_device *dev,
