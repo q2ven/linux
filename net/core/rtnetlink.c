@@ -3341,6 +3341,7 @@ static int rtnl_setlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 	struct net *net = sock_net(skb->sk);
 	struct nlattr *tb[IFLA_MAX+1];
 	struct net_device *dev = NULL;
+	struct net *tgt_net;
 	int err;
 
 	err = nlmsg_parse_deprecated(nlh, sizeof(*ifm), tb, IFLA_MAX,
@@ -3351,6 +3352,10 @@ static int rtnl_setlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 	err = rtnl_ensure_unique_netns(tb, extack, false);
 	if (err < 0)
 		return err;
+
+	tgt_net = rtnl_link_get_net_capable(skb, net, tb, CAP_NET_ADMIN);
+	if (IS_ERR(tgt_net))
+		return PTR_ERR(tgt_net);
 
 	if (ifm->ifi_index > 0)
 		dev = __dev_get_by_index(net, ifm->ifi_index);
@@ -3363,6 +3368,8 @@ static int rtnl_setlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 		err = do_setlink(skb, dev, ifm, extack, tb, 0);
 	else if (!err)
 		err = -ENODEV;
+
+	put_net(tgt_net);
 
 	return err;
 }
