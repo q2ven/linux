@@ -2928,6 +2928,10 @@ static int do_setlink(const struct sk_buff *skb,
 	if (dev->rtnl_link_ops && dev->rtnl_link_ops->sync_links)
 		dev->rtnl_link_ops->sync_links(dev, false);
 
+	err = validate_linkmsg(dev, tb, extack);
+	if (err < 0)
+		goto errout;
+
 	if (tb[IFLA_IFNAME])
 		nla_strscpy(ifname, tb[IFLA_IFNAME], IFNAMSIZ);
 	else
@@ -3345,10 +3349,6 @@ static int rtnl_setlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 		goto errout;
 	}
 
-	err = validate_linkmsg(dev, tb, extack);
-	if (err < 0)
-		goto errout;
-
 	err = do_setlink(skb, dev, ifm, extack, tb, 0);
 errout:
 	return err;
@@ -3587,9 +3587,6 @@ static int rtnl_group_changelink(const struct sk_buff *skb,
 
 	for_each_netdev_safe(net, dev, aux) {
 		if (dev->group == group) {
-			err = validate_linkmsg(dev, tb, extack);
-			if (err < 0)
-				return err;
 			err = do_setlink(skb, dev, ifm, extack, tb, 0);
 			if (err < 0)
 				return err;
@@ -3812,10 +3809,6 @@ replay:
 			return -EEXIST;
 		if (nlh->nlmsg_flags & NLM_F_REPLACE)
 			return -EOPNOTSUPP;
-
-		err = validate_linkmsg(dev, tb, extack);
-		if (err < 0)
-			return err;
 
 		if (linkinfo[IFLA_INFO_DATA]) {
 			if (!ops || ops != dev->rtnl_link_ops ||
