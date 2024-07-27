@@ -3430,6 +3430,9 @@ static int rtnl_dellink(struct sk_buff *skb, struct nlmsghdr *nlh,
 			return PTR_ERR(tgt_net);
 	}
 
+	rtnl_lock_deprecated();
+	rtnl_net_lock(tgt_net);
+
 	if (ifm->ifi_index > 0)
 		dev = __dev_get_by_index(tgt_net, ifm->ifi_index);
 	else if (tb[IFLA_IFNAME] || tb[IFLA_ALT_IFNAME])
@@ -3443,6 +3446,9 @@ static int rtnl_dellink(struct sk_buff *skb, struct nlmsghdr *nlh,
 		err = rtnl_group_dellink(tgt_net, nla_get_u32(tb[IFLA_GROUP]));
 	else
 		err = -EINVAL;
+
+	rtnl_net_unlock(tgt_net);
+	rtnl_unlock_deprecated();
 
 	if (netnsid >= 0)
 		put_net(tgt_net);
@@ -6887,7 +6893,8 @@ void __init rtnetlink_init(void)
 		      rtnl_dump_ifinfo, RTNL_FLAG_DUMP_SPLIT_NLM_DONE);
 	rtnl_register(PF_UNSPEC, RTM_SETLINK, rtnl_setlink, NULL, 0);
 	rtnl_register(PF_UNSPEC, RTM_NEWLINK, rtnl_newlink, NULL, 0);
-	rtnl_register(PF_UNSPEC, RTM_DELLINK, rtnl_dellink, NULL, 0);
+	rtnl_register(PF_UNSPEC, RTM_DELLINK, rtnl_dellink, NULL,
+		      RTNL_FLAG_DOIT_LOCKED_PERNET);
 
 	rtnl_register(PF_UNSPEC, RTM_GETADDR, NULL, rtnl_dump_all, 0);
 	rtnl_register(PF_UNSPEC, RTM_GETROUTE, NULL, rtnl_dump_all, 0);
