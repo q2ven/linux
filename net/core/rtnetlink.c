@@ -3357,6 +3357,9 @@ static int rtnl_setlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 	if (IS_ERR(tgt_net))
 		return PTR_ERR(tgt_net);
 
+	rtnl_lock_deprecated();
+	rtnl_net_double_lock(net, tgt_net);
+
 	if (ifm->ifi_index > 0)
 		dev = __dev_get_by_index(net, ifm->ifi_index);
 	else if (tb[IFLA_IFNAME] || tb[IFLA_ALT_IFNAME])
@@ -3368,6 +3371,9 @@ static int rtnl_setlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 		err = do_setlink(skb, dev, ifm, extack, tb, 0);
 	else if (!err)
 		err = -ENODEV;
+
+	rtnl_net_double_unlock(net, tgt_net);
+	rtnl_unlock_deprecated();
 
 	put_net(tgt_net);
 
@@ -6904,7 +6910,8 @@ void __init rtnetlink_init(void)
 
 	rtnl_register(PF_UNSPEC, RTM_GETLINK, rtnl_getlink,
 		      rtnl_dump_ifinfo, RTNL_FLAG_DUMP_SPLIT_NLM_DONE);
-	rtnl_register(PF_UNSPEC, RTM_SETLINK, rtnl_setlink, NULL, 0);
+	rtnl_register(PF_UNSPEC, RTM_SETLINK, rtnl_setlink, NULL,
+		      RTNL_FLAG_DOIT_LOCKED_PERNET);
 	rtnl_register(PF_UNSPEC, RTM_NEWLINK, rtnl_newlink, NULL, 0);
 	rtnl_register(PF_UNSPEC, RTM_DELLINK, rtnl_dellink, NULL,
 		      RTNL_FLAG_DOIT_LOCKED_PERNET);
