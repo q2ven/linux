@@ -103,6 +103,7 @@ struct rtnl_link_ops {
 	struct list_head	list;
 
 	const char		*kind;
+	refcount_t		refcnt;
 
 	size_t			priv_size;
 	struct net_device	*(*alloc)(struct nlattr *tb[],

@@ -530,16 +530,38 @@ void rtnl_unregister_all(int protocol)
 EXPORT_SYMBOL_GPL(rtnl_unregister_all);
 
 static LIST_HEAD(link_ops);
+static DEFINE_SPINLOCK(link_ops_lock);
 
-static const struct rtnl_link_ops *rtnl_link_ops_get(const char *kind)
+static struct rtnl_link_ops *__rtnl_link_ops_get(const char *kind)
 {
-	const struct rtnl_link_ops *ops;
+	struct rtnl_link_ops *ops;
 
 	list_for_each_entry(ops, &link_ops, list) {
 		if (!strcmp(ops->kind, kind))
 			return ops;
 	}
+
 	return NULL;
+}
+
+static struct rtnl_link_ops *rtnl_link_ops_get(const char *kind)
+{
+	struct rtnl_link_ops *ops;
+
+	spin_lock(&link_ops_lock);
+
+	ops = __rtnl_link_ops_get(kind);
+	if (ops && !refcount_inc_not_zero(&ops->refcnt))
+		ops = NULL;
+
+	spin_unlock(&link_ops_lock);
+
+	return ops;
+}
+
+static bool rtnl_link_ops_put(struct rtnl_link_ops *ops)
+{
+	return refcount_dec_and_test(&ops->refcnt);
 }
 
 /**
@@ -554,8 +576,12 @@ static const struct rtnl_link_ops *rtnl_link_ops_get(const char *kind)
  */
 int __rtnl_link_register(struct rtnl_link_ops *ops)
 {
-	if (rtnl_link_ops_get(ops->kind))
+	spin_lock(&link_ops_lock);
+
+	if (__rtnl_link_ops_get(ops->kind)) {
+		spin_unlock(&link_ops_lock);
 		return -EEXIST;
+	}
 
 	/* The check for alloc/setup is here because if ops
 	 * does not have that filled up, it is not possible
@@ -565,7 +591,11 @@ int __rtnl_link_register(struct rtnl_link_ops *ops)
 	if ((ops->alloc || ops->setup) && !ops->dellink)
 		ops->dellink = unregister_netdevice_queue;
 
+	refcount_set(&ops->refcnt, 1);
 	list_add_tail(&ops->list, &link_ops);
+
+	spin_unlock(&link_ops_lock);
+
 	return 0;
 }
 EXPORT_SYMBOL_GPL(__rtnl_link_register);
@@ -616,10 +646,18 @@ void __rtnl_link_unregister(struct rtnl_link_ops *ops)
 {
 	struct net *net;
 
+	spin_lock(&link_ops_lock);
+	list_del(&ops->list);
+	spin_unlock(&link_ops_lock);
+
+	if (!rtnl_link_ops_put(ops)) {
+		while (refcount_read(&ops->refcnt))
+			schedule();
+	}
+
 	for_each_net(net) {
 		__rtnl_kill_links(net, ops);
 	}
-	list_del(&ops->list);
 }
 EXPORT_SYMBOL_GPL(__rtnl_link_unregister);
 
@@ -2243,10 +2281,10 @@ static const struct nla_policy ifla_xdp_policy[IFLA_XDP_MAX + 1] = {
 	[IFLA_XDP_PROG_ID]	= { .type = NLA_U32 },
 };
 
-static const struct rtnl_link_ops *linkinfo_to_kind_ops(const struct nlattr *nla)
+static struct rtnl_link_ops *linkinfo_to_kind_ops(const struct nlattr *nla)
 {
-	const struct rtnl_link_ops *ops = NULL;
 	struct nlattr *linfo[IFLA_INFO_MAX + 1];
+	struct rtnl_link_ops *ops = NULL;
 
 	if (nla_parse_nested_deprecated(linfo, IFLA_INFO_MAX, nla, ifla_info_policy, NULL) < 0)
 		return NULL;
@@ -2375,8 +2413,8 @@ static int rtnl_valid_dump_ifinfo_req(const struct nlmsghdr *nlh,
 
 static int rtnl_dump_ifinfo(struct sk_buff *skb, struct netlink_callback *cb)
 {
-	const struct rtnl_link_ops *kind_ops = NULL;
 	struct netlink_ext_ack *extack = cb->extack;
+	struct rtnl_link_ops *kind_ops = NULL;
 	const struct nlmsghdr *nlh = cb->nlh;
 	struct net *net = sock_net(skb->sk);
 	unsigned int flags = NLM_F_MULTI;
@@ -2450,6 +2488,8 @@ walk_entries:
 	nl_dump_check_consistent(cb, nlmsg_hdr(skb));
 	if (netnsid >= 0)
 		put_net(tgt_net);
+	if (kind_ops)
+		rtnl_link_ops_put(kind_ops);
 
 	return err;
 }
@@ -3844,7 +3884,7 @@ static int rtnl_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 			struct netlink_ext_ack *extack)
 {
 	struct nlattr **tb, **linkinfo, **data = NULL;
-	const struct rtnl_link_ops *ops = NULL;
+	struct rtnl_link_ops *ops = NULL;
 	struct rtnl_newlink_tbs *tbs;
 	int ret;
 
@@ -3897,7 +3937,7 @@ static int rtnl_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 							  linkinfo[IFLA_INFO_DATA],
 							  ops->policy, extack);
 			if (ret < 0)
-				goto free;
+				goto put_ops;
 
 			data = tbs->attr;
 		}
@@ -3905,12 +3945,14 @@ static int rtnl_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 		if (ops->validate) {
 			ret = ops->validate(tb, data, extack);
 			if (ret < 0)
-				goto free;
+				goto put_ops;
 		}
 	}
 
 	ret = __rtnl_newlink(skb, nlh, ops, tbs, data, extack);
-
+put_ops:
+	if (ops)
+		rtnl_link_ops_put(ops);
 free:
 	kfree(tbs);
 	return ret;
