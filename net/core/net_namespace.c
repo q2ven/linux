@@ -380,10 +380,20 @@ out_undo:
 
 	ops = saved_ops;
 	rtnl_lock();
+
+	rtnl_net_lock(net);
+	list_for_each_entry_continue_reverse(ops, &pernet_list, list) {
+		if (ops->exit_rtnl)
+			ops->exit_rtnl(net);
+	}
+	rtnl_net_unlock(net);
+
+	ops = saved_ops;
 	list_for_each_entry_continue_reverse(ops, &pernet_list, list) {
 		if (ops->exit_batch_rtnl)
 			ops->exit_batch_rtnl(&net_exit_list, &dev_kill_list);
 	}
+
 	unregister_netdevice_many(&dev_kill_list);
 	rtnl_unlock();
 
@@ -618,10 +628,21 @@ static void cleanup_net(struct work_struct *work)
 	synchronize_rcu_expedited();
 
 	rtnl_lock();
+
+	list_for_each_entry(net, &net_exit_list, exit_list) {
+		rtnl_net_lock(net);
+		list_for_each_entry_reverse(ops, &pernet_list, list) {
+			if (ops->exit_rtnl)
+				ops->exit_rtnl(net);
+		}
+		rtnl_net_unlock(net);
+	}
+
 	list_for_each_entry_reverse(ops, &pernet_list, list) {
 		if (ops->exit_batch_rtnl)
 			ops->exit_batch_rtnl(&net_exit_list, &dev_kill_list);
 	}
+
 	unregister_netdevice_many(&dev_kill_list);
 	rtnl_unlock();
 
@@ -1213,14 +1234,27 @@ static void free_exit_list(struct pernet_operations *ops, struct list_head *net_
 	ops_pre_exit_list(ops, net_exit_list);
 	synchronize_rcu();
 
-	if (ops->exit_batch_rtnl) {
+	if (ops->exit_batch_rtnl || ops->exit_rtnl) {
 		LIST_HEAD(dev_kill_list);
+		struct net *net;
 
 		rtnl_lock();
-		ops->exit_batch_rtnl(net_exit_list, &dev_kill_list);
+
+		if (ops->exit_rtnl) {
+			list_for_each_entry(net, net_exit_list, exit_list) {
+				rtnl_net_lock(net);
+				ops->exit_rtnl(net);
+				rtnl_net_unlock(net);
+			}
+		}
+
+		if (ops->exit_batch_rtnl)
+			ops->exit_batch_rtnl(net_exit_list, &dev_kill_list);
+
 		unregister_netdevice_many(&dev_kill_list);
 		rtnl_unlock();
 	}
+
 	ops_exit_list(ops, net_exit_list);
 
 	ops_free_list(ops, net_exit_list);
