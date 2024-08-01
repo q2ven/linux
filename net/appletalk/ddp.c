@@ -1814,9 +1814,11 @@ static int atalk_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 	case SIOCDIFADDR:
 	case SIOCSARP:		/* proxy AARP */
 	case SIOCDARP:		/* proxy AARP */
-		rtnl_lock();
+		rtnl_lock_deprecated();
+		rtnl_net_lock(sock_net(sk));
 		rc = atif_ioctl(cmd, argp);
-		rtnl_unlock();
+		rtnl_net_unlock(sock_net(sk));
+		rtnl_unlock_deprecated();
 		break;
 	}
 
