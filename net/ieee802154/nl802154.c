@@ -2696,10 +2696,11 @@ static int nl802154_pre_doit(const struct genl_split_ops *ops,
 			     struct sk_buff *skb,
 			     struct genl_info *info)
 {
+	bool rtnl = ops->internal_flags & NL802154_FLAG_NEED_RTNL;
 	struct cfg802154_registered_device *rdev;
 	struct wpan_dev *wpan_dev;
 	struct net_device *dev;
-	bool rtnl = ops->internal_flags & NL802154_FLAG_NEED_RTNL;
+	int err;
 
 	if (rtnl)
 		rtnl_lock();
@@ -2707,9 +2708,8 @@ static int nl802154_pre_doit(const struct genl_split_ops *ops,
 	if (ops->internal_flags & NL802154_FLAG_NEED_WPAN_PHY) {
 		rdev = cfg802154_get_dev_from_info(genl_info_net(info), info);
 		if (IS_ERR(rdev)) {
-			if (rtnl)
-				rtnl_unlock();
-			return PTR_ERR(rdev);
+			err = PTR_ERR(rdev);
+			goto out_unlock;
 		}
 		info->user_ptr[0] = rdev;
 	} else if (ops->internal_flags & NL802154_FLAG_NEED_NETDEV ||
@@ -2718,9 +2718,8 @@ static int nl802154_pre_doit(const struct genl_split_ops *ops,
 		wpan_dev = __cfg802154_wpan_dev_from_attrs(genl_info_net(info),
 							   info->attrs);
 		if (IS_ERR(wpan_dev)) {
-			if (rtnl)
-				rtnl_unlock();
-			return PTR_ERR(wpan_dev);
+			err = PTR_ERR(wpan_dev);
+			goto out_unlock;
 		}
 
 		dev = wpan_dev->netdev;
@@ -2728,9 +2727,8 @@ static int nl802154_pre_doit(const struct genl_split_ops *ops,
 
 		if (ops->internal_flags & NL802154_FLAG_NEED_NETDEV) {
 			if (!dev) {
-				if (rtnl)
-					rtnl_unlock();
-				return -EINVAL;
+				err = -EINVAL;
+				goto out_unlock;
 			}
 
 			info->user_ptr[1] = dev;
@@ -2741,9 +2739,8 @@ static int nl802154_pre_doit(const struct genl_split_ops *ops,
 		if (dev) {
 			if (ops->internal_flags & NL802154_FLAG_CHECK_NETDEV_UP &&
 			    !netif_running(dev)) {
-				if (rtnl)
-					rtnl_unlock();
-				return -ENETDOWN;
+				err = -ENETDOWN;
+				goto out_unlock;
 			}
 
 			dev_hold(dev);
@@ -2753,6 +2750,12 @@ static int nl802154_pre_doit(const struct genl_split_ops *ops,
 	}
 
 	return 0;
+
+out_unlock:
+	if (rtnl)
+		rtnl_unlock();
+
+	return err;
 }
 
 static void nl802154_post_doit(const struct genl_split_ops *ops,
