@@ -1267,32 +1267,12 @@ nl802154_set_ackreq_default(struct sk_buff *skb, struct genl_info *info)
 static int nl802154_wpan_phy_netns(struct sk_buff *skb, struct genl_info *info)
 {
 	struct cfg802154_registered_device *rdev = info->user_ptr[0];
-	struct net *net;
-	int err;
+	struct net *net = info->user_ptr[1];
 
-	if (info->attrs[NL802154_ATTR_PID]) {
-		u32 pid = nla_get_u32(info->attrs[NL802154_ATTR_PID]);
+	if (net_eq(net, genl_info_net(info)))
+		return 0;
 
-		net = get_net_ns_by_pid(pid);
-	} else if (info->attrs[NL802154_ATTR_NETNS_FD]) {
-		u32 fd = nla_get_u32(info->attrs[NL802154_ATTR_NETNS_FD]);
-
-		net = get_net_ns_by_fd(fd);
-	} else {
-		return -EINVAL;
-	}
-
-	if (IS_ERR(net))
-		return PTR_ERR(net);
-
-	err = 0;
-
-	/* check if anything to do */
-	if (!net_eq(wpan_phy_net(&rdev->wpan_phy), net))
-		err = cfg802154_switch_netns(rdev, net);
-
-	put_net(net);
-	return err;
+	return cfg802154_switch_netns(rdev, net);
 }
 
 static int nl802154_prep_scan_event_msg(struct sk_buff *msg,
@@ -2691,6 +2671,7 @@ static int nl802154_del_llsec_seclevel(struct sk_buff *skb,
 #define NL802154_FLAG_NEED_RTNL		0x04
 #define NL802154_FLAG_CHECK_NETDEV_UP	0x08
 #define NL802154_FLAG_NEED_WPAN_DEV	0x10
+#define NL802154_FLAG_NEED_RTNL_NET	0x20
 
 static int nl802154_pre_doit(const struct genl_split_ops *ops,
 			     struct sk_buff *skb,
@@ -2702,8 +2683,33 @@ static int nl802154_pre_doit(const struct genl_split_ops *ops,
 	struct net_device *dev;
 	int err;
 
-	if (rtnl)
-		rtnl_lock();
+	if (rtnl) {
+		rtnl_lock_deprecated();
+
+		if (ops->internal_flags & NL802154_FLAG_NEED_RTNL_NET) {
+			struct net *net = ERR_PTR(-EINVAL);
+
+			if (info->attrs[NL802154_ATTR_PID]) {
+				u32 pid = nla_get_u32(info->attrs[NL802154_ATTR_PID]);
+
+				net = get_net_ns_by_pid(pid);
+			} else if (info->attrs[NL802154_ATTR_NETNS_FD]) {
+				u32 fd = nla_get_u32(info->attrs[NL802154_ATTR_NETNS_FD]);
+
+				net = get_net_ns_by_fd(fd);
+			}
+
+			if (IS_ERR(net)) {
+				err = PTR_ERR(net);
+				goto out_rtnl_unlock;
+			}
+
+			info->user_ptr[1] = net;
+			rtnl_net_double_lock(net, genl_info_net(info));
+		} else {
+			rtnl_net_lock(genl_info_net(info));
+		}
+	}
 
 	if (ops->internal_flags & NL802154_FLAG_NEED_WPAN_PHY) {
 		rdev = cfg802154_get_dev_from_info(genl_info_net(info), info);
@@ -2752,8 +2758,18 @@ static int nl802154_pre_doit(const struct genl_split_ops *ops,
 	return 0;
 
 out_unlock:
-	if (rtnl)
-		rtnl_unlock();
+	if (rtnl) {
+		if (ops->internal_flags & NL802154_FLAG_NEED_RTNL_NET) {
+			struct net *net = info->user_ptr[1];
+
+			rtnl_net_unlock(net);
+			put_net(net);
+		}
+
+		rtnl_net_unlock(genl_info_net(info));
+out_rtnl_unlock:
+		rtnl_unlock_deprecated();
+	}
 
 	return err;
 }
@@ -2772,8 +2788,17 @@ static void nl802154_post_doit(const struct genl_split_ops *ops,
 		}
 	}
 
-	if (ops->internal_flags & NL802154_FLAG_NEED_RTNL)
-		rtnl_unlock();
+	if (ops->internal_flags & NL802154_FLAG_NEED_RTNL) {
+		if (ops->internal_flags & NL802154_FLAG_NEED_RTNL_NET) {
+			struct net *net = info->user_ptr[1];
+
+			rtnl_net_unlock(net);
+			put_net(net);
+		}
+
+		rtnl_net_unlock(genl_info_net(info));
+		rtnl_unlock_deprecated();
+	}
 }
 
 static const struct genl_ops nl802154_ops[] = {
@@ -2851,7 +2876,8 @@ static const struct genl_ops nl802154_ops[] = {
 		.doit = nl802154_wpan_phy_netns,
 		.flags = GENL_ADMIN_PERM,
 		.internal_flags = NL802154_FLAG_NEED_WPAN_PHY |
-				  NL802154_FLAG_NEED_RTNL,
+				  NL802154_FLAG_NEED_RTNL |
+				  NL802154_FLAG_NEED_RTNL_NET,
 	},
 	{
 		.cmd = NL802154_CMD_SET_PAN_ID,
