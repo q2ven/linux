@@ -223,6 +223,9 @@ int cfg802154_switch_netns(struct cfg802154_registered_device *rdev,
 	struct wpan_dev *wpan_dev;
 	int err = 0;
 
+	ASSERT_RTNL_NET(wpan_phy_net(&rdev->wpan_phy));
+	ASSERT_RTNL_NET(net);
+
 	list_for_each_entry(wpan_dev, &rdev->wpan_dev_list, list) {
 		if (!wpan_dev->netdev)
 			continue;
@@ -348,12 +351,16 @@ static void __net_exit cfg802154_pernet_exit(struct net *net)
 {
 	struct cfg802154_registered_device *rdev;
 
-	rtnl_lock();
+	rtnl_lock_deprecated();
+	rtnl_net_double_lock(&init_net, net);
+
 	list_for_each_entry(rdev, &cfg802154_rdev_list, list) {
 		if (net_eq(wpan_phy_net(&rdev->wpan_phy), net))
 			WARN_ON(cfg802154_switch_netns(rdev, &init_net));
 	}
-	rtnl_unlock();
+
+	rtnl_net_double_unlock(&init_net, net);
+	rtnl_unlock_deprecated();
 }
 
 static struct pernet_operations cfg802154_pernet_ops = {
