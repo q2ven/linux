@@ -159,6 +159,9 @@ int cfg80211_switch_netns(struct cfg80211_registered_device *rdev,
 	struct wireless_dev *wdev;
 	int err = 0;
 
+	ASSERT_RTNL_NET(wiphy_net(&rdev->wiphy));
+	ASSERT_RTNL_NET(net);
+
 	if (!(rdev->wiphy.flags & WIPHY_FLAG_NETNS_OK))
 		return -EOPNOTSUPP;
 
@@ -1598,12 +1601,16 @@ static void __net_exit cfg80211_pernet_exit(struct net *net)
 {
 	struct cfg80211_registered_device *rdev;
 
-	rtnl_lock();
+	rtnl_lock_deprecated();
+	rtnl_net_double_lock(&init_net, net);
+
 	for_each_rdev(rdev) {
 		if (net_eq(wiphy_net(&rdev->wiphy), net))
 			WARN_ON(cfg80211_switch_netns(rdev, &init_net));
 	}
-	rtnl_unlock();
+
+	rtnl_net_double_unlock(&init_net, net);
+	rtnl_unlock_deprecated();
 }
 
 static struct pernet_operations cfg80211_pernet_ops = {
