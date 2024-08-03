@@ -12339,32 +12339,12 @@ static int nl80211_disconnect(struct sk_buff *skb, struct genl_info *info)
 static int nl80211_wiphy_netns(struct sk_buff *skb, struct genl_info *info)
 {
 	struct cfg80211_registered_device *rdev = info->user_ptr[0];
-	struct net *net;
-	int err;
+	struct net *net = info->user_ptr[1];
 
-	if (info->attrs[NL80211_ATTR_PID]) {
-		u32 pid = nla_get_u32(info->attrs[NL80211_ATTR_PID]);
+	if (net_eq(net, genl_info_net(info)))
+		return 0;
 
-		net = get_net_ns_by_pid(pid);
-	} else if (info->attrs[NL80211_ATTR_NETNS_FD]) {
-		u32 fd = nla_get_u32(info->attrs[NL80211_ATTR_NETNS_FD]);
-
-		net = get_net_ns_by_fd(fd);
-	} else {
-		return -EINVAL;
-	}
-
-	if (IS_ERR(net))
-		return PTR_ERR(net);
-
-	err = 0;
-
-	/* check if anything to do */
-	if (!net_eq(wiphy_net(&rdev->wiphy), net))
-		err = cfg80211_switch_netns(rdev, net);
-
-	put_net(net);
-	return err;
+	return cfg80211_switch_netns(rdev, net);
 }
 
 static int nl80211_set_pmksa(struct sk_buff *skb, struct genl_info *info)
@@ -16488,6 +16468,7 @@ nl80211_set_ttlm(struct sk_buff *skb, struct genl_info *info)
 #define NL80211_FLAG_NO_WIPHY_MTX	0x40
 #define NL80211_FLAG_MLO_VALID_LINK_ID	0x80
 #define NL80211_FLAG_MLO_UNSUPPORTED	0x100
+#define NL80211_FLAG_NEED_RTNL_NET	0x200
 
 #define INTERNAL_FLAG_SELECTORS(__sel)			\
 	SELECTOR(__sel, NONE, 0) /* must be first */	\
@@ -16502,13 +16483,18 @@ nl80211_set_ttlm(struct sk_buff *skb, struct genl_info *info)
 		 NL80211_FLAG_MLO_VALID_LINK_ID)	\
 	SELECTOR(__sel, NETDEV_NO_MLO,			\
 		 NL80211_FLAG_NEED_NETDEV |		\
-		 NL80211_FLAG_MLO_UNSUPPORTED)	\
+		 NL80211_FLAG_MLO_UNSUPPORTED)		\
 	SELECTOR(__sel, WIPHY_RTNL,			\
 		 NL80211_FLAG_NEED_WIPHY |		\
 		 NL80211_FLAG_NEED_RTNL)		\
 	SELECTOR(__sel, WIPHY_RTNL_NOMTX,		\
 		 NL80211_FLAG_NEED_WIPHY |		\
 		 NL80211_FLAG_NEED_RTNL |		\
+		 NL80211_FLAG_NO_WIPHY_MTX)		\
+	SELECTOR(__sel, WIPHY_RTNL_NET_NOMTX,		\
+		 NL80211_FLAG_NEED_WIPHY |		\
+		 NL80211_FLAG_NEED_RTNL |		\
+		 NL80211_FLAG_NEED_RTNL_NET |		\
 		 NL80211_FLAG_NO_WIPHY_MTX)		\
 	SELECTOR(__sel, WDEV_RTNL,			\
 		 NL80211_FLAG_NEED_WDEV |		\
@@ -16577,7 +16563,32 @@ static int nl80211_pre_doit(const struct genl_split_ops *ops,
 
 	internal_flags = nl80211_internal_flags[ops->internal_flags];
 
-	rtnl_lock();
+	rtnl_lock_deprecated();
+
+	if (internal_flags & NL80211_FLAG_NEED_RTNL_NET) {
+		struct net *net = ERR_PTR(-EINVAL);
+
+		if (info->attrs[NL80211_ATTR_PID]) {
+			u32 pid = nla_get_u32(info->attrs[NL80211_ATTR_PID]);
+
+			net = get_net_ns_by_pid(pid);
+		} else if (info->attrs[NL80211_ATTR_NETNS_FD]) {
+			u32 fd = nla_get_u32(info->attrs[NL80211_ATTR_NETNS_FD]);
+
+			net = get_net_ns_by_fd(fd);
+		}
+
+		if (IS_ERR(net)) {
+			err = PTR_ERR(net);
+			goto out_rtnl_unlock;
+		}
+
+		info->user_ptr[1] = net;
+		rtnl_net_double_lock(net, genl_info_net(info));
+	} else {
+		rtnl_net_lock(genl_info_net(info));
+	}
+
 	if (internal_flags & NL80211_FLAG_NEED_WIPHY) {
 		rdev = cfg80211_get_dev_from_info(genl_info_net(info), info);
 		if (IS_ERR(rdev)) {
@@ -16654,12 +16665,24 @@ static int nl80211_pre_doit(const struct genl_split_ops *ops,
 		/* we keep the mutex locked until post_doit */
 		__release(&rdev->wiphy.mtx);
 	}
-	if (!(internal_flags & NL80211_FLAG_NEED_RTNL))
-		rtnl_unlock();
+
+	if (!(internal_flags & NL80211_FLAG_NEED_RTNL)) {
+		rtnl_net_unlock(genl_info_net(info));
+		rtnl_unlock_deprecated();
+	}
 
 	return 0;
 out_unlock:
-	rtnl_unlock();
+	if (internal_flags & NL80211_FLAG_NEED_RTNL_NET) {
+		struct net *net = info->user_ptr[1];
+
+		rtnl_net_unlock(net);
+		put_net(net);
+	}
+
+	rtnl_net_unlock(genl_info_net(info));
+out_rtnl_unlock:
+	rtnl_unlock_deprecated();
 	dev_put(dev);
 	return err;
 }
@@ -16689,8 +16712,17 @@ static void nl80211_post_doit(const struct genl_split_ops *ops,
 		wiphy_unlock(&rdev->wiphy);
 	}
 
-	if (internal_flags & NL80211_FLAG_NEED_RTNL)
-		rtnl_unlock();
+	if (internal_flags & NL80211_FLAG_NEED_RTNL_NET) {
+		struct net *net = info->user_ptr[1];
+
+		rtnl_net_unlock(net);
+		put_net(net);
+	}
+
+	if (internal_flags & NL80211_FLAG_NEED_RTNL) {
+		rtnl_net_unlock(genl_info_net(info));
+		rtnl_unlock_deprecated();
+	}
 
 	/* If needed, clear the netlink message payload from the SKB
 	 * as it might contain key data that shouldn't stick around on
@@ -17156,6 +17188,7 @@ static const struct genl_small_ops nl80211_small_ops[] = {
 		.flags = GENL_UNS_ADMIN_PERM,
 		.internal_flags = IFLAGS(NL80211_FLAG_NEED_WIPHY |
 					 NL80211_FLAG_NEED_RTNL |
+					 NL80211_FLAG_NEED_RTNL_NET |
 					 NL80211_FLAG_NO_WIPHY_MTX),
 	},
 	{
