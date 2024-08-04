@@ -17,6 +17,9 @@ static int rtnl_net_debug_event(struct notifier_block *nb,
 
 	/* Keep enum and don't add default to trigger -Werror=switch */
 	switch (cmd) {
+	case NETDEV_CHANGENAME:
+		ASSERT_RTNL_NET(net);
+		fallthrough;
 	case NETDEV_UP:
 	case NETDEV_DOWN:
 	case NETDEV_REBOOT:
@@ -27,7 +30,6 @@ static int rtnl_net_debug_event(struct notifier_block *nb,
 	case NETDEV_CHANGEADDR:
 	case NETDEV_PRE_CHANGEADDR:
 	case NETDEV_GOING_DOWN:
-	case NETDEV_CHANGENAME:
 	case NETDEV_FEAT_CHANGE:
 	case NETDEV_BONDING_FAILOVER:
 	case NETDEV_PRE_UP:
