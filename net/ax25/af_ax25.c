@@ -677,22 +677,22 @@ static int ax25_setsockopt(struct socket *sock, int level, int optname,
 			break;
 		}
 
-		rtnl_lock();
+		rtnl_lock_deprecated();
+		rtnl__net_lock(&init_net);
+
 		dev = __dev_get_by_name(&init_net, devname);
-		if (!dev) {
-			rtnl_unlock();
+		if (dev) {
+			ax25->ax25_dev = ax25_dev_ax25dev(dev);
+			if (ax25->ax25_dev)
+				ax25_fillin_cb(ax25, ax25->ax25_dev);
+			else
+				res = -ENODEV;
+		} else {
 			res = -ENODEV;
-			break;
 		}
 
-		ax25->ax25_dev = ax25_dev_ax25dev(dev);
-		if (!ax25->ax25_dev) {
-			rtnl_unlock();
-			res = -ENODEV;
-			break;
-		}
-		ax25_fillin_cb(ax25, ax25->ax25_dev);
-		rtnl_unlock();
+		rtnl__net_lock(&init_net);
+		rtnl_unlock_deprecated();
 		break;
 
 	default:
