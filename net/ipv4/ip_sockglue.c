@@ -892,10 +892,10 @@ DEFINE_STATIC_KEY_FALSE(ip4_min_ttl);
 int do_ip_setsockopt(struct sock *sk, int level, int optname,
 		     sockptr_t optval, unsigned int optlen)
 {
+	bool needs_rtnl = setsockopt_needs_rtnl(optname);
 	struct inet_sock *inet = inet_sk(sk);
 	struct net *net = sock_net(sk);
 	int val = 0, err, retv;
-	bool needs_rtnl = setsockopt_needs_rtnl(optname);
 
 	switch (optname) {
 	case IP_PKTINFO:
@@ -1073,8 +1073,10 @@ int do_ip_setsockopt(struct sock *sk, int level, int optname,
 	}
 
 	err = 0;
-	if (needs_rtnl)
-		rtnl_lock();
+	if (needs_rtnl) {
+		rtnl_lock_deprecated();
+		rtnl_net_lock(net);
+	}
 	sockopt_lock_sock(sk);
 
 	switch (optname) {
@@ -1352,14 +1354,18 @@ int do_ip_setsockopt(struct sock *sk, int level, int optname,
 		break;
 	}
 	sockopt_release_sock(sk);
-	if (needs_rtnl)
-		rtnl_unlock();
+	if (needs_rtnl) {
+		rtnl_net_unlock(net);
+		rtnl_unlock_deprecated();
+	}
 	return err;
 
 e_inval:
 	sockopt_release_sock(sk);
-	if (needs_rtnl)
-		rtnl_unlock();
+	if (needs_rtnl) {
+		rtnl_net_unlock(net);
+		rtnl_unlock_deprecated();
+	}
 	return -EINVAL;
 }
 
@@ -1507,8 +1513,9 @@ static int compat_ip_get_mcast_msfilter(struct sock *sk, sockptr_t optval,
 int do_ip_getsockopt(struct sock *sk, int level, int optname,
 		     sockptr_t optval, sockptr_t optlen)
 {
-	struct inet_sock *inet = inet_sk(sk);
 	bool needs_rtnl = getsockopt_needs_rtnl(optname);
+	struct inet_sock *inet = inet_sk(sk);
+	struct net *net = sock_net(sk);
 	int val, err = 0;
 	int len;
 
@@ -1698,8 +1705,10 @@ int do_ip_getsockopt(struct sock *sk, int level, int optname,
 		goto copyval;
 	}
 
-	if (needs_rtnl)
-		rtnl_lock();
+	if (needs_rtnl) {
+		rtnl_lock_deprecated();
+		rtnl_net_lock(net);
+	}
 	sockopt_lock_sock(sk);
 
 	switch (optname) {
@@ -1752,8 +1761,10 @@ copyval:
 
 out:
 	sockopt_release_sock(sk);
-	if (needs_rtnl)
-		rtnl_unlock();
+	if (needs_rtnl) {
+		rtnl_net_unlock(net);
+		rtnl_unlock_deprecated();
+	}
 	return err;
 }
 
