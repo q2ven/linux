@@ -10633,12 +10633,16 @@ EXPORT_SYMBOL_GPL(init_dummy_netdev);
  */
 int register_netdev(struct net_device *dev)
 {
+	struct net *net = dev_net(dev);
 	int err;
 
-	if (rtnl_lock_killable())
+	if (rtnl_lock_killable_deprecated())
 		return -EINTR;
+
+	rtnl_net_lock(net);
 	err = register_netdevice(dev);
-	rtnl_unlock();
+	rtnl_net_unlock(net);
+	rtnl_unlock_deprecated();
 	return err;
 }
 EXPORT_SYMBOL(register_netdev);
@@ -11566,9 +11570,13 @@ EXPORT_SYMBOL(unregister_netdevice_many);
  */
 void unregister_netdev(struct net_device *dev)
 {
-	rtnl_lock();
+	struct net *net = dev_net(dev);
+
+	rtnl_lock_deprecated();
+	rtnl_net_lock(net);
 	unregister_netdevice(dev);
-	rtnl_unlock();
+	rtnl_net_unlock(net);
+	rtnl_unlock_deprecated();
 }
 EXPORT_SYMBOL(unregister_netdev);
 
