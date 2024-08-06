@@ -228,6 +228,7 @@ static struct in_ifaddr *inet_alloc_ifa(struct in_device *in_dev)
 	ifa->ifa_dev = in_dev;
 
 	INIT_HLIST_NODE(&ifa->hash);
+	INIT_LIST_HEAD(&ifa->if_list);
 
 	return ifa;
 }
@@ -261,6 +262,7 @@ void in_dev_finish_destroy(struct in_device *idev)
 {
 	struct net_device *dev = idev->dev;
 
+	WARN_ON(in_dev_has_addr(idev));
 	WARN_ON(idev->ifa_list);
 	WARN_ON(idev->mc_list);
 #ifdef NET_REFCNT_DEBUG
@@ -284,6 +286,8 @@ static struct in_device *inetdev_init(struct net_device *dev)
 	in_dev = kzalloc(sizeof(*in_dev), GFP_KERNEL);
 	if (!in_dev)
 		goto out;
+
+	INIT_LIST_HEAD(&in_dev->addr_list);
 	memcpy(&in_dev->cnf, dev_net(dev)->ipv4.devconf_dflt,
 			sizeof(in_dev->cnf));
 	in_dev->cnf.sysctl = NULL;
@@ -369,10 +373,12 @@ static void __inet_del_ifa(struct in_device *in_dev,
 			   int destroy, struct nlmsghdr *nlh, u32 portid)
 {
 	int do_promote = IN_DEV_PROMOTE_SECONDARIES(in_dev);
+	struct in_ifaddr *ifa, *ifa_tmp, *ifa_next;
+	struct in_ifaddr *ifa_last_primary = NULL;
+	struct in_ifaddr *ifa_promote = NULL;
 	struct in_ifaddr __rcu **last_prim;
 	struct in_ifaddr *prev_prom = NULL;
 	struct in_ifaddr *promote = NULL;
-	struct in_ifaddr *ifa, *ifa_tmp;
 
 	ASSERT_RTNL();
 
@@ -387,6 +393,26 @@ static void __inet_del_ifa(struct in_device *in_dev,
 
 	if (!(ifa->ifa_flags & IFA_F_SECONDARY)) {
 		struct in_ifaddr __rcu **ifap1 = &ifa->ifa_next;
+
+		ifa_tmp = ifa;
+		list_for_each_entry_safe_continue(ifa_tmp, ifa_next,
+						  &in_dev->addr_list, if_list) {
+			if (!(ifa_tmp->ifa_flags & IFA_F_SECONDARY) &&
+			    ifa->ifa_scope <= ifa_tmp->ifa_scope)
+				ifa_last_primary = ifa_tmp;
+
+			if (!(ifa_tmp->ifa_flags & IFA_F_SECONDARY) ||
+			    ifa->ifa_mask != ifa_tmp->ifa_mask ||
+			    !inet_ifa_match(ifa->ifa_address, ifa_tmp))
+				continue;
+
+			if (do_promote) {
+				ifa_promote = ifa_tmp;
+				break;
+			}
+
+			list_del_rcu(&ifa_tmp->if_list);
+		}
 
 		while ((ifa_tmp = rtnl_dereference(*ifap1)) != NULL) {
 			if (!(ifa_tmp->ifa_flags & IFA_F_SECONDARY) &&
@@ -460,6 +486,12 @@ no_promotions:
 			rcu_assign_pointer(*last_prim, promote);
 		}
 
+		list_del_rcu(&ifa_promote->if_list);
+		if (ifa_last_primary)
+			list_add_rcu(&ifa_promote->if_list, &ifa_last_primary->if_list);
+		else
+			list_add_rcu(&ifa_promote->if_list, &ifa->if_list);
+
 		promote->ifa_flags &= ~IFA_F_SECONDARY;
 		rtmsg_ifa(RTM_NEWADDR, promote, nlh, portid);
 		blocking_notifier_call_chain(&inetaddr_chain,
@@ -473,6 +505,9 @@ no_promotions:
 		}
 
 	}
+
+	list_del_rcu(&ifa->if_list);
+
 	if (destroy)
 		inet_free_ifa(ifa);
 }
@@ -492,9 +527,10 @@ static int __inet_insert_ifa(struct in_ifaddr *ifa, struct nlmsghdr *nlh,
 			     u32 portid, struct netlink_ext_ack *extack)
 {
 	struct in_ifaddr __rcu **last_primary, **ifap;
+	struct in_ifaddr *ifa_last_primary = NULL;
 	struct in_device *in_dev = ifa->ifa_dev;
+	struct in_ifaddr *ifa1, *ifa_tmp;
 	struct in_validator_info ivi;
-	struct in_ifaddr *ifa1;
 	int ret;
 
 	ASSERT_RTNL();
@@ -509,6 +545,12 @@ static int __inet_insert_ifa(struct in_ifaddr *ifa, struct nlmsghdr *nlh,
 
 	/* Don't set IPv6 only flags to IPv4 addresses */
 	ifa->ifa_flags &= ~IPV6ONLY_FLAGS;
+
+	in_dev_for_each_ifa_rtnl(ifa_tmp, in_dev) {
+		if (!(ifa_tmp->ifa_flags & IFA_F_SECONDARY) &&
+		    ifa->ifa_scope <= ifa_tmp->ifa_scope)
+			ifa_last_primary = ifa_tmp;
+	}
 
 	ifap = &in_dev->ifa_list;
 	ifa1 = rtnl_dereference(*ifap);
@@ -553,8 +595,12 @@ static int __inet_insert_ifa(struct in_ifaddr *ifa, struct nlmsghdr *nlh,
 		return ret;
 	}
 
-	if (!(ifa->ifa_flags & IFA_F_SECONDARY))
+	if (!(ifa->ifa_flags & IFA_F_SECONDARY) && ifa_last_primary) {
 		ifap = last_primary;
+		list_add_rcu(&ifa->if_list, &ifa_last_primary->if_list);
+	} else {
+		list_add_tail_rcu(&ifa->if_list, &in_dev->addr_list);
+	}
 
 	rcu_assign_pointer(ifa->ifa_next, *ifap);
 	rcu_assign_pointer(*ifap, ifa);
