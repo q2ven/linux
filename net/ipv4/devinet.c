@@ -198,6 +198,17 @@ static void rtmsg_ifa(int event, struct in_ifaddr *, struct nlmsghdr *, u32);
 
 static BLOCKING_NOTIFIER_HEAD(inetaddr_chain);
 static BLOCKING_NOTIFIER_HEAD(inetaddr_validator_chain);
+
+static struct in_ifaddr __rcu **inet_get_ifap(struct in_ifaddr *ifa)
+{
+	struct in_ifaddr *ifa_prev = list_prev_entry(ifa, if_list);
+
+	if (list_entry_is_head(ifa_prev, &ifa->ifa_dev->addr_list, if_list))
+		return &ifa->ifa_dev->ifa_list;
+
+	return &ifa_prev->ifa_next;
+}
+
 static void inet_del_ifa(struct in_device *in_dev,
 			 struct in_ifaddr __rcu **ifap,
 			 int destroy);
@@ -326,8 +337,8 @@ out_kfree:
 
 static void inetdev_destroy(struct in_device *in_dev)
 {
+	struct in_ifaddr *ifa, *ifa_next;
 	struct net_device *dev;
-	struct in_ifaddr *ifa;
 
 	ASSERT_RTNL();
 
@@ -337,8 +348,8 @@ static void inetdev_destroy(struct in_device *in_dev)
 
 	ip_mc_destroy_dev(in_dev);
 
-	while ((ifa = rtnl_dereference(in_dev->ifa_list)) != NULL) {
-		inet_del_ifa(in_dev, &in_dev->ifa_list, 0);
+	in_dev_for_each_ifa_safe_rtnl(ifa, ifa_next, in_dev) {
+		inet_del_ifa(in_dev, inet_get_ifap(ifa), 0);
 		inet_free_ifa(ifa);
 	}
 
