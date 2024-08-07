@@ -1082,15 +1082,14 @@ static int inet_abc_len(__be32 addr)
 
 int devinet_ioctl(struct net *net, unsigned int cmd, struct ifreq *ifr)
 {
-	struct sockaddr_in sin_orig;
 	struct sockaddr_in *sin = (struct sockaddr_in *)&ifr->ifr_addr;
-	struct in_ifaddr __rcu **ifap = NULL;
+	struct in_ifaddr *ifa = NULL, *ifa_tmp;
+	struct sockaddr_in sin_orig;
 	struct in_device *in_dev;
-	struct in_ifaddr *ifa = NULL;
 	struct net_device *dev;
-	char *colon;
-	int ret = -EFAULT;
 	int tryaddrmatch = 0;
+	int ret = -EFAULT;
+	char *colon;
 
 	ifr->ifr_name[IFNAMSIZ - 1] = 0;
 
@@ -1156,26 +1155,25 @@ int devinet_ioctl(struct net *net, unsigned int cmd, struct ifreq *ifr)
 			/* note: we only do this for a limited set of ioctls
 			   and only if the original address family was AF_INET.
 			   This is checked above. */
-
-			for (ifap = &in_dev->ifa_list;
-			     (ifa = rtnl_dereference(*ifap)) != NULL;
-			     ifap = &ifa->ifa_next) {
-				if (!strcmp(ifr->ifr_name, ifa->ifa_label) &&
-				    sin_orig.sin_addr.s_addr ==
-							ifa->ifa_local) {
+			in_dev_for_each_ifa_rtnl(ifa_tmp, in_dev) {
+				if (!strcmp(ifr->ifr_name, ifa_tmp->ifa_label) &&
+				    sin_orig.sin_addr.s_addr ==	ifa_tmp->ifa_local) {
+					ifa = ifa_tmp;
 					break; /* found */
 				}
 			}
 		}
+
 		/* we didn't get a match, maybe the application is
 		   4.3BSD-style and passed in junk so we fall back to
 		   comparing just the label */
 		if (!ifa) {
-			for (ifap = &in_dev->ifa_list;
-			     (ifa = rtnl_dereference(*ifap)) != NULL;
-			     ifap = &ifa->ifa_next)
-				if (!strcmp(ifr->ifr_name, ifa->ifa_label))
+			in_dev_for_each_ifa_rtnl(ifa_tmp, in_dev) {
+				if (!strcmp(ifr->ifr_name, ifa_tmp->ifa_label)) {
+					ifa = ifa_tmp;
 					break;
+				}
+			}
 		}
 	}
 
@@ -1211,7 +1209,7 @@ int devinet_ioctl(struct net *net, unsigned int cmd, struct ifreq *ifr)
 				break;
 			ret = 0;
 			if (!(ifr->ifr_flags & IFF_UP))
-				inet_del_ifa(in_dev, ifap, 1);
+				inet_del_ifa(in_dev, inet_get_ifap(ifa), 1);
 			break;
 		}
 		ret = dev_change_flags(dev, ifr->ifr_flags, NULL);
@@ -1238,7 +1236,7 @@ int devinet_ioctl(struct net *net, unsigned int cmd, struct ifreq *ifr)
 			ret = 0;
 			if (ifa->ifa_local == sin->sin_addr.s_addr)
 				break;
-			inet_del_ifa(in_dev, ifap, 0);
+			inet_del_ifa(in_dev, inet_get_ifap(ifa), 0);
 			ifa->ifa_broadcast = 0;
 			ifa->ifa_scope = 0;
 		}
@@ -1263,7 +1261,7 @@ int devinet_ioctl(struct net *net, unsigned int cmd, struct ifreq *ifr)
 	case SIOCSIFBRDADDR:	/* Set the broadcast address */
 		ret = 0;
 		if (ifa->ifa_broadcast != sin->sin_addr.s_addr) {
-			inet_del_ifa(in_dev, ifap, 0);
+			inet_del_ifa(in_dev, inet_get_ifap(ifa), 0);
 			ifa->ifa_broadcast = sin->sin_addr.s_addr;
 			inet_insert_ifa(ifa);
 		}
@@ -1277,7 +1275,7 @@ int devinet_ioctl(struct net *net, unsigned int cmd, struct ifreq *ifr)
 		if (inet_abc_len(sin->sin_addr.s_addr) < 0)
 			break;
 		ret = 0;
-		inet_del_ifa(in_dev, ifap, 0);
+		inet_del_ifa(in_dev, inet_get_ifap(ifa), 0);
 		ifa->ifa_address = sin->sin_addr.s_addr;
 		inet_insert_ifa(ifa);
 		break;
@@ -1293,7 +1291,7 @@ int devinet_ioctl(struct net *net, unsigned int cmd, struct ifreq *ifr)
 		ret = 0;
 		if (ifa->ifa_mask != sin->sin_addr.s_addr) {
 			__be32 old_mask = ifa->ifa_mask;
-			inet_del_ifa(in_dev, ifap, 0);
+			inet_del_ifa(in_dev, inet_get_ifap(ifa), 0);
 			ifa->ifa_mask = sin->sin_addr.s_addr;
 			ifa->ifa_prefixlen = inet_mask_len(ifa->ifa_mask);
 
