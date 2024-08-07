@@ -777,11 +777,9 @@ static void inet_register(void)
 		ip = lp->dev->ip_ptr;
 		if (ip == NULL)
 			continue;
-		in = ip->ifa_list;
-		while (in != NULL) {
+		in_dev_for_each_ifa_rtnl(in, ip)
 			uml_inetaddr_event(NULL, NETDEV_UP, in);
-			in = in->ifa_next;
-		}
+
 	}
 	spin_unlock(&opened_lock);
 }
@@ -829,12 +827,11 @@ void iter_addresses(void *d, void (*cb)(unsigned char *, unsigned char *,
 	unsigned char address[4], netmask[4];
 
 	if (ip == NULL) return;
-	in = ip->ifa_list;
-	while (in != NULL) {
+
+	in_dev_for_each_ifa_rtnl(in, ip) {
 		memcpy(address, &in->ifa_address, sizeof(address));
 		memcpy(netmask, &in->ifa_mask, sizeof(netmask));
 		(*cb)(address, netmask, arg);
-		in = in->ifa_next;
 	}
 }
 
