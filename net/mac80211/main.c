@@ -601,11 +601,9 @@ static int ieee80211_ifa_changed(struct notifier_block *nb,
 	__acquire(&local->hw.wiphy->mtx);
 
 	/* Copy the addresses to the vif config list */
-	ifa = rtnl_dereference(idev->ifa_list);
-	while (ifa) {
+	in_dev_for_each_ifa_rtnl(ifa, idev) {
 		if (c < IEEE80211_BSS_ARP_ADDR_LIST_LEN)
 			vif_cfg->arp_addr_list[c] = ifa->ifa_address;
-		ifa = rtnl_dereference(ifa->ifa_next);
 		c++;
 	}
 
