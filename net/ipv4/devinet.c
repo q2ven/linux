@@ -712,7 +712,6 @@ static int inet_rtm_deladdr(struct sk_buff *skb, struct nlmsghdr *nlh,
 			    struct netlink_ext_ack *extack)
 {
 	struct net *net = sock_net(skb->sk);
-	struct in_ifaddr __rcu **ifap;
 	struct nlattr *tb[IFA_MAX+1];
 	struct in_device *in_dev;
 	struct ifaddrmsg *ifm;
@@ -734,8 +733,7 @@ static int inet_rtm_deladdr(struct sk_buff *skb, struct nlmsghdr *nlh,
 		goto errout;
 	}
 
-	for (ifap = &in_dev->ifa_list; (ifa = rtnl_dereference(*ifap)) != NULL;
-	     ifap = &ifa->ifa_next) {
+	in_dev_for_each_ifa_rtnl(ifa, in_dev) {
 		if (tb[IFA_LOCAL] &&
 		    ifa->ifa_local != nla_get_in_addr(tb[IFA_LOCAL]))
 			continue;
@@ -750,7 +748,9 @@ static int inet_rtm_deladdr(struct sk_buff *skb, struct nlmsghdr *nlh,
 
 		if (ipv4_is_multicast(ifa->ifa_address))
 			ip_mc_autojoin_config(net, false, ifa);
-		__inet_del_ifa(in_dev, ifap, 1, nlh, NETLINK_CB(skb).portid);
+
+		__inet_del_ifa(in_dev, inet_get_ifap(ifa), 1,
+			       nlh, NETLINK_CB(skb).portid);
 		return 0;
 	}
 
