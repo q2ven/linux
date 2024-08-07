@@ -824,20 +824,7 @@ static void check_lifetime(struct work_struct *work)
 
 			if (ifa->ifa_valid_lft != INFINITY_LIFE_TIME &&
 			    age >= ifa->ifa_valid_lft) {
-				struct in_ifaddr __rcu **ifap;
-				struct in_ifaddr *tmp;
-
-				ifap = &ifa->ifa_dev->ifa_list;
-				tmp = rtnl_dereference(*ifap);
-				while (tmp) {
-					if (tmp == ifa) {
-						inet_del_ifa(ifa->ifa_dev,
-							     ifap, 1);
-						break;
-					}
-					ifap = &tmp->ifa_next;
-					tmp = rtnl_dereference(*ifap);
-				}
+				inet_del_ifa(ifa->ifa_dev, inet_get_ifap(ifa), 1);
 			} else if (ifa->ifa_preferred_lft !=
 				   INFINITY_LIFE_TIME &&
 				   age >= ifa->ifa_preferred_lft &&
