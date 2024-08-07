@@ -368,15 +368,15 @@ static void __inet_del_ifa(struct in_device *in_dev,
 			   struct in_ifaddr __rcu **ifap,
 			   int destroy, struct nlmsghdr *nlh, u32 portid)
 {
-	struct in_ifaddr *promote = NULL;
-	struct in_ifaddr *ifa, *ifa1;
+	int do_promote = IN_DEV_PROMOTE_SECONDARIES(in_dev);
 	struct in_ifaddr __rcu **last_prim;
 	struct in_ifaddr *prev_prom = NULL;
-	int do_promote = IN_DEV_PROMOTE_SECONDARIES(in_dev);
+	struct in_ifaddr *promote = NULL;
+	struct in_ifaddr *ifa, *ifa_tmp;
 
 	ASSERT_RTNL();
 
-	ifa1 = rtnl_dereference(*ifap);
+	ifa = rtnl_dereference(*ifap);
 	last_prim = ifap;
 	if (in_dev->dead)
 		goto no_promotions;
@@ -385,32 +385,32 @@ static void __inet_del_ifa(struct in_device *in_dev,
 	 * unless alias promotion is set
 	 **/
 
-	if (!(ifa1->ifa_flags & IFA_F_SECONDARY)) {
-		struct in_ifaddr __rcu **ifap1 = &ifa1->ifa_next;
+	if (!(ifa->ifa_flags & IFA_F_SECONDARY)) {
+		struct in_ifaddr __rcu **ifap1 = &ifa->ifa_next;
 
-		while ((ifa = rtnl_dereference(*ifap1)) != NULL) {
-			if (!(ifa->ifa_flags & IFA_F_SECONDARY) &&
-			    ifa1->ifa_scope <= ifa->ifa_scope)
-				last_prim = &ifa->ifa_next;
+		while ((ifa_tmp = rtnl_dereference(*ifap1)) != NULL) {
+			if (!(ifa_tmp->ifa_flags & IFA_F_SECONDARY) &&
+			    ifa->ifa_scope <= ifa_tmp->ifa_scope)
+				last_prim = &ifa_tmp->ifa_next;
 
-			if (!(ifa->ifa_flags & IFA_F_SECONDARY) ||
-			    ifa1->ifa_mask != ifa->ifa_mask ||
-			    !inet_ifa_match(ifa1->ifa_address, ifa)) {
-				ifap1 = &ifa->ifa_next;
-				prev_prom = ifa;
+			if (!(ifa_tmp->ifa_flags & IFA_F_SECONDARY) ||
+			    ifa->ifa_mask != ifa_tmp->ifa_mask ||
+			    !inet_ifa_match(ifa->ifa_address, ifa_tmp)) {
+				ifap1 = &ifa_tmp->ifa_next;
+				prev_prom = ifa_tmp;
 				continue;
 			}
 
 			if (!do_promote) {
-				inet_hash_remove(ifa);
-				*ifap1 = ifa->ifa_next;
+				inet_hash_remove(ifa_tmp);
+				*ifap1 = ifa_tmp->ifa_next;
 
-				rtmsg_ifa(RTM_DELADDR, ifa, nlh, portid);
+				rtmsg_ifa(RTM_DELADDR, ifa_tmp, nlh, portid);
 				blocking_notifier_call_chain(&inetaddr_chain,
-						NETDEV_DOWN, ifa);
-				inet_free_ifa(ifa);
+							     NETDEV_DOWN, ifa_tmp);
+				inet_free_ifa(ifa_tmp);
 			} else {
-				promote = ifa;
+				promote = ifa_tmp;
 				break;
 			}
 		}
@@ -421,17 +421,17 @@ static void __inet_del_ifa(struct in_device *in_dev,
 	 * and later to add them back with new prefsrc. Do this
 	 * while all addresses are on the device list.
 	 */
-	for (ifa = promote; ifa; ifa = rtnl_dereference(ifa->ifa_next)) {
-		if (ifa1->ifa_mask == ifa->ifa_mask &&
-		    inet_ifa_match(ifa1->ifa_address, ifa))
-			fib_del_ifaddr(ifa, ifa1);
+	for (ifa_tmp = promote; ifa_tmp; ifa_tmp = rtnl_dereference(ifa_tmp->ifa_next)) {
+		if (ifa->ifa_mask == ifa_tmp->ifa_mask &&
+		    inet_ifa_match(ifa->ifa_address, ifa_tmp))
+			fib_del_ifaddr(ifa_tmp, ifa);
 	}
 
 no_promotions:
 	/* 2. Unlink it */
 
-	*ifap = ifa1->ifa_next;
-	inet_hash_remove(ifa1);
+	*ifap = ifa->ifa_next;
+	inet_hash_remove(ifa);
 
 	/* 3. Announce address deletion */
 
@@ -443,8 +443,8 @@ no_promotions:
 	   is valid, it will try to restore deleted routes... Grr.
 	   So that, this order is correct.
 	 */
-	rtmsg_ifa(RTM_DELADDR, ifa1, nlh, portid);
-	blocking_notifier_call_chain(&inetaddr_chain, NETDEV_DOWN, ifa1);
+	rtmsg_ifa(RTM_DELADDR, ifa, nlh, portid);
+	blocking_notifier_call_chain(&inetaddr_chain, NETDEV_DOWN, ifa);
 
 	if (promote) {
 		struct in_ifaddr *next_sec;
@@ -464,17 +464,17 @@ no_promotions:
 		rtmsg_ifa(RTM_NEWADDR, promote, nlh, portid);
 		blocking_notifier_call_chain(&inetaddr_chain,
 				NETDEV_UP, promote);
-		for (ifa = next_sec; ifa;
-		     ifa = rtnl_dereference(ifa->ifa_next)) {
-			if (ifa1->ifa_mask != ifa->ifa_mask ||
-			    !inet_ifa_match(ifa1->ifa_address, ifa))
+		for (ifa_tmp = next_sec; ifa_tmp;
+		     ifa_tmp = rtnl_dereference(ifa_tmp->ifa_next)) {
+			if (ifa->ifa_mask != ifa_tmp->ifa_mask ||
+			    !inet_ifa_match(ifa->ifa_address, ifa_tmp))
 					continue;
-			fib_add_ifaddr(ifa);
+			fib_add_ifaddr(ifa_tmp);
 		}
 
 	}
 	if (destroy)
-		inet_free_ifa(ifa1);
+		inet_free_ifa(ifa);
 }
 
 static void inet_del_ifa(struct in_device *in_dev,
