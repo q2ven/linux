@@ -227,6 +227,10 @@ static __inline__ bool bad_mask(__be32 mask, __be32 addr)
 #define in_dev_for_each_ifa_rtnl(ifa, in_dev)				\
 	list_for_each_entry(ifa, &(in_dev)->addr_list, if_list)
 
+#define in_dev_for_each_ifa_safe_rtnl(ifa, ifa_next, in_dev)		\
+	list_for_each_entry_safe(ifa, ifa_next,				\
+				 &(in_dev)->addr_list, if_list)
+
 #define in_dev_for_each_ifa_rcu(ifa, in_dev)				\
 	list_for_each_entry_rcu(ifa, &(in_dev)->addr_list, if_list)
 
