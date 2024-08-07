@@ -2194,19 +2194,16 @@ static int ath6kl_wow_suspend_vif(struct ath6kl_vif *vif,
 	if (!in_dev)
 		return 0;
 
-	ifa = rtnl_dereference(in_dev->ifa_list);
 	memset(&ips, 0, sizeof(ips));
 
 	/* Configure IP addr only if IP address count < MAX_IP_ADDRS */
-	while (index < MAX_IP_ADDRS && ifa) {
-		ips[index] = ifa->ifa_local;
-		ifa = rtnl_dereference(ifa->ifa_next);
-		index++;
-	}
+	in_dev_for_each_ifa_rtnl(ifa, in_dev) {
+		if (index == MAX_IP_ADDRS) {
+			ath6kl_err("total IP addr count is exceeding fw limit\n");
+			return -EINVAL;
+		}
 
-	if (ifa) {
-		ath6kl_err("total IP addr count is exceeding fw limit\n");
-		return -EINVAL;
+		ips[index++] = ifa->ifa_local;
 	}
 
 	ret = ath6kl_wmi_set_ip_cmd(ar->wmi, vif->fw_vif_idx, ips[0], ips[1]);
