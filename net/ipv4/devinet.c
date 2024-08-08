@@ -274,7 +274,6 @@ void in_dev_finish_destroy(struct in_device *idev)
 	struct net_device *dev = idev->dev;
 
 	WARN_ON(in_dev_has_addr(idev));
-	WARN_ON(idev->ifa_list);
 	WARN_ON(idev->mc_list);
 #ifdef NET_REFCNT_DEBUG
 	pr_debug("%s: %p=%s\n", __func__, idev, dev ? dev->name : "NIL");
@@ -387,14 +386,10 @@ static void __inet_del_ifa(struct in_device *in_dev,
 	struct in_ifaddr *ifa, *ifa_tmp, *ifa_next;
 	struct in_ifaddr *ifa_last_primary = NULL;
 	struct in_ifaddr *ifa_promote = NULL;
-	struct in_ifaddr __rcu **last_prim;
-	struct in_ifaddr *prev_prom = NULL;
-	struct in_ifaddr *promote = NULL;
 
 	ASSERT_RTNL();
 
 	ifa = rtnl_dereference(*ifap);
-	last_prim = ifap;
 	if (in_dev->dead)
 		goto no_promotions;
 
@@ -403,8 +398,6 @@ static void __inet_del_ifa(struct in_device *in_dev,
 	 **/
 
 	if (!(ifa->ifa_flags & IFA_F_SECONDARY)) {
-		struct in_ifaddr __rcu **ifap1 = &ifa->ifa_next;
-
 		ifa_tmp = ifa;
 		list_for_each_entry_safe_continue(ifa_tmp, ifa_next,
 						  &in_dev->addr_list, if_list) {
@@ -423,33 +416,12 @@ static void __inet_del_ifa(struct in_device *in_dev,
 			}
 
 			list_del_rcu(&ifa_tmp->if_list);
-		}
+			inet_hash_remove(ifa_tmp);
 
-		while ((ifa_tmp = rtnl_dereference(*ifap1)) != NULL) {
-			if (!(ifa_tmp->ifa_flags & IFA_F_SECONDARY) &&
-			    ifa->ifa_scope <= ifa_tmp->ifa_scope)
-				last_prim = &ifa_tmp->ifa_next;
-
-			if (!(ifa_tmp->ifa_flags & IFA_F_SECONDARY) ||
-			    ifa->ifa_mask != ifa_tmp->ifa_mask ||
-			    !inet_ifa_match(ifa->ifa_address, ifa_tmp)) {
-				ifap1 = &ifa_tmp->ifa_next;
-				prev_prom = ifa_tmp;
-				continue;
-			}
-
-			if (!do_promote) {
-				inet_hash_remove(ifa_tmp);
-				*ifap1 = ifa_tmp->ifa_next;
-
-				rtmsg_ifa(RTM_DELADDR, ifa_tmp, nlh, portid);
-				blocking_notifier_call_chain(&inetaddr_chain,
-							     NETDEV_DOWN, ifa_tmp);
-				inet_free_ifa(ifa_tmp);
-			} else {
-				promote = ifa_tmp;
-				break;
-			}
+			rtmsg_ifa(RTM_DELADDR, ifa_tmp, nlh, portid);
+			blocking_notifier_call_chain(&inetaddr_chain,
+						     NETDEV_DOWN, ifa_tmp);
+			inet_free_ifa(ifa_tmp);
 		}
 	}
 
@@ -458,16 +430,17 @@ static void __inet_del_ifa(struct in_device *in_dev,
 	 * and later to add them back with new prefsrc. Do this
 	 * while all addresses are on the device list.
 	 */
-	for (ifa_tmp = promote; ifa_tmp; ifa_tmp = rtnl_dereference(ifa_tmp->ifa_next)) {
-		if (ifa->ifa_mask == ifa_tmp->ifa_mask &&
-		    inet_ifa_match(ifa->ifa_address, ifa_tmp))
-			fib_del_ifaddr(ifa_tmp, ifa);
+	if (ifa_promote) {
+		ifa_tmp = ifa_promote;
+		list_for_each_entry_from(ifa_tmp, &in_dev->addr_list, if_list) {
+			if (ifa->ifa_mask == ifa_tmp->ifa_mask &&
+			    inet_ifa_match(ifa->ifa_address, ifa_tmp))
+				fib_del_ifaddr(ifa_tmp, ifa);
+		}
 	}
 
 no_promotions:
 	/* 2. Unlink it */
-
-	*ifap = ifa->ifa_next;
 	inet_hash_remove(ifa);
 
 	/* 3. Announce address deletion */
@@ -483,38 +456,28 @@ no_promotions:
 	rtmsg_ifa(RTM_DELADDR, ifa, nlh, portid);
 	blocking_notifier_call_chain(&inetaddr_chain, NETDEV_DOWN, ifa);
 
-	if (promote) {
-		struct in_ifaddr *next_sec;
-
-		next_sec = rtnl_dereference(promote->ifa_next);
-		if (prev_prom) {
-			struct in_ifaddr *last_sec;
-
-			rcu_assign_pointer(prev_prom->ifa_next, next_sec);
-
-			last_sec = rtnl_dereference(*last_prim);
-			rcu_assign_pointer(promote->ifa_next, last_sec);
-			rcu_assign_pointer(*last_prim, promote);
-		}
-
+	if (ifa_promote) {
+		ifa_next = list_next_entry(ifa_promote, if_list);
 		list_del_rcu(&ifa_promote->if_list);
+
 		if (ifa_last_primary)
 			list_add_rcu(&ifa_promote->if_list, &ifa_last_primary->if_list);
 		else
 			list_add_rcu(&ifa_promote->if_list, &ifa->if_list);
 
-		promote->ifa_flags &= ~IFA_F_SECONDARY;
-		rtmsg_ifa(RTM_NEWADDR, promote, nlh, portid);
+		ifa_promote->ifa_flags &= ~IFA_F_SECONDARY;
+		rtmsg_ifa(RTM_NEWADDR, ifa_promote, nlh, portid);
 		blocking_notifier_call_chain(&inetaddr_chain,
-				NETDEV_UP, promote);
-		for (ifa_tmp = next_sec; ifa_tmp;
-		     ifa_tmp = rtnl_dereference(ifa_tmp->ifa_next)) {
+					     NETDEV_UP, ifa_promote);
+
+		ifa_tmp = ifa_next;
+		list_for_each_entry_from(ifa_tmp, &in_dev->addr_list, if_list) {
 			if (ifa->ifa_mask != ifa_tmp->ifa_mask ||
 			    !inet_ifa_match(ifa->ifa_address, ifa_tmp))
-					continue;
+				continue;
+
 			fib_add_ifaddr(ifa_tmp);
 		}
-
 	}
 
 	list_del_rcu(&ifa->if_list);
