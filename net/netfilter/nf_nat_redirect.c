@@ -65,7 +65,7 @@ nf_nat_redirect_ipv4(struct sk_buff *skb, const struct nf_nat_range2 *range,
 		if (indev) {
 			const struct in_ifaddr *ifa;
 
-			ifa = rcu_dereference(indev->ifa_list);
+			ifa = in_dev_first_addr_rcu(indev);
 			if (ifa)
 				newdst.ip = ifa->ifa_local;
 		}

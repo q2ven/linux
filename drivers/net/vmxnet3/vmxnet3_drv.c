@@ -4416,7 +4416,7 @@ vmxnet3_suspend(struct device *device)
 			goto skip_arp;
 		}
 
-		ifa = rcu_dereference(in_dev->ifa_list);
+		ifa = in_dev_first_addr_rcu(in_dev);
 		if (!ifa) {
 			rcu_read_unlock();
 			goto skip_arp;
