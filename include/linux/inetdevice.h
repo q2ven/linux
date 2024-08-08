@@ -28,8 +28,8 @@ struct in_device {
 
 	refcount_t		refcnt;
 	int			dead;
-	struct in_ifaddr	__rcu *ifa_list;/* IP ifaddr chain		*/
-	struct list_head	addr_list;
+
+	struct list_head	addr_list;	/* IP ifaddr chain		*/
 
 	struct ip_mc_list __rcu	*mc_list;	/* IP multicast filter chain    */
 	struct ip_mc_list __rcu	* __rcu *mc_hash;
@@ -144,7 +144,6 @@ static inline void ipv4_devconf_setall(struct in_device *in_dev)
 struct in_ifaddr {
 	struct hlist_node	hash;
 	struct list_head	if_list;
-	struct in_ifaddr	__rcu *ifa_next;
 	struct in_device	*ifa_dev;
 	struct rcu_head		rcu_head;
 	__be32			ifa_local;
