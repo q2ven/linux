@@ -2058,7 +2058,7 @@ static int iw_query_port(struct ib_device *device,
 		rcu_read_lock();
 		inetdev = __in_dev_get_rcu(netdev);
 
-		if (inetdev && inetdev->ifa_list) {
+		if (inetdev && in_dev_has_addr(in_dev)) {
 			port_attr->state = IB_PORT_ACTIVE;
 			port_attr->phys_state = IB_PORT_PHYS_STATE_LINK_UP;
 		} else {

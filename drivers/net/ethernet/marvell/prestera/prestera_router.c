@@ -1342,7 +1342,7 @@ static int __prestera_inetaddr_cb(struct notifier_block *nb,
 
 	/* Ignore if this is not latest address */
 	idev = __in_dev_get_rtnl(dev);
-	if (idev && idev->ifa_list)
+	if (idev && in_dev_has_addr(idev))
 		goto out;
 
 	err = __prestera_inetaddr_event(router->sw, dev, event, NULL);
@@ -1366,7 +1366,7 @@ static int __prestera_inetaddr_valid_cb(struct notifier_block *nb,
 
 	/* Ignore if this is not first address */
 	idev = __in_dev_get_rtnl(dev);
-	if (idev && idev->ifa_list)
+	if (idev && in_dev_has_addr(idev))
 		goto out;
 
 	if (ipv4_is_multicast(ivi->ivi_addr)) {

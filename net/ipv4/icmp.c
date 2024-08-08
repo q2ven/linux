@@ -1129,7 +1129,7 @@ bool icmp_build_probe(struct sk_buff *skb, struct icmphdr *icmphdr)
 		status |= ICMP_EXT_ECHOREPLY_ACTIVE;
 
 	in_dev = __in_dev_get_rcu(dev);
-	if (in_dev && rcu_access_pointer(in_dev->ifa_list))
+	if (in_dev && in_dev_has_addr(in_dev))
 		status |= ICMP_EXT_ECHOREPLY_IPV4;
 
 	in6_dev = __in6_dev_get(dev);
