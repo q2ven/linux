@@ -500,11 +500,10 @@ static DECLARE_DELAYED_WORK(check_lifetime_work, check_lifetime);
 static int __inet_insert_ifa(struct in_ifaddr *ifa, struct nlmsghdr *nlh,
 			     u32 portid, struct netlink_ext_ack *extack)
 {
-	struct in_ifaddr __rcu **last_primary, **ifap;
 	struct in_ifaddr *ifa_last_primary = NULL;
 	struct in_device *in_dev = ifa->ifa_dev;
-	struct in_ifaddr *ifa1, *ifa_tmp;
 	struct in_validator_info ivi;
+	struct in_ifaddr *ifa_tmp;
 	int ret;
 
 	ASSERT_RTNL();
@@ -515,7 +514,6 @@ static int __inet_insert_ifa(struct in_ifaddr *ifa, struct nlmsghdr *nlh,
 	}
 
 	ifa->ifa_flags &= ~IFA_F_SECONDARY;
-	last_primary = &in_dev->ifa_list;
 
 	/* Don't set IPv6 only flags to IPv4 addresses */
 	ifa->ifa_flags &= ~IPV6ONLY_FLAGS;
@@ -524,31 +522,23 @@ static int __inet_insert_ifa(struct in_ifaddr *ifa, struct nlmsghdr *nlh,
 		if (!(ifa_tmp->ifa_flags & IFA_F_SECONDARY) &&
 		    ifa->ifa_scope <= ifa_tmp->ifa_scope)
 			ifa_last_primary = ifa_tmp;
-	}
 
-	ifap = &in_dev->ifa_list;
-	ifa1 = rtnl_dereference(*ifap);
 
-	while (ifa1) {
-		if (!(ifa1->ifa_flags & IFA_F_SECONDARY) &&
-		    ifa->ifa_scope <= ifa1->ifa_scope)
-			last_primary = &ifa1->ifa_next;
-		if (ifa1->ifa_mask == ifa->ifa_mask &&
-		    inet_ifa_match(ifa1->ifa_address, ifa)) {
-			if (ifa1->ifa_local == ifa->ifa_local) {
+		if (ifa_tmp->ifa_mask == ifa->ifa_mask &&
+		    inet_ifa_match(ifa_tmp->ifa_address, ifa)) {
+			if (ifa_tmp->ifa_local == ifa->ifa_local) {
 				inet_free_ifa(ifa);
 				return -EEXIST;
 			}
-			if (ifa1->ifa_scope != ifa->ifa_scope) {
+
+			if (ifa_tmp->ifa_scope != ifa->ifa_scope) {
 				NL_SET_ERR_MSG(extack, "ipv4: Invalid scope value");
 				inet_free_ifa(ifa);
 				return -EINVAL;
 			}
+
 			ifa->ifa_flags |= IFA_F_SECONDARY;
 		}
-
-		ifap = &ifa1->ifa_next;
-		ifa1 = rtnl_dereference(*ifap);
 	}
 
 	/* Allow any devices that wish to register ifaddr validtors to weigh
@@ -569,15 +559,10 @@ static int __inet_insert_ifa(struct in_ifaddr *ifa, struct nlmsghdr *nlh,
 		return ret;
 	}
 
-	if (!(ifa->ifa_flags & IFA_F_SECONDARY) && ifa_last_primary) {
-		ifap = last_primary;
+	if (!(ifa->ifa_flags & IFA_F_SECONDARY) && ifa_last_primary)
 		list_add_rcu(&ifa->if_list, &ifa_last_primary->if_list);
-	} else {
+	else
 		list_add_tail_rcu(&ifa->if_list, &in_dev->addr_list);
-	}
-
-	rcu_assign_pointer(ifa->ifa_next, *ifap);
-	rcu_assign_pointer(*ifap, ifa);
 
 	inet_hash_insert(dev_net(in_dev->dev), ifa);
 
