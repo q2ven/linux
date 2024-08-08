@@ -8273,7 +8273,7 @@ static bool __mlxsw_sp_dev_addr_list_empty(const struct net_device *dev)
 	struct in_device *idev;
 
 	idev = __in_dev_get_rcu(dev);
-	if (idev && idev->ifa_list)
+	if (idev && in_dev_has_addr(idev))
 		return false;
 
 	inet6_dev = __in6_dev_get(dev);

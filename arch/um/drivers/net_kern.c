@@ -845,8 +845,7 @@ int dev_netmask(void *d, void *m)
 	if (ip == NULL)
 		return 1;
 
-	in = ip->ifa_list;
-	if (in == NULL)
+	if (!in_dev_has_addr(ip))
 		return 1;
 
 	*mask_out = in->ifa_mask;
