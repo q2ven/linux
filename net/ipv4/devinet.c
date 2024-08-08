@@ -199,18 +199,8 @@ static void rtmsg_ifa(int event, struct in_ifaddr *, struct nlmsghdr *, u32);
 static BLOCKING_NOTIFIER_HEAD(inetaddr_chain);
 static BLOCKING_NOTIFIER_HEAD(inetaddr_validator_chain);
 
-static struct in_ifaddr __rcu **inet_get_ifap(struct in_ifaddr *ifa)
-{
-	struct in_ifaddr *ifa_prev = list_prev_entry(ifa, if_list);
-
-	if (list_entry_is_head(ifa_prev, &ifa->ifa_dev->addr_list, if_list))
-		return &ifa->ifa_dev->ifa_list;
-
-	return &ifa_prev->ifa_next;
-}
-
 static void inet_del_ifa(struct in_device *in_dev,
-			 struct in_ifaddr __rcu **ifap,
+			 struct in_ifaddr *ifa,
 			 int destroy);
 #ifdef CONFIG_SYSCTL
 static int devinet_sysctl_register(struct in_device *idev);
@@ -348,7 +338,7 @@ static void inetdev_destroy(struct in_device *in_dev)
 	ip_mc_destroy_dev(in_dev);
 
 	in_dev_for_each_ifa_safe_rtnl(ifa, ifa_next, in_dev) {
-		inet_del_ifa(in_dev, inet_get_ifap(ifa), 0);
+		inet_del_ifa(in_dev, ifa, 0);
 		inet_free_ifa(ifa);
 	}
 
@@ -379,17 +369,16 @@ int inet_addr_onlink(struct in_device *in_dev, __be32 a, __be32 b)
 }
 
 static void __inet_del_ifa(struct in_device *in_dev,
-			   struct in_ifaddr __rcu **ifap,
+			   struct in_ifaddr *ifa,
 			   int destroy, struct nlmsghdr *nlh, u32 portid)
 {
 	int do_promote = IN_DEV_PROMOTE_SECONDARIES(in_dev);
-	struct in_ifaddr *ifa, *ifa_tmp, *ifa_next;
 	struct in_ifaddr *ifa_last_primary = NULL;
+	struct in_ifaddr *ifa_tmp, *ifa_next;
 	struct in_ifaddr *ifa_promote = NULL;
 
 	ASSERT_RTNL();
 
-	ifa = rtnl_dereference(*ifap);
 	if (in_dev->dead)
 		goto no_promotions;
 
@@ -487,10 +476,10 @@ no_promotions:
 }
 
 static void inet_del_ifa(struct in_device *in_dev,
-			 struct in_ifaddr __rcu **ifap,
+			 struct in_ifaddr *ifa,
 			 int destroy)
 {
-	__inet_del_ifa(in_dev, ifap, destroy, NULL, 0);
+	__inet_del_ifa(in_dev, ifa, destroy, NULL, 0);
 }
 
 static void check_lifetime(struct work_struct *work);
@@ -697,8 +686,7 @@ static int inet_rtm_deladdr(struct sk_buff *skb, struct nlmsghdr *nlh,
 		if (ipv4_is_multicast(ifa->ifa_address))
 			ip_mc_autojoin_config(net, false, ifa);
 
-		__inet_del_ifa(in_dev, inet_get_ifap(ifa), 1,
-			       nlh, NETLINK_CB(skb).portid);
+		__inet_del_ifa(in_dev, ifa, 1, nlh, NETLINK_CB(skb).portid);
 		return 0;
 	}
 
@@ -772,7 +760,7 @@ static void check_lifetime(struct work_struct *work)
 
 			if (ifa->ifa_valid_lft != INFINITY_LIFE_TIME &&
 			    age >= ifa->ifa_valid_lft) {
-				inet_del_ifa(ifa->ifa_dev, inet_get_ifap(ifa), 1);
+				inet_del_ifa(ifa->ifa_dev, ifa, 1);
 			} else if (ifa->ifa_preferred_lft !=
 				   INFINITY_LIFE_TIME &&
 				   age >= ifa->ifa_preferred_lft &&
@@ -1157,7 +1145,7 @@ int devinet_ioctl(struct net *net, unsigned int cmd, struct ifreq *ifr)
 				break;
 			ret = 0;
 			if (!(ifr->ifr_flags & IFF_UP))
-				inet_del_ifa(in_dev, inet_get_ifap(ifa), 1);
+				inet_del_ifa(in_dev, ifa, 1);
 			break;
 		}
 		ret = dev_change_flags(dev, ifr->ifr_flags, NULL);
@@ -1184,7 +1172,7 @@ int devinet_ioctl(struct net *net, unsigned int cmd, struct ifreq *ifr)
 			ret = 0;
 			if (ifa->ifa_local == sin->sin_addr.s_addr)
 				break;
-			inet_del_ifa(in_dev, inet_get_ifap(ifa), 0);
+			inet_del_ifa(in_dev, ifa, 0);
 			ifa->ifa_broadcast = 0;
 			ifa->ifa_scope = 0;
 		}
@@ -1209,7 +1197,7 @@ int devinet_ioctl(struct net *net, unsigned int cmd, struct ifreq *ifr)
 	case SIOCSIFBRDADDR:	/* Set the broadcast address */
 		ret = 0;
 		if (ifa->ifa_broadcast != sin->sin_addr.s_addr) {
-			inet_del_ifa(in_dev, inet_get_ifap(ifa), 0);
+			inet_del_ifa(in_dev, ifa, 0);
 			ifa->ifa_broadcast = sin->sin_addr.s_addr;
 			inet_insert_ifa(ifa);
 		}
@@ -1223,7 +1211,7 @@ int devinet_ioctl(struct net *net, unsigned int cmd, struct ifreq *ifr)
 		if (inet_abc_len(sin->sin_addr.s_addr) < 0)
 			break;
 		ret = 0;
-		inet_del_ifa(in_dev, inet_get_ifap(ifa), 0);
+		inet_del_ifa(in_dev, ifa, 0);
 		ifa->ifa_address = sin->sin_addr.s_addr;
 		inet_insert_ifa(ifa);
 		break;
@@ -1239,7 +1227,7 @@ int devinet_ioctl(struct net *net, unsigned int cmd, struct ifreq *ifr)
 		ret = 0;
 		if (ifa->ifa_mask != sin->sin_addr.s_addr) {
 			__be32 old_mask = ifa->ifa_mask;
-			inet_del_ifa(in_dev, inet_get_ifap(ifa), 0);
+			inet_del_ifa(in_dev, ifa, 0);
 			ifa->ifa_mask = sin->sin_addr.s_addr;
 			ifa->ifa_prefixlen = inet_mask_len(ifa->ifa_mask);
 
