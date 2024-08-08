@@ -420,7 +420,7 @@ static void *usnic_ib_device_add(struct pci_dev *dev)
 	if (ind) {
 		const struct in_ifaddr *ifa;
 
-		ifa = rcu_dereference(ind->ifa_list);
+		ifa = in_dev_first_addr_rcu(ind);
 		if (ifa)
 			usnic_fwd_add_ipaddr(us_ibdev->ufdev, ifa->ifa_address);
 	}

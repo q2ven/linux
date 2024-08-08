@@ -2249,7 +2249,7 @@ static void pktgen_setup_inject(struct pktgen_dev *pkt_dev)
 			if (in_dev) {
 				const struct in_ifaddr *ifa;
 
-				ifa = rcu_dereference(in_dev->ifa_list);
+				ifa = in_dev_first_addr_rcu(in_dev);
 				if (ifa) {
 					pkt_dev->saddr_min = ifa->ifa_address;
 					pkt_dev->saddr_max = pkt_dev->saddr_min;
