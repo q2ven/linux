@@ -5252,7 +5252,7 @@ static int __maybe_unused macb_suspend(struct device *dev)
 		/* Check for IP address in WOL ARP mode */
 		idev = __in_dev_get_rcu(bp->dev);
 		if (idev)
-			ifa = rcu_dereference(idev->ifa_list);
+			ifa = in_dev_first_addr_rcu(ifa);
 		if ((bp->wolopts & WAKE_ARP) && !ifa) {
 			netdev_err(netdev, "IP address not assigned as required by WoL walk ARP\n");
 			return -EOPNOTSUPP;
