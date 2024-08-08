@@ -235,6 +235,11 @@ static inline bool in_dev_has_addr(const struct in_device *in_dev)
 	return !!READ_ONCE(in_dev->ifa_list);
 }
 
+static inline struct in_ifaddr *in_dev_first_addr(struct in_device *in_dev)
+{
+	return rtnl_dereference(in_dev->ifa_list);
+}
+
 static inline struct in_device *__in_dev_get_rcu(const struct net_device *dev)
 {
 	return rcu_dereference(dev->ip_ptr);
