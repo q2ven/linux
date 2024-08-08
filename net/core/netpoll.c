@@ -724,7 +724,7 @@ int netpoll_setup(struct netpoll *np)
 			if (!in_dev)
 				goto put_noaddr;
 
-			ifa = rtnl_dereference(in_dev->ifa_list);
+			ifa = in_dev_first_addr(in_dev);
 			if (!ifa) {
 put_noaddr:
 				np_err(np, "no IP address for %s, aborting\n",
