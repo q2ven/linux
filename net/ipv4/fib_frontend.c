@@ -364,7 +364,7 @@ static int __fib_validate_source(struct sk_buff *skb, __be32 src, __be32 dst,
 	fl4.flowi4_uid = sock_net_uid(net, NULL);
 	fl4.flowi4_multipath_hash = 0;
 
-	no_addr = idev->ifa_list == NULL;
+	no_addr = !in_dev_has_addr(idev);
 
 	fl4.flowi4_mark = IN_DEV_SRC_VMARK(idev) ? skb->mark : 0;
 	if (!fib4_rules_early_flow_dissect(net, skb, &fl4, &flkeys)) {
@@ -1447,7 +1447,7 @@ static int fib_inetaddr_event(struct notifier_block *this, unsigned long event, 
 	case NETDEV_DOWN:
 		fib_del_ifaddr(ifa, NULL);
 		atomic_inc(&net->ipv4.dev_addr_genid);
-		if (!ifa->ifa_dev->ifa_list) {
+		if (!in_dev_has_addr(ifa->ifa_dev)) {
 			/* Last address was deleted from this interface.
 			 * Disable IP.
 			 */
