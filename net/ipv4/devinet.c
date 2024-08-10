@@ -727,12 +727,8 @@ static void check_lifetime(struct work_struct *work)
 			age = (now - tstamp +
 			       ADDRCONF_TIMER_FUZZ_MINUS) / HZ;
 
-			if (valid_lft != INFINITY_LIFE_TIME &&
-			    age >= valid_lft) {
+			if (age >= valid_lft) {
 				change_needed = true;
-			} else if (preferred_lft ==
-				   INFINITY_LIFE_TIME) {
-				continue;
 			} else if (age >= preferred_lft) {
 				if (time_before(tstamp + valid_lft * HZ, next))
 					next = tstamp + valid_lft * HZ;
@@ -758,12 +754,9 @@ static void check_lifetime(struct work_struct *work)
 			age = (now - ifa->ifa_tstamp +
 			       ADDRCONF_TIMER_FUZZ_MINUS) / HZ;
 
-			if (ifa->ifa_valid_lft != INFINITY_LIFE_TIME &&
-			    age >= ifa->ifa_valid_lft) {
+			if (age >= ifa->ifa_valid_lft) {
 				inet_del_ifa(ifa->ifa_dev, ifa, 1);
-			} else if (ifa->ifa_preferred_lft !=
-				   INFINITY_LIFE_TIME &&
-				   age >= ifa->ifa_preferred_lft &&
+			} else if (age >= ifa->ifa_preferred_lft &&
 				   !(ifa->ifa_flags & IFA_F_DEPRECATED)) {
 				ifa->ifa_flags |= IFA_F_DEPRECATED;
 				rtmsg_ifa(RTM_NEWADDR, ifa, NULL, 0);
