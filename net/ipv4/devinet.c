@@ -1687,22 +1687,10 @@ static int inet_fill_ifaddr(struct sk_buff *skb, const struct in_ifaddr *ifa,
 
 	tstamp = READ_ONCE(ifa->ifa_tstamp);
 	if (!(flags & IFA_F_PERMANENT)) {
-		preferred = READ_ONCE(ifa->ifa_preferred_lft);
-		valid = READ_ONCE(ifa->ifa_valid_lft);
-		if (preferred != INFINITY_LIFE_TIME) {
-			long tval = (jiffies - tstamp) / HZ;
+		long tval = (jiffies - tstamp) / HZ;
 
-			if (preferred > tval)
-				preferred -= tval;
-			else
-				preferred = 0;
-			if (valid != INFINITY_LIFE_TIME) {
-				if (valid > tval)
-					valid -= tval;
-				else
-					valid = 0;
-			}
-		}
+		preferred = max(READ_ONCE(ifa->ifa_preferred_lft) - tval, 0);
+		valid = max(READ_ONCE(ifa->ifa_valid_lft) - tval, 0);
 	} else {
 		preferred = INFINITY_LIFE_TIME;
 		valid = INFINITY_LIFE_TIME;
