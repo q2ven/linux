@@ -227,6 +227,8 @@ static struct in_ifaddr *inet_alloc_ifa(struct in_device *in_dev)
 
 	in_dev_hold(in_dev);
 	ifa->ifa_dev = in_dev;
+	ifa->ifa_valid_lft = INFINITY_LIFE_TIME;
+	ifa->ifa_preferred_lft = INFINITY_LIFE_TIME;
 
 	INIT_HLIST_NODE(&ifa->hash);
 	INIT_LIST_HEAD(&ifa->if_list);
@@ -781,19 +783,18 @@ static void check_lifetime(struct work_struct *work)
 			next_sched - now);
 }
 
-static void set_ifa_lifetime(struct in_ifaddr *ifa, __u32 valid_lft,
-			     __u32 prefered_lft)
+static void inet_set_ifa_lifetime(struct in_ifaddr *ifa)
 {
 	unsigned long timeout;
 	u32 flags;
 
 	flags = ifa->ifa_flags & ~(IFA_F_PERMANENT | IFA_F_DEPRECATED);
 
-	timeout = addrconf_timeout_fixup(valid_lft, HZ);
+	timeout = addrconf_timeout_fixup(ifa->ifa_valid_lft, HZ);
 	if (addrconf_finite_timeout(timeout)) {
 		WRITE_ONCE(ifa->ifa_valid_lft, timeout);
 
-		timeout = addrconf_timeout_fixup(prefered_lft, HZ);
+		timeout = addrconf_timeout_fixup(ifa->ifa_preferred_lft, HZ);
 		if (timeout == 0)
 			flags |= IFA_F_DEPRECATED;
 
@@ -809,7 +810,6 @@ static void set_ifa_lifetime(struct in_ifaddr *ifa, __u32 valid_lft,
 }
 
 static struct in_ifaddr *rtm_to_ifaddr(struct net *net, struct nlmsghdr *nlh,
-				       __u32 *pvalid_lft, __u32 *pprefered_lft,
 				       struct netlink_ext_ack *extack)
 {
 	struct nlattr *tb[IFA_MAX+1];
@@ -894,8 +894,11 @@ static struct in_ifaddr *rtm_to_ifaddr(struct net *net, struct nlmsghdr *nlh,
 			err = -EINVAL;
 			goto errout_free;
 		}
-		*pvalid_lft = ci->ifa_valid;
-		*pprefered_lft = ci->ifa_prefered;
+
+		if (ci->ifa_valid != INFINITY_LIFE_TIME) {
+			ifa->ifa_valid_lft = ci->ifa_valid;
+			ifa->ifa_preferred_lft = ci->ifa_prefered;
+		}
 	}
 
 	return ifa;
@@ -926,15 +929,12 @@ static struct in_ifaddr *find_matching_ifa(struct in_ifaddr *ifa)
 static int inet_rtm_newaddr(struct sk_buff *skb, struct nlmsghdr *nlh,
 			    struct netlink_ext_ack *extack)
 {
+	struct in_ifaddr *ifa, *ifa_existing;
 	struct net *net = sock_net(skb->sk);
-	struct in_ifaddr *ifa;
-	struct in_ifaddr *ifa_existing;
-	__u32 valid_lft = INFINITY_LIFE_TIME;
-	__u32 prefered_lft = INFINITY_LIFE_TIME;
 
 	ASSERT_RTNL();
 
-	ifa = rtm_to_ifaddr(net, nlh, &valid_lft, &prefered_lft, extack);
+	ifa = rtm_to_ifaddr(net, nlh, extack);
 	if (IS_ERR(ifa))
 		return PTR_ERR(ifa);
 
@@ -943,7 +943,7 @@ static int inet_rtm_newaddr(struct sk_buff *skb, struct nlmsghdr *nlh,
 		/* It would be best to check for !NLM_F_CREATE here but
 		 * userspace already relies on not having to provide this.
 		 */
-		set_ifa_lifetime(ifa, valid_lft, prefered_lft);
+		inet_set_ifa_lifetime(ifa);
 		if (ifa->ifa_flags & IFA_F_MCAUTOJOIN) {
 			int ret = ip_mc_autojoin_config(net, true, ifa);
 
@@ -958,6 +958,9 @@ static int inet_rtm_newaddr(struct sk_buff *skb, struct nlmsghdr *nlh,
 	} else {
 		u32 new_metric = ifa->ifa_rt_priority;
 		u8 new_proto = ifa->ifa_proto;
+
+		ifa_existing->ifa_valid_lft = ifa->ifa_valid_lft;
+		ifa_existing->ifa_preferred_lft = ifa->ifa_preferred_lft;
 
 		inet_free_ifa(ifa);
 
@@ -975,7 +978,7 @@ static int inet_rtm_newaddr(struct sk_buff *skb, struct nlmsghdr *nlh,
 
 		ifa->ifa_proto = new_proto;
 
-		set_ifa_lifetime(ifa, valid_lft, prefered_lft);
+		inet_set_ifa_lifetime(ifa);
 		cancel_delayed_work(&check_lifetime_work);
 		queue_delayed_work(system_power_efficient_wq,
 				&check_lifetime_work, 0);
@@ -1184,7 +1187,7 @@ int devinet_ioctl(struct net *net, unsigned int cmd, struct ifreq *ifr)
 			ifa->ifa_prefixlen = 32;
 			ifa->ifa_mask = inet_make_mask(32);
 		}
-		set_ifa_lifetime(ifa, INFINITY_LIFE_TIME, INFINITY_LIFE_TIME);
+		inet_set_ifa_lifetime(ifa);
 		ret = inet_set_ifa(dev, ifa);
 		break;
 
@@ -1565,8 +1568,7 @@ static int inetdev_event(struct notifier_block *this, unsigned long event,
 				ifa->ifa_mask = inet_make_mask(8);
 				ifa->ifa_scope = RT_SCOPE_HOST;
 				memcpy(ifa->ifa_label, dev->name, IFNAMSIZ);
-				set_ifa_lifetime(ifa, INFINITY_LIFE_TIME,
-						 INFINITY_LIFE_TIME);
+				inet_set_ifa_lifetime(ifa);
 				ipv4_devconf_setall(in_dev);
 				neigh_parms_data_state_setall(in_dev->arp_parms);
 				inet_insert_ifa(ifa);
