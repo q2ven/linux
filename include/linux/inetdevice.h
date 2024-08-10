@@ -142,7 +142,6 @@ static inline void ipv4_devconf_setall(struct in_device *in_dev)
 							  ARP_EVICT_NOCARRIER)
 
 struct in_ifaddr {
-	struct hlist_node	hash;
 	struct hlist_node	hash_node;
 	struct list_head	if_list;
 	struct in_device	*ifa_dev;
