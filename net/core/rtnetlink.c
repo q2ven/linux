@@ -6312,7 +6312,6 @@ static int rtnl_stats_set(struct sk_buff *skb, struct nlmsghdr *nlh,
 			  struct netlink_ext_ack *extack)
 {
 	enum netdev_offload_xstats_type t_l3 = NETDEV_OFFLOAD_XSTATS_TYPE_L3;
-	struct rtnl_stats_dump_filters response_filters = {};
 	struct nlattr *tb[IFLA_STATS_GETSET_MAX + 1];
 	struct net *net = sock_net(skb->sk);
 	struct net_device *dev = NULL;
@@ -6361,11 +6360,6 @@ static int rtnl_stats_set(struct sk_buff *skb, struct nlmsghdr *nlh,
 			notify = true;
 		else if (err != -EALREADY)
 			return err;
-
-		response_filters.mask[0] |=
-			IFLA_STATS_FILTER_BIT(IFLA_STATS_LINK_OFFLOAD_XSTATS);
-		response_filters.mask[IFLA_STATS_LINK_OFFLOAD_XSTATS] |=
-			IFLA_STATS_FILTER_BIT(IFLA_OFFLOAD_XSTATS_HW_S_INFO);
 	}
 
 	if (notify)
