@@ -6317,6 +6317,7 @@ static int rtnl_stats_set(struct sk_buff *skb, struct nlmsghdr *nlh,
 	struct net_device *dev = NULL;
 	struct if_stats_msg *ifsm;
 	int err;
+	u8 req;
 
 	err = rtnl_valid_stats_req(nlh, netlink_strict_get_check(skb),
 				   false, extack);
@@ -6324,18 +6325,13 @@ static int rtnl_stats_set(struct sk_buff *skb, struct nlmsghdr *nlh,
 		return err;
 
 	ifsm = nlmsg_data(nlh);
+	if (ifsm->ifindex <= 0)
+		return -EINVAL;
+
 	if (ifsm->family != AF_UNSPEC) {
 		NL_SET_ERR_MSG(extack, "Address family should be AF_UNSPEC");
 		return -EINVAL;
 	}
-
-	if (ifsm->ifindex > 0)
-		dev = __dev_get_by_index(net, ifsm->ifindex);
-	else
-		return -EINVAL;
-
-	if (!dev)
-		return -ENODEV;
 
 	if (ifsm->filter_mask) {
 		NL_SET_ERR_MSG(extack, "Filter mask must be 0 for stats set");
@@ -6347,21 +6343,28 @@ static int rtnl_stats_set(struct sk_buff *skb, struct nlmsghdr *nlh,
 	if (err < 0)
 		return err;
 
-	if (tb[IFLA_STATS_SET_OFFLOAD_XSTATS_L3_STATS]) {
-		u8 req = nla_get_u8(tb[IFLA_STATS_SET_OFFLOAD_XSTATS_L3_STATS]);
+	if (!tb[IFLA_STATS_SET_OFFLOAD_XSTATS_L3_STATS])
+		return 0;
 
-		if (req)
-			err = netdev_offload_xstats_enable(dev, t_l3, extack);
-		else
-			err = netdev_offload_xstats_disable(dev, t_l3);
-
-		if (!err)
-			rtnl_offload_xstats_notify(dev);
-		else if (err != -EALREADY)
-			return err;
+	if (ifsm->ifindex > 0)
+		dev = __dev_get_by_index(net, ifsm->ifindex);
+	if (!dev) {
+		err = -ENODEV;
+		goto out;
 	}
 
-	return 0;
+	req = nla_get_u8(tb[IFLA_STATS_SET_OFFLOAD_XSTATS_L3_STATS]);
+	if (req)
+		err = netdev_offload_xstats_enable(dev, t_l3, extack);
+	else
+		err = netdev_offload_xstats_disable(dev, t_l3);
+
+	if (!err)
+		rtnl_offload_xstats_notify(dev);
+	else if (err == -EALREADY)
+		err = 0;
+out:
+	return err;
 }
 
 static int rtnl_mdb_valid_dump_req(const struct nlmsghdr *nlh,
