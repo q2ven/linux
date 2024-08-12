@@ -6201,6 +6201,9 @@ static int rtnl_stats_get(struct sk_buff *skb, struct nlmsghdr *nlh,
 	if (!nskb)
 		return -ENOBUFS;
 
+	rtnl_lock_deprecated();
+	rtnl_net_lock(net);
+
 	dev = __dev_get_by_index(net, ifsm->ifindex);
 	if (!dev) {
 		err = -ENODEV;
@@ -6218,6 +6221,9 @@ static int rtnl_stats_get(struct sk_buff *skb, struct nlmsghdr *nlh,
 
 	err = rtnl_unicast(nskb, net, NETLINK_CB(skb).portid);
 out:
+	rtnl_net_unlock(net);
+	rtnl_unlock_deprecated();
+
 	return err;
 err:
 	kfree_skb(nskb);
@@ -6256,6 +6262,9 @@ static int rtnl_stats_dump(struct sk_buff *skb, struct netlink_callback *cb)
 	if (err)
 		return err;
 
+	rtnl_lock_deprecated();
+	rtnl_net_lock(net);
+
 	for_each_netdev_dump(net, dev, ctx->ifindex) {
 		err = rtnl_fill_statsinfo(skb, dev, RTM_NEWSTATS,
 					  NETLINK_CB(cb->skb).portid,
@@ -6274,6 +6283,9 @@ static int rtnl_stats_dump(struct sk_buff *skb, struct netlink_callback *cb)
 		ctx->idxattr = 0;
 		nl_dump_check_consistent(cb, nlmsg_hdr(skb));
 	}
+
+	rtnl_net_unlock(net);
+	rtnl_unlock_deprecated();
 
 	return err;
 }
@@ -7013,7 +7025,7 @@ void __init rtnetlink_init(void)
 	rtnl_register(PF_BRIDGE, RTM_SETLINK, rtnl_bridge_setlink, NULL, 0);
 
 	rtnl_register(PF_UNSPEC, RTM_GETSTATS, rtnl_stats_get, rtnl_stats_dump,
-		      0);
+		      RTNL_FLAG_DOIT_LOCKED_PERNET);
 	rtnl_register(PF_UNSPEC, RTM_SETSTATS, rtnl_stats_set, NULL,
 		      RTNL_FLAG_DOIT_LOCKED_PERNET);
 
