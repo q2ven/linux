@@ -6316,7 +6316,6 @@ static int rtnl_stats_set(struct sk_buff *skb, struct nlmsghdr *nlh,
 	struct net *net = sock_net(skb->sk);
 	struct net_device *dev = NULL;
 	struct if_stats_msg *ifsm;
-	bool notify = false;
 	int err;
 
 	err = rtnl_valid_stats_req(nlh, netlink_strict_get_check(skb),
@@ -6357,13 +6356,10 @@ static int rtnl_stats_set(struct sk_buff *skb, struct nlmsghdr *nlh,
 			err = netdev_offload_xstats_disable(dev, t_l3);
 
 		if (!err)
-			notify = true;
+			rtnl_offload_xstats_notify(dev);
 		else if (err != -EALREADY)
 			return err;
 	}
-
-	if (notify)
-		rtnl_offload_xstats_notify(dev);
 
 	return 0;
 }
