@@ -23,6 +23,7 @@ static int rtnl_net_debug_event(struct notifier_block *nb,
 	case NETDEV_CHANGENAME:
 	case NETDEV_POST_INIT:
 	case NETDEV_CHANGE_TX_QUEUE_LEN:
+	case NETDEV_OFFLOAD_XSTATS_ENABLE:
 		ASSERT_RTNL_NET(net);
 		break;
 	case NETDEV_UP:
@@ -56,7 +57,6 @@ static int rtnl_net_debug_event(struct notifier_block *nb,
 	case NETDEV_CVLAN_FILTER_DROP_INFO:
 	case NETDEV_SVLAN_FILTER_PUSH_INFO:
 	case NETDEV_SVLAN_FILTER_DROP_INFO:
-	case NETDEV_OFFLOAD_XSTATS_ENABLE:
 	case NETDEV_OFFLOAD_XSTATS_DISABLE:
 	case NETDEV_OFFLOAD_XSTATS_REPORT_USED:
 	case NETDEV_OFFLOAD_XSTATS_REPORT_DELTA:

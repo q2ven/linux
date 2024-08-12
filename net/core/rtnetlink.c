@@ -6346,6 +6346,9 @@ static int rtnl_stats_set(struct sk_buff *skb, struct nlmsghdr *nlh,
 	if (!tb[IFLA_STATS_SET_OFFLOAD_XSTATS_L3_STATS])
 		return 0;
 
+	rtnl_lock_deprecated();
+	rtnl_net_lock(net);
+
 	if (ifsm->ifindex > 0)
 		dev = __dev_get_by_index(net, ifsm->ifindex);
 	if (!dev) {
@@ -6364,6 +6367,9 @@ static int rtnl_stats_set(struct sk_buff *skb, struct nlmsghdr *nlh,
 	else if (err == -EALREADY)
 		err = 0;
 out:
+	rtnl_net_unlock(net);
+	rtnl_unlock_deprecated();
+
 	return err;
 }
 
@@ -7003,7 +7009,8 @@ void __init rtnetlink_init(void)
 
 	rtnl_register(PF_UNSPEC, RTM_GETSTATS, rtnl_stats_get, rtnl_stats_dump,
 		      0);
-	rtnl_register(PF_UNSPEC, RTM_SETSTATS, rtnl_stats_set, NULL, 0);
+	rtnl_register(PF_UNSPEC, RTM_SETSTATS, rtnl_stats_set, NULL,
+		      RTNL_FLAG_DOIT_LOCKED_PERNET);
 
 	rtnl_register(PF_BRIDGE, RTM_GETMDB, rtnl_mdb_get, rtnl_mdb_dump, 0);
 	rtnl_register(PF_BRIDGE, RTM_NEWMDB, rtnl_mdb_add, NULL, 0);

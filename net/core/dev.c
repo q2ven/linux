@@ -8234,7 +8234,7 @@ int netdev_offload_xstats_enable(struct net_device *dev,
 				 enum netdev_offload_xstats_type type,
 				 struct netlink_ext_ack *extack)
 {
-	ASSERT_RTNL();
+	ASSERT_RTNL_NET(dev_net(dev));
 
 	if (netdev_offload_xstats_enabled(dev, type))
 		return -EALREADY;
