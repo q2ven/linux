@@ -6184,13 +6184,8 @@ static int rtnl_stats_get(struct sk_buff *skb, struct nlmsghdr *nlh,
 		return err;
 
 	ifsm = nlmsg_data(nlh);
-	if (ifsm->ifindex > 0)
-		dev = __dev_get_by_index(net, ifsm->ifindex);
-	else
+	if (ifsm->ifindex <= 0)
 		return -EINVAL;
-
-	if (!dev)
-		return -ENODEV;
 
 	if (!ifsm->filter_mask) {
 		NL_SET_ERR_MSG(extack, "Filter mask must be set for stats get");
@@ -6201,9 +6196,16 @@ static int rtnl_stats_get(struct sk_buff *skb, struct nlmsghdr *nlh,
 	if (err)
 		return err;
 
+
 	nskb = nlmsg_new(if_nlmsg_stats_size(dev, &filters), GFP_KERNEL);
 	if (!nskb)
 		return -ENOBUFS;
+
+	dev = __dev_get_by_index(net, ifsm->ifindex);
+	if (!dev) {
+		err = -ENODEV;
+		goto err;
+	}
 
 	err = rtnl_fill_statsinfo(nskb, dev, RTM_NEWSTATS,
 				  NETLINK_CB(skb).portid, nlh->nlmsg_seq, 0,
@@ -6211,12 +6213,15 @@ static int rtnl_stats_get(struct sk_buff *skb, struct nlmsghdr *nlh,
 	if (err < 0) {
 		/* -EMSGSIZE implies BUG in if_nlmsg_stats_size */
 		WARN_ON(err == -EMSGSIZE);
-		kfree_skb(nskb);
-	} else {
-		err = rtnl_unicast(nskb, net, NETLINK_CB(skb).portid);
+		goto err;
 	}
 
+	err = rtnl_unicast(nskb, net, NETLINK_CB(skb).portid);
+out:
 	return err;
+err:
+	kfree_skb(nskb);
+	goto out;
 }
 
 static int rtnl_stats_dump(struct sk_buff *skb, struct netlink_callback *cb)
