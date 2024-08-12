@@ -8231,7 +8231,6 @@ int netdev_offload_xstats_enable(struct net_device *dev,
 		return netdev_offload_xstats_enable_l3(dev, extack);
 	}
 
-	WARN_ON(1);
 	return -EINVAL;
 }
 EXPORT_SYMBOL(netdev_offload_xstats_enable);
@@ -8263,7 +8262,6 @@ int netdev_offload_xstats_disable(struct net_device *dev,
 		return 0;
 	}
 
-	WARN_ON(1);
 	return -EINVAL;
 }
 EXPORT_SYMBOL(netdev_offload_xstats_disable);
