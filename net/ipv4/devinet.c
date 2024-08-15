@@ -756,9 +756,12 @@ static void check_lifetime(struct work_struct *work)
 			}
 		}
 		rcu_read_unlock();
+
 		if (!change_needed)
 			continue;
-		rtnl_lock();
+
+		rtnl_lock_deprecated();
+		rtnl_net_lock(net);
 		hlist_for_each_entry_safe(ifa, n, head, hash_node) {
 			unsigned long age;
 
@@ -777,7 +780,8 @@ static void check_lifetime(struct work_struct *work)
 				rtmsg_ifa(RTM_NEWADDR, ifa, NULL, 0);
 			}
 		}
-		rtnl_unlock();
+		rtnl_net_unlock(net);
+		rtnl_unlock_deprecated();
 	}
 
 	if (!READ_ONCE(net->ipv4.addr_non_perm))
