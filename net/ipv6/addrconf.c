@@ -1564,8 +1564,6 @@ static bool ipv6_allow_optimistic_dad(const struct net *net,
 				      const struct inet6_dev *idev)
 {
 #ifdef CONFIG_IPV6_OPTIMISTIC_DAD
-	if (!idev)
-		return false;
 	if (!READ_ONCE(net->ipv6.devconf_all->optimistic_dad) &&
 	    !READ_ONCE(idev->cnf.optimistic_dad))
 		return false;
