@@ -1300,7 +1300,7 @@ out:
 
 int inet_gifconf(struct net_device *dev, char __user *buf, int len, int size)
 {
-	struct in_device *in_dev = __in_dev_get_rtnl(dev);
+	struct in_device *in_dev = __in_dev_get_rtnl_net(dev_net(dev), dev);
 	const struct in_ifaddr *ifa;
 	struct ifreq ifr;
 	int done = 0;

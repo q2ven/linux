@@ -64,7 +64,8 @@ int dev_ifconf(struct net *net, struct ifconf __user *uifc)
 	}
 
 	/* Loop over the interfaces, and write an info block for each. */
-	rtnl_lock();
+	rtnl_lock_deprecated();
+	rtnl_net_lock(net);
 	for_each_netdev(net, dev) {
 		if (!pos)
 			done = inet_gifconf(dev, NULL, 0, size);
@@ -72,12 +73,14 @@ int dev_ifconf(struct net *net, struct ifconf __user *uifc)
 			done = inet_gifconf(dev, pos + total,
 					    len - total, size);
 		if (done < 0) {
-			rtnl_unlock();
+			rtnl_net_unlock(net);
+			rtnl_unlock_deprecated();
 			return -EFAULT;
 		}
 		total += done;
 	}
-	rtnl_unlock();
+	rtnl_net_unlock(net);
+	rtnl_unlock_deprecated();
 
 	return put_user(total, &uifc->ifc_len);
 }
