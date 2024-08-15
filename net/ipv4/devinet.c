@@ -865,7 +865,7 @@ static struct in_ifaddr *rtm_to_ifaddr(struct net *net, struct nlmsghdr *nlh,
 		goto errout;
 	}
 
-	in_dev = __in_dev_get_rtnl(dev);
+	in_dev = __in_dev_get_rtnl_net(dev_net(dev), dev);
 	err = -ENOBUFS;
 	if (!in_dev)
 		goto errout;
@@ -954,7 +954,8 @@ static int inet_rtm_newaddr(struct sk_buff *skb, struct nlmsghdr *nlh,
 	struct net *net = sock_net(skb->sk);
 	int ret = 0;
 
-	ASSERT_RTNL();
+	rtnl_lock_deprecated();
+	rtnl_net_lock(net);
 
 	ifa = rtm_to_ifaddr(net, nlh, extack);
 	if (IS_ERR(ifa)) {
@@ -1018,6 +1019,9 @@ static int inet_rtm_newaddr(struct sk_buff *skb, struct nlmsghdr *nlh,
 	}
 
 out:
+	rtnl_net_unlock(net);
+	rtnl_unlock_deprecated();
+
 	return ret;
 }
 
@@ -2802,7 +2806,8 @@ void __init devinet_init(void)
 
 	rtnl_af_register(&inet_af_ops);
 
-	rtnl_register(PF_INET, RTM_NEWADDR, inet_rtm_newaddr, NULL, 0);
+	rtnl_register(PF_INET, RTM_NEWADDR, inet_rtm_newaddr, NULL,
+		      RTNL_FLAG_DOIT_LOCKED_PERNET);
 	rtnl_register(PF_INET, RTM_DELADDR, inet_rtm_deladdr, NULL, 0);
 	rtnl_register(PF_INET, RTM_GETADDR, NULL, inet_dump_ifaddr,
 		      RTNL_FLAG_DUMP_UNLOCKED | RTNL_FLAG_DUMP_SPLIT_NLM_DONE);
