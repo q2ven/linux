@@ -3163,9 +3163,11 @@ int addrconf_add_ifaddr(struct net *net, void __user *arg)
 	cfg.pfx = &ireq.ifr6_addr;
 	cfg.plen = ireq.ifr6_prefixlen;
 
-	rtnl_lock();
+	rtnl_lock_deprecated();
+	rtnl_net_lock(net);
 	err = inet6_addr_add(net, ireq.ifr6_ifindex, &cfg, NULL);
-	rtnl_unlock();
+	rtnl_net_unlock(net);
+	rtnl_unlock_deprecated();
 	return err;
 }
 
@@ -3180,10 +3182,12 @@ int addrconf_del_ifaddr(struct net *net, void __user *arg)
 	if (copy_from_user(&ireq, arg, sizeof(struct in6_ifreq)))
 		return -EFAULT;
 
-	rtnl_lock();
+	rtnl_lock_deprecated();
+	rtnl_net_lock(net);
 	err = inet6_addr_del(net, ireq.ifr6_ifindex, 0, &ireq.ifr6_addr,
 			     ireq.ifr6_prefixlen, NULL);
-	rtnl_unlock();
+	rtnl_net_unlock(net);
+	rtnl_unlock_deprecated();
 	return err;
 }
 
