@@ -639,7 +639,7 @@ static int ip_mc_autojoin_config(struct net *net, bool join,
 	struct sock *sk = net->ipv4.mc_autojoin_sk;
 	int ret;
 
-	ASSERT_RTNL();
+	ASSERT_RTNL_NET(net);
 
 	lock_sock(sk);
 	if (join)
@@ -671,12 +671,15 @@ static int inet_rtm_deladdr(struct sk_buff *skb, struct nlmsghdr *nlh,
 	if (err < 0)
 		goto errout;
 
+	rtnl_lock_deprecated();
+	rtnl_net_lock(net);
+
 	ifm = nlmsg_data(nlh);
 	in_dev = inetdev_by_index(net, ifm->ifa_index);
 	if (!in_dev) {
 		NL_SET_ERR_MSG(extack, "ipv4: Device not found");
 		err = -ENODEV;
-		goto errout;
+		goto unlock;
 	}
 
 	in_dev_for_each_ifa_rtnl(ifa, in_dev) {
@@ -696,11 +699,16 @@ static int inet_rtm_deladdr(struct sk_buff *skb, struct nlmsghdr *nlh,
 			ip_mc_autojoin_config(net, false, ifa);
 
 		__inet_del_ifa(in_dev, ifa, 1, nlh, NETLINK_CB(skb).portid);
-		return 0;
+
+		err = 0;
+		goto unlock;
 	}
 
 	NL_SET_ERR_MSG(extack, "ipv4: Address not found");
 	err = -EADDRNOTAVAIL;
+unlock:
+	rtnl_net_unlock(net);
+	rtnl_unlock_deprecated();
 errout:
 	return err;
 }
@@ -2808,7 +2816,8 @@ void __init devinet_init(void)
 
 	rtnl_register(PF_INET, RTM_NEWADDR, inet_rtm_newaddr, NULL,
 		      RTNL_FLAG_DOIT_LOCKED_PERNET);
-	rtnl_register(PF_INET, RTM_DELADDR, inet_rtm_deladdr, NULL, 0);
+	rtnl_register(PF_INET, RTM_DELADDR, inet_rtm_deladdr, NULL,
+		      RTNL_FLAG_DOIT_LOCKED_PERNET);
 	rtnl_register(PF_INET, RTM_GETADDR, NULL, inet_dump_ifaddr,
 		      RTNL_FLAG_DUMP_UNLOCKED | RTNL_FLAG_DUMP_SPLIT_NLM_DONE);
 	rtnl_register(PF_INET, RTM_GETNETCONF, inet_netconf_get_devconf,
