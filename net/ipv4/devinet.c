@@ -952,12 +952,15 @@ static int inet_rtm_newaddr(struct sk_buff *skb, struct nlmsghdr *nlh,
 {
 	struct in_ifaddr *ifa, *ifa_existing;
 	struct net *net = sock_net(skb->sk);
+	int ret = 0;
 
 	ASSERT_RTNL();
 
 	ifa = rtm_to_ifaddr(net, nlh, extack);
-	if (IS_ERR(ifa))
-		return PTR_ERR(ifa);
+	if (IS_ERR(ifa)) {
+		ret = PTR_ERR(ifa);
+		goto out;
+	}
 
 	ifa_existing = find_matching_ifa(ifa);
 	if (!ifa_existing) {
@@ -966,16 +969,15 @@ static int inet_rtm_newaddr(struct sk_buff *skb, struct nlmsghdr *nlh,
 		 */
 		inet_set_ifa_lifetime(ifa);
 		if (ifa->ifa_flags & IFA_F_MCAUTOJOIN) {
-			int ret = ip_mc_autojoin_config(net, true, ifa);
-
+			ret = ip_mc_autojoin_config(net, true, ifa);
 			if (ret < 0) {
 				NL_SET_ERR_MSG(extack, "ipv4: Multicast auto join failed");
 				inet_free_ifa(ifa);
-				return ret;
+				goto out;
 			}
 		}
-		return __inet_insert_ifa(ifa, nlh, NETLINK_CB(skb).portid,
-					 extack);
+
+		ret = __inet_insert_ifa(ifa, nlh, NETLINK_CB(skb).portid, extack);
 	} else {
 		u32 new_metric = ifa->ifa_rt_priority;
 		u8 new_proto = ifa->ifa_proto;
@@ -988,7 +990,8 @@ static int inet_rtm_newaddr(struct sk_buff *skb, struct nlmsghdr *nlh,
 		if (nlh->nlmsg_flags & NLM_F_EXCL ||
 		    !(nlh->nlmsg_flags & NLM_F_REPLACE)) {
 			NL_SET_ERR_MSG(extack, "ipv4: Address already assigned");
-			return -EEXIST;
+			ret = -EEXIST;
+			goto out;
 		}
 		ifa = ifa_existing;
 
@@ -1013,7 +1016,9 @@ static int inet_rtm_newaddr(struct sk_buff *skb, struct nlmsghdr *nlh,
 
 		rtmsg_ifa(RTM_NEWADDR, ifa, nlh, NETLINK_CB(skb).portid);
 	}
-	return 0;
+
+out:
+	return ret;
 }
 
 /*
