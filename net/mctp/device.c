@@ -366,7 +366,7 @@ static int mctp_fill_link_af(struct sk_buff *skb,
 {
 	struct mctp_dev *mdev;
 
-	mdev = mctp_dev_get_rtnl(dev);
+	mdev = rcu_dereference(dev->mctp_ptr);
 	if (!mdev)
 		return -ENODATA;
 	if (nla_put_u32(skb, IFLA_MCTP_NET, mdev->net))
