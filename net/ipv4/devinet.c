@@ -585,7 +585,7 @@ static int inet_set_ifa(struct net_device *dev, struct in_ifaddr *ifa)
 {
 	struct in_device *in_dev = __in_dev_get_rtnl(dev);
 
-	ASSERT_RTNL();
+	ASSERT_RTNL_NET(dev_net(in_dev->dev));
 
 	ipv4_devconf_setall(in_dev);
 	neigh_parms_data_state_setall(in_dev->arp_parms);
@@ -1041,7 +1041,6 @@ static int inet_abc_len(__be32 addr)
 	return rc;
 }
 
-
 int devinet_ioctl(struct net *net, unsigned int cmd, struct ifreq *ifr)
 {
 	struct sockaddr_in *sin = (struct sockaddr_in *)&ifr->ifr_addr;
@@ -1099,7 +1098,8 @@ int devinet_ioctl(struct net *net, unsigned int cmd, struct ifreq *ifr)
 		goto out;
 	}
 
-	rtnl_lock();
+	rtnl_lock_deprecated();
+	rtnl_net_lock(net);
 
 	ret = -ENODEV;
 	dev = __dev_get_by_name(net, ifr->ifr_name);
@@ -1109,7 +1109,7 @@ int devinet_ioctl(struct net *net, unsigned int cmd, struct ifreq *ifr)
 	if (colon)
 		*colon = ':';
 
-	in_dev = __in_dev_get_rtnl(dev);
+	in_dev = __in_dev_get_rtnl_net(net, dev);
 	if (in_dev) {
 		if (tryaddrmatch) {
 			/* Matthias Andree */
@@ -1275,7 +1275,8 @@ int devinet_ioctl(struct net *net, unsigned int cmd, struct ifreq *ifr)
 		break;
 	}
 done:
-	rtnl_unlock();
+	rtnl_net_unlock(net);
+	rtnl_unlock_deprecated();
 out:
 	return ret;
 }

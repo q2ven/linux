@@ -272,6 +272,12 @@ static inline struct in_device *__in_dev_get_rtnl(const struct net_device *dev)
 	return rtnl_dereference(dev->ip_ptr);
 }
 
+static inline struct in_device *__in_dev_get_rtnl_net(struct net * net,
+						      const struct net_device *dev)
+{
+	return rtnl_net_dereference(net, dev->ip_ptr);
+}
+
 /* called with rcu_read_lock or rtnl held */
 static inline bool ip_ignore_linkdown(const struct net_device *dev)
 {
