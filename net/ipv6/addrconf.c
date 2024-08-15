@@ -2999,7 +2999,7 @@ static int inet6_addr_add(struct net *net, int ifindex,
 	clock_t expires;
 	u32 flags;
 
-	ASSERT_RTNL();
+	ASSERT_RTNL_NET(net);
 
 	if (cfg->plen > 128) {
 		NL_SET_ERR_MSG_MOD(extack, "Invalid prefix length");
@@ -4986,14 +4986,16 @@ inet6_rtm_newaddr(struct sk_buff *skb, struct nlmsghdr *nlh,
 	err = nlmsg_parse_deprecated(nlh, sizeof(*ifm), tb, IFA_MAX,
 				     ifa_ipv6_policy, extack);
 	if (err < 0)
-		return err;
+		goto out;
 
 	memset(&cfg, 0, sizeof(cfg));
 
 	ifm = nlmsg_data(nlh);
 	cfg.pfx = extract_addr(tb[IFA_ADDRESS], tb[IFA_LOCAL], &peer_pfx);
-	if (!cfg.pfx)
-		return -EINVAL;
+	if (!cfg.pfx) {
+		err = -EINVAL;
+		goto out;
+	}
 
 	cfg.peer_pfx = peer_pfx;
 	cfg.plen = ifm->ifa_prefixlen;
@@ -5024,15 +5026,21 @@ inet6_rtm_newaddr(struct sk_buff *skb, struct nlmsghdr *nlh,
 			 IFA_F_MANAGETEMPADDR | IFA_F_NOPREFIXROUTE |
 			 IFA_F_MCAUTOJOIN | IFA_F_OPTIMISTIC;
 
+	rtnl_lock_deprecated();
+	rtnl_net_lock(net);
+
 	dev =  __dev_get_by_index(net, ifm->ifa_index);
 	if (!dev) {
 		NL_SET_ERR_MSG_MOD(extack, "Unable to find the interface");
-		return -ENODEV;
+		err = -ENODEV;
+		goto unlock;
 	}
 
 	idev = ipv6_find_idev(dev);
-	if (IS_ERR(idev))
-		return PTR_ERR(idev);
+	if (IS_ERR(idev)) {
+		err = PTR_ERR(idev);
+		goto unlock;
+	}
 
 	if (!ipv6_allow_optimistic_dad(net, idev))
 		cfg.ifa_flags &= ~IFA_F_OPTIMISTIC;
@@ -5040,16 +5048,17 @@ inet6_rtm_newaddr(struct sk_buff *skb, struct nlmsghdr *nlh,
 	if (cfg.ifa_flags & IFA_F_NODAD &&
 	    cfg.ifa_flags & IFA_F_OPTIMISTIC) {
 		NL_SET_ERR_MSG(extack, "IFA_F_NODAD and IFA_F_OPTIMISTIC are mutually exclusive");
-		return -EINVAL;
+		err = -EINVAL;
+		goto unlock;
 	}
 
 	ifa = ipv6_get_ifaddr(net, cfg.pfx, dev, 1);
 	if (!ifa) {
-		/*
-		 * It would be best to check for !NLM_F_CREATE here but
+		/* It would be best to check for !NLM_F_CREATE here but
 		 * userspace already relies on not having to provide this.
 		 */
-		return inet6_addr_add(net, ifm->ifa_index, &cfg, extack);
+		err = inet6_addr_add(net, ifm->ifa_index, &cfg, extack);
+		goto unlock;
 	}
 
 	if (nlh->nlmsg_flags & NLM_F_EXCL ||
@@ -5061,7 +5070,10 @@ inet6_rtm_newaddr(struct sk_buff *skb, struct nlmsghdr *nlh,
 	}
 
 	in6_ifa_put(ifa);
-
+unlock:
+	rtnl_net_unlock(net);
+	rtnl_unlock_deprecated();
+out:
 	return err;
 }
 
@@ -7457,7 +7469,8 @@ int __init addrconf_init(void)
 		goto errout;
 
 	err = rtnl_register_module(THIS_MODULE, PF_INET6, RTM_NEWADDR,
-				   inet6_rtm_newaddr, NULL, 0);
+				   inet6_rtm_newaddr, NULL,
+				   RTNL_FLAG_DOIT_LOCKED_PERNET);
 	if (err < 0)
 		goto errout;
 	err = rtnl_register_module(THIS_MODULE, PF_INET6, RTM_DELADDR,
