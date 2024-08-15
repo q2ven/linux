@@ -2458,12 +2458,15 @@ static int devinet_sysctl_forward(const struct ctl_table *ctl, int write,
 
 	if (write && *valp != val) {
 		if (valp != &IPV4_DEVCONF_DFLT(net, FORWARDING)) {
-			if (!rtnl_trylock()) {
+			if (!rtnl_trylock_deprecated()) {
 				/* Restore the original values before restarting */
 				*valp = val;
 				*ppos = pos;
 				return restart_syscall();
 			}
+
+			rtnl_net_lock(net);
+
 			if (valp == &IPV4_DEVCONF_ALL(net, FORWARDING)) {
 				inet_forward_change(net);
 			} else {
@@ -2477,13 +2480,16 @@ static int devinet_sysctl_forward(const struct ctl_table *ctl, int write,
 							    idev->dev->ifindex,
 							    cnf);
 			}
-			rtnl_unlock();
+
+			rtnl_net_unlock(net);
+			rtnl_unlock_deprecated();
 			rt_cache_flush(net);
-		} else
+		} else {
 			inet_netconf_notify_devconf(net, RTM_NEWNETCONF,
 						    NETCONFA_FORWARDING,
 						    NETCONFA_IFINDEX_DEFAULT,
 						    net->ipv4.devconf_dflt);
+		}
 	}
 
 	return ret;
