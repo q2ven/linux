@@ -3045,6 +3045,7 @@ static int unix_shutdown(struct socket *sock, int mode)
 
 	if (mode < SHUT_RD || mode > SHUT_RDWR)
 		return -EINVAL;
+
 	/* This maps:
 	 * SHUT_RD   (0) -> RCV_SHUTDOWN  (1)
 	 * SHUT_WR   (1) -> SEND_SHUTDOWN (2)
@@ -3060,11 +3061,12 @@ static int unix_shutdown(struct socket *sock, int mode)
 	unix_state_unlock(sk);
 	sk->sk_state_change(sk);
 
-	if (other &&
-		(sk->sk_type == SOCK_STREAM || sk->sk_type == SOCK_SEQPACKET)) {
+	if (!other)
+		goto out;
 
-		int peer_mode = 0;
+	if (sk->sk_type == SOCK_STREAM || sk->sk_type == SOCK_SEQPACKET) {
 		const struct proto *prot = READ_ONCE(other->sk_prot);
+		int peer_mode = 0;
 
 		if (prot->unhash)
 			prot->unhash(other);
@@ -3081,9 +3083,9 @@ static int unix_shutdown(struct socket *sock, int mode)
 		else if (peer_mode & RCV_SHUTDOWN)
 			sk_wake_async(other, SOCK_WAKE_WAITD, POLL_IN);
 	}
-	if (other)
-		sock_put(other);
 
+	sock_put(other);
+out:
 	return 0;
 }
 
