@@ -24,3 +24,10 @@ config DEBUG_NET
 	help
 	  Enable extra sanity checks in networking.
 	  This is mostly used by fuzzers, but is safe to select.
+
+config DEBUG_RTNL_NET
+       bool "Add extra netdev notifier for ASSERT_RTNL_NET"
+       select LOCKDEP
+       help
+         Register an extra netdev notifier as ASSERT_RTNL_NET
+	 placeholder.
