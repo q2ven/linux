@@ -6496,6 +6496,7 @@ int bond_create(struct net *net, const char *name)
 	int res = -ENOMEM;
 
 	rtnl_lock();
+	rtnl_net_lock(net);
 
 	bond_dev = alloc_netdev_mq(sizeof(struct bonding),
 				   name ? name : "bond%d", NET_NAME_UNKNOWN,
@@ -6518,6 +6519,7 @@ int bond_create(struct net *net, const char *name)
 	bond_work_init_all(bond);
 
 out:
+	rtnl_net_unlock(net);
 	rtnl_unlock();
 	return res;
 }
