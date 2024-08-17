@@ -8,14 +8,21 @@
 #include <net/net_namespace.h>
 #include <net/netns/generic.h>
 
+static int rtnl_net_debug_net_id;
+
 static int rtnl_net_debug_event(struct notifier_block *nb,
 				unsigned long event, void *ptr)
 {
 	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
 	struct net *net = dev_net(dev);
 	enum netdev_cmd cmd = event;
+	bool per_net_notifier;
 
 	ASSERT_RTNL();
+
+	per_net_notifier = nb == net_generic(net, rtnl_net_debug_net_id);
+	printk(KERN_ERR "dev: %px, event: %s, per_net: %s\n",
+	       dev, netdev_cmd_to_name(cmd), per_net_notifier ? "yes" : "no");
 
 	/* Keep enum and don't add default to trigger -Werror=switch */
 	switch (cmd) {
@@ -66,8 +73,6 @@ static int rtnl_net_debug_event(struct notifier_block *nb,
 
 	return NOTIFY_DONE;
 }
-
-static int rtnl_net_debug_net_id;
 
 static int __net_init rtnl_net_debug_net_init(struct net *net)
 {
