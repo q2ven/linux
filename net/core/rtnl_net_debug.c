@@ -19,7 +19,9 @@ static int rtnl_net_debug_event(struct notifier_block *nb,
 
 	/* Keep enum and don't add default to trigger -Werror=switch */
 	switch (cmd) {
+	case NETDEV_REGISTER:
 	case NETDEV_CHANGENAME:
+	case NETDEV_POST_INIT:
 	case NETDEV_CHANGE_TX_QUEUE_LEN:
 		ASSERT_RTNL_NET(net);
 		break;
@@ -27,7 +29,6 @@ static int rtnl_net_debug_event(struct notifier_block *nb,
 	case NETDEV_DOWN:
 	case NETDEV_REBOOT:
 	case NETDEV_CHANGE:
-	case NETDEV_REGISTER:
 	case NETDEV_UNREGISTER:
 	case NETDEV_CHANGEMTU:
 	case NETDEV_CHANGEADDR:
@@ -38,7 +39,6 @@ static int rtnl_net_debug_event(struct notifier_block *nb,
 	case NETDEV_PRE_UP:
 	case NETDEV_PRE_TYPE_CHANGE:
 	case NETDEV_POST_TYPE_CHANGE:
-	case NETDEV_POST_INIT:
 	case NETDEV_PRE_UNINIT:
 	case NETDEV_RELEASE:
 	case NETDEV_NOTIFY_PEERS:
