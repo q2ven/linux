@@ -95,15 +95,19 @@ static ssize_t netdev_store(struct device *dev, struct device_attribute *attr,
 	if (ret)
 		goto err;
 
-	if (!rtnl_trylock())
+	if (!rtnl_trylock_deprecated())
 		return restart_syscall();
+
+	rtnl_net_lock(net);
 
 	if (dev_isalive(netdev)) {
 		ret = (*set)(netdev, new);
 		if (ret == 0)
 			ret = len;
 	}
-	rtnl_unlock();
+
+	rtnl_net_unlock(net);
+	rtnl_unlock_deprecated();
  err:
 	return ret;
 }
