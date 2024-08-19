@@ -9483,7 +9483,7 @@ static int dev_xdp_attach(struct net_device *dev, struct netlink_ext_ack *extack
 	bpf_op_t bpf_op;
 	int err;
 
-	ASSERT_RTNL();
+	ASSERT_RTNL_NET(dev_net(dev));
 
 	/* either link or prog attachment, never both */
 	if (link && (new_prog || old_prog))
@@ -9608,7 +9608,7 @@ static int dev_xdp_detach_link(struct net_device *dev,
 	enum bpf_xdp_mode mode;
 	bpf_op_t bpf_op;
 
-	ASSERT_RTNL();
+	ASSERT_RTNL_NET(dev_net(dev));
 
 	mode = dev_xdp_mode(dev, link->flags);
 	if (dev_xdp_link(dev, mode) != link)
@@ -9745,7 +9745,8 @@ int bpf_xdp_link_attach(const union bpf_attr *attr, struct bpf_prog *prog)
 	struct net_device *dev;
 	int err, fd;
 
-	rtnl_lock();
+	rtnl_lock_deprecated();
+	rtnl_net_lock(net);
 	dev = dev_get_by_index(net, attr->link_create.target_ifindex);
 	if (!dev) {
 		rtnl_unlock();
@@ -9769,7 +9770,8 @@ int bpf_xdp_link_attach(const union bpf_attr *attr, struct bpf_prog *prog)
 	}
 
 	err = dev_xdp_attach_link(dev, &extack, link);
-	rtnl_unlock();
+	rtnl_net_unlock(net);
+	rtnl_unlock_deprecated();
 
 	if (err) {
 		link->dev = NULL;
@@ -9808,7 +9810,7 @@ int dev_change_xdp_fd(struct net_device *dev, struct netlink_ext_ack *extack,
 	struct bpf_prog *new_prog = NULL, *old_prog = NULL;
 	int err;
 
-	ASSERT_RTNL();
+	ASSERT_RTNL_NET(dev_net(dev));
 
 	if (fd >= 0) {
 		new_prog = bpf_prog_get_type_dev(fd, BPF_PROG_TYPE_XDP,
