@@ -8233,7 +8233,6 @@ int netdev_offload_xstats_enable(struct net_device *dev,
 
 	return -EINVAL;
 }
-EXPORT_SYMBOL(netdev_offload_xstats_enable);
 
 static void netdev_offload_xstats_disable_l3(struct net_device *dev)
 {
@@ -8264,7 +8263,6 @@ int netdev_offload_xstats_disable(struct net_device *dev,
 
 	return -EINVAL;
 }
-EXPORT_SYMBOL(netdev_offload_xstats_disable);
 
 static void netdev_offload_xstats_disable_all(struct net_device *dev)
 {
