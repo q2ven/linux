@@ -87,20 +87,27 @@ int rtnl_lock_killable(void)
 EXPORT_SYMBOL(rtnl_lock_killable);
 
 static struct sk_buff *defer_kfree_skb_list;
+static DEFINE_SPINLOCK(defer_kfree_skb_lock);
+
 void rtnl_kfree_skbs(struct sk_buff *head, struct sk_buff *tail)
 {
 	if (head && tail) {
+		spin_lock(&defer_kfree_skb_lock);
 		tail->next = defer_kfree_skb_list;
 		defer_kfree_skb_list = head;
+		spin_unlock(&defer_kfree_skb_lock);
 	}
 }
 EXPORT_SYMBOL(rtnl_kfree_skbs);
 
 void __rtnl_unlock(void)
 {
-	struct sk_buff *head = defer_kfree_skb_list;
+	struct sk_buff *head;
 
+	spin_lock(&defer_kfree_skb_lock);
+	head = defer_kfree_skb_list;
 	defer_kfree_skb_list = NULL;
+	spin_unlock(&defer_kfree_skb_lock);
 
 	/* Ensure that we didn't actually add any TODO item when __rtnl_unlock()
 	 * is used. In some places, e.g. in cfg80211, we have code that will do
