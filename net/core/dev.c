@@ -10416,6 +10416,7 @@ static bool from_cleanup_net(void)
 
 /* Delayed registration/unregisteration */
 LIST_HEAD(net_todo_list);
+LIST_HEAD(net_unreg_list);
 DECLARE_WAIT_QUEUE_HEAD(netdev_unregistering_wq);
 atomic_t dev_unreg_count = ATOMIC_INIT(0);
 
@@ -11864,6 +11865,38 @@ static void netdev_rss_contexts_free(struct net_device *dev)
 	mutex_unlock(&dev->ethtool->rss_lock);
 }
 
+static void unregister_netdevice_enqueue_net(struct net_device *dev)
+{
+	struct net *net = dev_net(dev);
+
+	/* Once RTNL is removed and unreg can be done per-netns basis,
+	 * use llist without locking.
+	 */
+	list_add(&dev->unreg_list, &net->dev_unreg_head);
+
+	/* Here starts the glue code for unregister_netdevice_many_notify().
+	 * net_unreg_list is protected by rtnl_lock().
+	 */
+	ASSERT_RTNL();
+
+	if (list_empty(&net->unreg_list))
+		list_add(&net->unreg_list, &net_unreg_list);
+}
+
+static void unregister_netdevice_dequeue_net(struct list_head *head)
+{
+	struct net *net, *tmp;
+
+	list_for_each_entry_safe(net, tmp, &net_unreg_list, unreg_list) {
+		/* llist does not provide splice(), so now we use list,
+		 * but when we do per-netns dev-unreg, use llist.
+		 */
+		list_splice_init(&net->dev_unreg_head, head);
+
+		list_del_init(&net->unreg_list);
+	}
+}
+
 /**
  *	unregister_netdevice_queue - remove device from the kernel
  *	@dev: device
@@ -11881,12 +11914,11 @@ void unregister_netdevice_queue(struct net_device *dev, struct list_head *head)
 {
 	ASSERT_RTNL();
 
-	if (head) {
-		list_move_tail(&dev->unreg_list, head);
-	} else {
+	unregister_netdevice_enqueue_net(dev);
+
+	if (!head) {
 		LIST_HEAD(single);
 
-		list_add(&dev->unreg_list, &single);
 		unregister_netdevice_many(&single);
 	}
 }
@@ -11914,6 +11946,8 @@ void unregister_netdevice_many_notify(struct list_head *head,
 
 	BUG_ON(dev_boot_phase);
 	ASSERT_RTNL();
+
+	unregister_netdevice_dequeue_net(head);
 
 	if (list_empty(head))
 		return;
@@ -12341,6 +12375,9 @@ static int __net_init netdev_init(struct net *net)
 {
 	BUILD_BUG_ON(GRO_HASH_BUCKETS >
 		     BITS_PER_BYTE * sizeof_field(struct gro_node, bitmask));
+
+	INIT_LIST_HEAD(&net->unreg_list);
+	INIT_LIST_HEAD(&net->dev_unreg_head);
 
 	net->dev_name_head = netdev_create_hash();
 	if (net->dev_name_head == NULL)
