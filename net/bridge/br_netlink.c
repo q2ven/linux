@@ -1571,8 +1571,12 @@ static int br_dev_newlink(struct net *src_net, struct net_device *dev,
 	}
 
 	err = br_changelink(dev, tb, data, extack);
-	if (err)
-		br_dev_delete(dev, NULL);
+	if (err) {
+		LIST_HEAD(dev_to_kill);
+
+		br_dev_delete(dev, &dev_to_kill);
+		unregister_netdevice_flush();
+	}
 
 	return err;
 }

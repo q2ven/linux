@@ -539,9 +539,10 @@ static struct notifier_block vlan_notifier_block __read_mostly = {
  */
 static int vlan_ioctl_handler(struct net *net, void __user *arg)
 {
-	int err;
-	struct vlan_ioctl_args args;
 	struct net_device *dev = NULL;
+	struct vlan_ioctl_args args;
+	LIST_HEAD(dev_to_kill);
+	int err;
 
 	if (copy_from_user(&args, arg, sizeof(struct vlan_ioctl_args)))
 		return -EFAULT;
@@ -625,7 +626,9 @@ static int vlan_ioctl_handler(struct net *net, void __user *arg)
 		err = -EPERM;
 		if (!ns_capable(net->user_ns, CAP_NET_ADMIN))
 			break;
-		unregister_vlan_dev(dev, NULL);
+
+		unregister_vlan_dev(dev, &dev_to_kill);
+		unregister_netdevice_flush();
 		err = 0;
 		break;
 

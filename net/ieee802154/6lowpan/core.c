@@ -229,8 +229,12 @@ static int lowpan_device_event(struct notifier_block *unused,
 		 * also delete possible lowpan interfaces which belongs
 		 * to the wpan interface.
 		 */
-		if (wpan_dev->lowpan_dev)
-			lowpan_dellink(wpan_dev->lowpan_dev, NULL);
+		if (wpan_dev->lowpan_dev) {
+			LIST_HEAD(dev_to_kill);
+
+			lowpan_dellink(wpan_dev->lowpan_dev, &dev_to_kill);
+			unregister_netdevice_flush();
+		}
 		break;
 	default:
 		return NOTIFY_DONE;

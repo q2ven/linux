@@ -475,26 +475,25 @@ int br_add_bridge(struct net *net, const char *name)
 int br_del_bridge(struct net *net, const char *name)
 {
 	struct net_device *dev;
-	int ret = 0;
+	LIST_HEAD(dev_to_kill);
 
 	dev = __dev_get_by_name(net, name);
-	if (dev == NULL)
-		ret =  -ENXIO; 	/* Could not find device */
+	if (!dev)
+		/* Could not find device */
+		return -ENXIO;
 
-	else if (!netif_is_bridge_master(dev)) {
+	if (!netif_is_bridge_master(dev))
 		/* Attempt to delete non bridge device! */
-		ret = -EPERM;
-	}
+		return -EPERM;
 
-	else if (dev->flags & IFF_UP) {
+	if (dev->flags & IFF_UP)
 		/* Not shutdown yet. */
-		ret = -EBUSY;
-	}
+		return -EBUSY;
 
-	else
-		br_dev_delete(dev, NULL);
+	br_dev_delete(dev, &dev_to_kill);
+	unregister_netdevice_flush();
 
-	return ret;
+	return 0;
 }
 
 /* MTU of the bridge pseudo-device: ETH_DATA_LEN or the minimum of the ports */
