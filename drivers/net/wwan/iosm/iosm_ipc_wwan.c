@@ -190,8 +190,7 @@ static int ipc_wwan_newlink(void *ctxt, struct net_device *dev,
 	return 0;
 }
 
-static void ipc_wwan_dellink(void *ctxt, struct net_device *dev,
-			     struct list_head *head)
+static void ipc_wwan_dellink(void *ctxt, struct net_device *dev)
 {
 	struct iosm_netdev_priv *priv = wwan_netdev_drvpriv(dev);
 	struct iosm_wwan *ipc_wwan = ctxt;

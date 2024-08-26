@@ -993,7 +993,6 @@ out:
 static void wwan_rtnl_dellink(struct net_device *dev)
 {
 	struct wwan_device *wwandev = wwan_dev_get_by_parent(dev->dev.parent);
-	LIST_HEAD(kill_list);
 
 	if (IS_ERR(wwandev))
 		return;
@@ -1003,7 +1002,7 @@ static void wwan_rtnl_dellink(struct net_device *dev)
 		goto out;
 
 	if (wwandev->ops->dellink)
-		wwandev->ops->dellink(wwandev->ops_ctxt, dev, &kill_list);
+		wwandev->ops->dellink(wwandev->ops_ctxt, dev);
 	else
 		unregister_netdevice_queue(dev);
 

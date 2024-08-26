@@ -312,7 +312,7 @@ static int t7xx_ccmni_wwan_newlink(void *ctxt, struct net_device *dev, u32 if_id
 	return 0;
 }
 
-static void t7xx_ccmni_wwan_dellink(void *ctxt, struct net_device *dev, struct list_head *head)
+static void t7xx_ccmni_wwan_dellink(void *ctxt, struct net_device *dev)
 {
 	struct t7xx_ccmni *ccmni = wwan_netdev_drvpriv(dev);
 	struct t7xx_ccmni_ctrl *ctlb = ctxt;

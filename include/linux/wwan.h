@@ -178,8 +178,7 @@ struct wwan_ops {
 	void (*setup)(struct net_device *dev);
 	int (*newlink)(void *ctxt, struct net_device *dev,
 		       u32 if_id, struct netlink_ext_ack *extack);
-	void (*dellink)(void *ctxt, struct net_device *dev,
-			struct list_head *head);
+	void (*dellink)(void *ctxt, struct net_device *dev);
 };
 
 int wwan_register_ops(struct device *parent, const struct wwan_ops *ops,

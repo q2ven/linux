@@ -569,8 +569,7 @@ static int mhi_mbim_newlink(void *ctxt, struct net_device *ndev, u32 if_id,
 	return register_netdevice(ndev);
 }
 
-static void mhi_mbim_dellink(void *ctxt, struct net_device *ndev,
-			     struct list_head *head)
+static void mhi_mbim_dellink(void *ctxt, struct net_device *ndev)
 {
 	struct mhi_mbim_link *link = wwan_netdev_drvpriv(ndev);
 
