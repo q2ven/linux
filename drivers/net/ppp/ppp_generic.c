@@ -1353,11 +1353,6 @@ out:
 	return err;
 }
 
-static void ppp_nl_dellink(struct net_device *dev, struct list_head *head)
-{
-	unregister_netdevice_queue(dev, head);
-}
-
 static size_t ppp_nl_get_size(const struct net_device *dev)
 {
 	return 0;
@@ -1383,7 +1378,6 @@ static struct rtnl_link_ops ppp_link_ops __read_mostly = {
 	.setup		= ppp_setup,
 	.validate	= ppp_nl_validate,
 	.newlink	= ppp_nl_newlink,
-	.dellink	= ppp_nl_dellink,
 	.get_size	= ppp_nl_get_size,
 	.fill_info	= ppp_nl_fill_info,
 	.get_link_net	= ppp_nl_get_link_net,

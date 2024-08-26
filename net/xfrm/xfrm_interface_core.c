@@ -855,11 +855,6 @@ static int xfrmi_newlink(struct net *src_net, struct net_device *dev,
 	return err;
 }
 
-static void xfrmi_dellink(struct net_device *dev, struct list_head *head)
-{
-	unregister_netdevice_queue(dev, head);
-}
-
 static int xfrmi_changelink(struct net_device *dev, struct nlattr *tb[],
 			   struct nlattr *data[],
 			   struct netlink_ext_ack *extack)
@@ -944,7 +939,6 @@ static struct rtnl_link_ops xfrmi_link_ops __read_mostly = {
 	.setup		= xfrmi_dev_setup,
 	.validate	= xfrmi_validate,
 	.newlink	= xfrmi_newlink,
-	.dellink	= xfrmi_dellink,
 	.changelink	= xfrmi_changelink,
 	.get_size	= xfrmi_get_size,
 	.fill_info	= xfrmi_fill_info,
