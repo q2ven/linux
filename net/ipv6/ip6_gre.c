@@ -1570,38 +1570,6 @@ static struct inet6_protocol ip6gre_protocol __read_mostly = {
 	.flags       = INET6_PROTO_FINAL,
 };
 
-static void ip6gre_destroy_tunnels(struct net *net)
-{
-	struct ip6gre_net *ign = net_generic(net, ip6gre_net_id);
-	struct net_device *dev, *aux;
-	int prio;
-
-	for_each_netdev_safe(net, dev, aux)
-		if (dev->rtnl_link_ops == &ip6gre_link_ops ||
-		    dev->rtnl_link_ops == &ip6gre_tap_ops ||
-		    dev->rtnl_link_ops == &ip6erspan_tap_ops)
-			unregister_netdevice_queue(dev);
-
-	for (prio = 0; prio < 4; prio++) {
-		int h;
-		for (h = 0; h < IP6_GRE_HASH_SIZE; h++) {
-			struct ip6_tnl *t;
-
-			t = rtnl_dereference(ign->tunnels[prio][h]);
-
-			while (t) {
-				/* If dev is in the same netns, it has already
-				 * been added to the list by the previous loop.
-				 */
-				if (!net_eq(dev_net(t->dev), net))
-					unregister_netdevice_queue(t->dev);
-
-				t = rtnl_dereference(t->next);
-			}
-		}
-	}
-}
-
 static int __net_init ip6gre_init_net(struct net *net)
 {
 	struct ip6gre_net *ign = net_generic(net, ip6gre_net_id);
@@ -1640,18 +1608,44 @@ err_alloc_dev:
 	return err;
 }
 
-static void __net_exit ip6gre_exit_batch_rtnl(struct list_head *net_list)
+static void __net_exit ip6gre_exit_rtnl(struct net *net)
 {
-	struct net *net;
+	struct ip6gre_net *ign = net_generic(net, ip6gre_net_id);
+	struct net_device *dev, *aux;
+	int prio;
 
-	ASSERT_RTNL();
-	list_for_each_entry(net, net_list, exit_list)
-		ip6gre_destroy_tunnels(net);
+	ASSERT_RTNL_NET(net);
+
+	for_each_netdev_safe(net, dev, aux)
+		if (dev->rtnl_link_ops == &ip6gre_link_ops ||
+		    dev->rtnl_link_ops == &ip6gre_tap_ops ||
+		    dev->rtnl_link_ops == &ip6erspan_tap_ops)
+			unregister_netdevice_queue(dev);
+
+	for (prio = 0; prio < 4; prio++) {
+		int h;
+
+		for (h = 0; h < IP6_GRE_HASH_SIZE; h++) {
+			struct ip6_tnl *t;
+
+			t = rtnl_dereference(ign->tunnels[prio][h]);
+
+			while (t) {
+				/* If dev is in the same netns, it has already
+				 * been added to the list by the previous loop.
+				 */
+				if (!net_eq(dev_net(t->dev), net))
+					unregister_netdevice_queue(t->dev);
+
+				t = rtnl_dereference(t->next);
+			}
+		}
+	}
 }
 
 static struct pernet_operations ip6gre_net_ops = {
 	.init = ip6gre_init_net,
-	.exit_batch_rtnl = ip6gre_exit_batch_rtnl,
+	.exit_rtnl = ip6gre_exit_rtnl,
 	.id   = &ip6gre_net_id,
 	.size = sizeof(struct ip6gre_net),
 };
