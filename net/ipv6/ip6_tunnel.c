@@ -2205,40 +2205,6 @@ static struct xfrm6_tunnel mplsip6_handler __read_mostly = {
 	.priority	=	1,
 };
 
-static void __net_exit ip6_tnl_destroy_tunnels(struct net *net)
-{
-	struct ip6_tnl_net *ip6n = net_generic(net, ip6_tnl_net_id);
-	struct net_device *dev, *aux;
-	int h;
-	struct ip6_tnl *t;
-
-	for_each_netdev_safe(net, dev, aux)
-		if (dev->rtnl_link_ops == &ip6_link_ops)
-			unregister_netdevice_queue(dev);
-
-	for (h = 0; h < IP6_TUNNEL_HASH_SIZE; h++) {
-		t = rtnl_dereference(ip6n->tnls_r_l[h]);
-		while (t) {
-			/* If dev is in the same netns, it has already
-			 * been added to the list by the previous loop.
-			 */
-			if (!net_eq(dev_net(t->dev), net))
-				unregister_netdevice_queue(t->dev);
-			t = rtnl_dereference(t->next);
-		}
-	}
-
-	t = rtnl_dereference(ip6n->tnls_wc[0]);
-	while (t) {
-		/* If dev is in the same netns, it has already
-		 * been added to the list by the previous loop.
-		 */
-		if (!net_eq(dev_net(t->dev), net))
-			unregister_netdevice_queue(t->dev);
-		t = rtnl_dereference(t->next);
-	}
-}
-
 static int __net_init ip6_tnl_init_net(struct net *net)
 {
 	struct ip6_tnl_net *ip6n = net_generic(net, ip6_tnl_net_id);
@@ -2282,18 +2248,45 @@ err_alloc_dev:
 	return err;
 }
 
-static void __net_exit ip6_tnl_exit_batch_rtnl(struct list_head *net_list)
+static void __net_exit ip6_tnl_exit_rtnl(struct net *net)
 {
-	struct net *net;
+	struct ip6_tnl_net *ip6n = net_generic(net, ip6_tnl_net_id);
+	struct net_device *dev, *aux;
+	struct ip6_tnl *t;
+	int h;
 
-	ASSERT_RTNL();
-	list_for_each_entry(net, net_list, exit_list)
-		ip6_tnl_destroy_tunnels(net);
+	ASSERT_RTNL_NET(net);
+
+	for_each_netdev_safe(net, dev, aux)
+		if (dev->rtnl_link_ops == &ip6_link_ops)
+			unregister_netdevice_queue(dev);
+
+	for (h = 0; h < IP6_TUNNEL_HASH_SIZE; h++) {
+		t = rtnl_dereference(ip6n->tnls_r_l[h]);
+		while (t) {
+			/* If dev is in the same netns, it has already
+			 * been added to the list by the previous loop.
+			 */
+			if (!net_eq(dev_net(t->dev), net))
+				unregister_netdevice_queue(t->dev);
+			t = rtnl_dereference(t->next);
+		}
+	}
+
+	t = rtnl_dereference(ip6n->tnls_wc[0]);
+	while (t) {
+		/* If dev is in the same netns, it has already
+		 * been added to the list by the previous loop.
+		 */
+		if (!net_eq(dev_net(t->dev), net))
+			unregister_netdevice_queue(t->dev);
+		t = rtnl_dereference(t->next);
+	}
 }
 
 static struct pernet_operations ip6_tnl_net_ops = {
 	.init = ip6_tnl_init_net,
-	.exit_batch_rtnl = ip6_tnl_exit_batch_rtnl,
+	.exit_rtnl = ip6_tnl_exit_rtnl,
 	.id   = &ip6_tnl_net_id,
 	.size = sizeof(struct ip6_tnl_net),
 };
