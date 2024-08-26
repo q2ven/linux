@@ -1109,24 +1109,6 @@ static struct rtnl_link_ops vti6_link_ops __read_mostly = {
 	.get_link_net	= ip6_tnl_get_link_net,
 };
 
-static void __net_exit vti6_destroy_tunnels(struct vti6_net *ip6n)
-{
-	int h;
-	struct ip6_tnl *t;
-
-	for (h = 0; h < IP6_VTI_HASH_SIZE; h++) {
-		t = rtnl_dereference(ip6n->tnls_r_l[h]);
-		while (t) {
-			unregister_netdevice_queue(t->dev);
-			t = rtnl_dereference(t->next);
-		}
-	}
-
-	t = rtnl_dereference(ip6n->tnls_wc[0]);
-	if (t)
-		unregister_netdevice_queue(t->dev);
-}
-
 static int __net_init vti6_init_net(struct net *net)
 {
 	struct vti6_net *ip6n = net_generic(net, vti6_net_id);
@@ -1166,21 +1148,30 @@ err_alloc_dev:
 	return err;
 }
 
-static void __net_exit vti6_exit_batch_rtnl(struct list_head *net_list)
+static void __net_exit vti6_exit_rtnl(struct net *net)
 {
-	struct vti6_net *ip6n;
-	struct net *net;
+	struct vti6_net *ip6n = net_generic(net, vti6_net_id);
+	struct ip6_tnl *t;
+	int h;
 
-	ASSERT_RTNL();
-	list_for_each_entry(net, net_list, exit_list) {
-		ip6n = net_generic(net, vti6_net_id);
-		vti6_destroy_tunnels(ip6n);
+	ASSERT_RTNL_NET(net);
+
+	for (h = 0; h < IP6_VTI_HASH_SIZE; h++) {
+		t = rtnl_dereference(ip6n->tnls_r_l[h]);
+		while (t) {
+			unregister_netdevice_queue(t->dev);
+			t = rtnl_dereference(t->next);
+		}
 	}
+
+	t = rtnl_dereference(ip6n->tnls_wc[0]);
+	if (t)
+		unregister_netdevice_queue(t->dev);
 }
 
 static struct pernet_operations vti6_net_ops = {
 	.init = vti6_init_net,
-	.exit_batch_rtnl = vti6_exit_batch_rtnl,
+	.exit_rtnl = vti6_exit_rtnl,
 	.id   = &vti6_net_id,
 	.size = sizeof(struct vti6_net),
 };
