@@ -2472,8 +2472,7 @@ static int __net_init gtp_net_init(struct net *net)
 	return 0;
 }
 
-static void __net_exit gtp_net_exit_batch_rtnl(struct list_head *net_list,
-					       struct list_head *dev_to_kill)
+static void __net_exit gtp_net_exit_batch_rtnl(struct list_head *net_list)
 {
 	struct net *net;
 

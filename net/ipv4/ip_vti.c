@@ -523,11 +523,9 @@ static int __net_init vti_init_net(struct net *net)
 	return 0;
 }
 
-static void __net_exit vti_exit_batch_rtnl(struct list_head *list_net,
-					   struct list_head *dev_to_kill)
+static void __net_exit vti_exit_batch_rtnl(struct list_head *list_net)
 {
-	ip_tunnel_delete_nets(list_net, vti_net_id, &vti_link_ops,
-			      dev_to_kill);
+	ip_tunnel_delete_nets(list_net, vti_net_id, &vti_link_ops);
 }
 
 static struct pernet_operations vti_net_ops = {

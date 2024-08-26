@@ -1800,8 +1800,7 @@ static struct xfrm_tunnel mplsip_handler __read_mostly = {
 };
 #endif
 
-static void __net_exit sit_destroy_tunnels(struct net *net,
-					   struct list_head *head)
+static void __net_exit sit_destroy_tunnels(struct net *net)
 {
 	struct sit_net *sitn = net_generic(net, sit_net_id);
 	struct net_device *dev, *aux;
@@ -1876,14 +1875,13 @@ err_alloc_dev:
 	return err;
 }
 
-static void __net_exit sit_exit_batch_rtnl(struct list_head *net_list,
-					   struct list_head *dev_to_kill)
+static void __net_exit sit_exit_batch_rtnl(struct list_head *net_list)
 {
 	struct net *net;
 
 	ASSERT_RTNL();
 	list_for_each_entry(net, net_list, exit_list)
-		sit_destroy_tunnels(net, dev_to_kill);
+		sit_destroy_tunnels(net);
 }
 
 static struct pernet_operations sit_net_ops = {

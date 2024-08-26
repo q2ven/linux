@@ -1897,7 +1897,7 @@ static __net_init int geneve_init_net(struct net *net)
 	return 0;
 }
 
-static void geneve_destroy_tunnels(struct net *net, struct list_head *head)
+static void geneve_destroy_tunnels(struct net *net)
 {
 	struct geneve_net *gn = net_generic(net, geneve_net_id);
 	struct geneve_dev *geneve, *next;
@@ -1918,13 +1918,12 @@ static void geneve_destroy_tunnels(struct net *net, struct list_head *head)
 	}
 }
 
-static void __net_exit geneve_exit_batch_rtnl(struct list_head *net_list,
-					      struct list_head *dev_to_kill)
+static void __net_exit geneve_exit_batch_rtnl(struct list_head *net_list)
 {
 	struct net *net;
 
 	list_for_each_entry(net, net_list, exit_list)
-		geneve_destroy_tunnels(net, dev_to_kill);
+		geneve_destroy_tunnels(net);
 }
 
 static void __net_exit geneve_exit_net(struct net *net)

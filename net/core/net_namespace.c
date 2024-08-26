@@ -349,7 +349,6 @@ static __net_init int setup_net(struct net *net)
 	/* Must be called with pernet_ops_rwsem held */
 	const struct pernet_operations *ops, *saved_ops;
 	LIST_HEAD(net_exit_list);
-	LIST_HEAD(dev_kill_list);
 	int error = 0;
 
 	preempt_disable();
@@ -391,7 +390,7 @@ out_undo:
 	ops = saved_ops;
 	list_for_each_entry_continue_reverse(ops, &pernet_list, list) {
 		if (ops->exit_batch_rtnl)
-			ops->exit_batch_rtnl(&net_exit_list, &dev_kill_list);
+			ops->exit_batch_rtnl(&net_exit_list);
 	}
 
 	unregister_netdevice_flush();
@@ -586,7 +585,6 @@ static void cleanup_net(struct work_struct *work)
 	struct net *net, *tmp, *last;
 	struct llist_node *net_kill_list;
 	LIST_HEAD(net_exit_list);
-	LIST_HEAD(dev_kill_list);
 
 	/* Atomically snapshot the list of namespaces to cleanup */
 	net_kill_list = llist_del_all(&cleanup_list);
@@ -640,7 +638,7 @@ static void cleanup_net(struct work_struct *work)
 
 	list_for_each_entry_reverse(ops, &pernet_list, list) {
 		if (ops->exit_batch_rtnl)
-			ops->exit_batch_rtnl(&net_exit_list, &dev_kill_list);
+			ops->exit_batch_rtnl(&net_exit_list);
 	}
 
 	unregister_netdevice_flush();
@@ -1235,7 +1233,6 @@ static void free_exit_list(struct pernet_operations *ops, struct list_head *net_
 	synchronize_rcu();
 
 	if (ops->exit_batch_rtnl || ops->exit_rtnl) {
-		LIST_HEAD(dev_kill_list);
 		struct net *net;
 
 		rtnl_lock();
@@ -1249,7 +1246,7 @@ static void free_exit_list(struct pernet_operations *ops, struct list_head *net_
 		}
 
 		if (ops->exit_batch_rtnl)
-			ops->exit_batch_rtnl(net_exit_list, &dev_kill_list);
+			ops->exit_batch_rtnl(net_exit_list);
 
 		unregister_netdevice_flush();
 		rtnl_unlock();

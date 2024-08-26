@@ -4007,8 +4007,7 @@ out:
 }
 EXPORT_SYMBOL(nexthop_res_grp_activity_update);
 
-static void __net_exit nexthop_net_exit_batch_rtnl(struct list_head *net_list,
-						   struct list_head *dev_to_kill)
+static void __net_exit nexthop_net_exit_batch_rtnl(struct list_head *net_list)
 {
 	struct net *net;
 

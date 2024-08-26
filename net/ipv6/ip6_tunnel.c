@@ -2205,7 +2205,7 @@ static struct xfrm6_tunnel mplsip6_handler __read_mostly = {
 	.priority	=	1,
 };
 
-static void __net_exit ip6_tnl_destroy_tunnels(struct net *net, struct list_head *list)
+static void __net_exit ip6_tnl_destroy_tunnels(struct net *net)
 {
 	struct ip6_tnl_net *ip6n = net_generic(net, ip6_tnl_net_id);
 	struct net_device *dev, *aux;
@@ -2282,14 +2282,13 @@ err_alloc_dev:
 	return err;
 }
 
-static void __net_exit ip6_tnl_exit_batch_rtnl(struct list_head *net_list,
-					       struct list_head *dev_to_kill)
+static void __net_exit ip6_tnl_exit_batch_rtnl(struct list_head *net_list)
 {
 	struct net *net;
 
 	ASSERT_RTNL();
 	list_for_each_entry(net, net_list, exit_list)
-		ip6_tnl_destroy_tunnels(net, dev_to_kill);
+		ip6_tnl_destroy_tunnels(net);
 }
 
 static struct pernet_operations ip6_tnl_net_ops = {

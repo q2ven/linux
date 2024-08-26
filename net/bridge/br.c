@@ -356,8 +356,7 @@ void br_opt_toggle(struct net_bridge *br, enum net_bridge_opts opt, bool on)
 		clear_bit(opt, &br->options);
 }
 
-static void __net_exit br_net_exit_batch_rtnl(struct list_head *net_list,
-					      struct list_head *dev_to_kill)
+static void __net_exit br_net_exit_batch_rtnl(struct list_head *net_list)
 {
 	struct net_device *dev;
 	struct net *net;

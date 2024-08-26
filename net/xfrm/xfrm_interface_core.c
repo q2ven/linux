@@ -945,8 +945,7 @@ static struct rtnl_link_ops xfrmi_link_ops __read_mostly = {
 	.get_link_net	= xfrmi_get_link_net,
 };
 
-static void __net_exit xfrmi_exit_batch_rtnl(struct list_head *net_exit_list,
-					     struct list_head *dev_to_kill)
+static void __net_exit xfrmi_exit_batch_rtnl(struct list_head *net_exit_list)
 {
 	struct net *net;
 

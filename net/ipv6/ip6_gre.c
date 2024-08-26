@@ -1570,7 +1570,7 @@ static struct inet6_protocol ip6gre_protocol __read_mostly = {
 	.flags       = INET6_PROTO_FINAL,
 };
 
-static void ip6gre_destroy_tunnels(struct net *net, struct list_head *head)
+static void ip6gre_destroy_tunnels(struct net *net)
 {
 	struct ip6gre_net *ign = net_generic(net, ip6gre_net_id);
 	struct net_device *dev, *aux;
@@ -1640,14 +1640,13 @@ err_alloc_dev:
 	return err;
 }
 
-static void __net_exit ip6gre_exit_batch_rtnl(struct list_head *net_list,
-					      struct list_head *dev_to_kill)
+static void __net_exit ip6gre_exit_batch_rtnl(struct list_head *net_list)
 {
 	struct net *net;
 
 	ASSERT_RTNL();
 	list_for_each_entry(net, net_list, exit_list)
-		ip6gre_destroy_tunnels(net, dev_to_kill);
+		ip6gre_destroy_tunnels(net);
 }
 
 static struct pernet_operations ip6gre_net_ops = {

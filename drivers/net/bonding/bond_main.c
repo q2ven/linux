@@ -6548,8 +6548,7 @@ static void __net_exit bond_net_pre_exit(struct net *net)
 	bond_destroy_sysfs(bn);
 }
 
-static void __net_exit bond_net_exit_batch_rtnl(struct list_head *net_list,
-						struct list_head *dev_kill_list)
+static void __net_exit bond_net_exit_batch_rtnl(struct list_head *net_list)
 {
 	struct bond_net *bn;
 	struct net *net;
