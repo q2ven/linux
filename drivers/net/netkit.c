@@ -841,11 +841,11 @@ static void netkit_del_link(struct net_device *dev, struct list_head *head)
 	struct net_device *peer = rtnl_dereference(nk->peer);
 
 	RCU_INIT_POINTER(nk->peer, NULL);
-	unregister_netdevice_queue(dev, head);
+	unregister_netdevice_queue(dev);
 	if (peer) {
 		nk = netkit_priv(peer);
 		RCU_INIT_POINTER(nk->peer, NULL);
-		unregister_netdevice_queue(peer, head);
+		unregister_netdevice_queue(peer);
 	}
 }
 

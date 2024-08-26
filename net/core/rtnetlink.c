@@ -589,7 +589,7 @@ int __rtnl_link_register(struct rtnl_link_ops *ops)
 	 * fill up dellink as well. That disables rtnl_dellink.
 	 */
 	if ((ops->alloc || ops->setup) && !ops->dellink)
-		ops->dellink = unregister_netdevice_queue;
+		ops->dellink = unregister_netdevice_dellink;
 
 	refcount_set(&ops->refcnt, 1);
 	list_add_tail(&ops->list, &link_ops);

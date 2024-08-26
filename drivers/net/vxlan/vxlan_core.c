@@ -4426,7 +4426,7 @@ static void vxlan_dellink(struct net_device *dev, struct list_head *head)
 	vxlan_flush(vxlan, &desc);
 
 	list_del(&vxlan->next);
-	unregister_netdevice_queue(dev, head);
+	unregister_netdevice_queue(dev);
 	if (vxlan->default_dst.remote_dev)
 		netdev_upper_dev_unlink(vxlan->default_dst.remote_dev, dev);
 }

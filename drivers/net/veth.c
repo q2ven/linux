@@ -1930,12 +1930,12 @@ static void veth_dellink(struct net_device *dev, struct list_head *head)
 	 * not being freed before one RCU grace period.
 	 */
 	RCU_INIT_POINTER(priv->peer, NULL);
-	unregister_netdevice_queue(dev, head);
+	unregister_netdevice_queue(dev);
 
 	if (peer) {
 		priv = netdev_priv(peer);
 		RCU_INIT_POINTER(priv->peer, NULL);
-		unregister_netdevice_queue(peer, head);
+		unregister_netdevice_queue(peer);
 	}
 }
 

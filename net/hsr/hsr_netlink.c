@@ -140,7 +140,7 @@ static void hsr_dellink(struct net_device *dev, struct list_head *head)
 	hsr_del_nodes(&hsr->node_db);
 	hsr_del_nodes(&hsr->proxy_node_db);
 
-	unregister_netdevice_queue(dev, head);
+	unregister_netdevice_queue(dev);
 }
 
 static int hsr_fill_info(struct sk_buff *skb, const struct net_device *dev)

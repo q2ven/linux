@@ -206,7 +206,7 @@ static void ipc_wwan_dellink(void *ctxt, struct net_device *dev,
 
 	RCU_INIT_POINTER(ipc_wwan->sub_netlist[if_id], NULL);
 	/* unregistering includes synchronize_net() */
-	unregister_netdevice_queue(dev, head);
+	unregister_netdevice_queue(dev);
 }
 
 static const struct wwan_ops iosm_wwan_ops = {

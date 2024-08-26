@@ -1693,7 +1693,7 @@ static void vrf_dellink(struct net_device *dev, struct list_head *head)
 
 	vrf_map_unregister_dev(dev);
 
-	unregister_netdevice_queue(dev, head);
+	unregister_netdevice_queue(dev);
 }
 
 static int vrf_newlink(struct net *src_net, struct net_device *dev,

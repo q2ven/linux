@@ -291,7 +291,7 @@ static void qmimux_unregister_device(struct net_device *dev,
 	struct net_device *real_dev = priv->real_dev;
 
 	netdev_upper_dev_unlink(real_dev, dev);
-	unregister_netdevice_queue(dev, head);
+	unregister_netdevice_queue(dev);
 
 	/* Get rid of the reference to real_dev */
 	dev_put(real_dev);

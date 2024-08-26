@@ -1762,7 +1762,7 @@ static void ipip6_dellink(struct net_device *dev, struct list_head *head)
 	struct sit_net *sitn = net_generic(net, sit_net_id);
 
 	if (dev != sitn->fb_tunnel_dev)
-		unregister_netdevice_queue(dev, head);
+		unregister_netdevice_queue(dev);
 }
 
 static struct rtnl_link_ops sit_link_ops __read_mostly = {
@@ -1809,7 +1809,7 @@ static void __net_exit sit_destroy_tunnels(struct net *net,
 
 	for_each_netdev_safe(net, dev, aux)
 		if (dev->rtnl_link_ops == &sit_link_ops)
-			unregister_netdevice_queue(dev, head);
+			unregister_netdevice_queue(dev);
 
 	for (prio = 0; prio < 4; prio++) {
 		int h;
@@ -1822,8 +1822,8 @@ static void __net_exit sit_destroy_tunnels(struct net *net,
 				 * been added to the list by the previous loop.
 				 */
 				if (!net_eq(dev_net(t->dev), net))
-					unregister_netdevice_queue(t->dev,
-								   head);
+					unregister_netdevice_queue(t->dev);
+
 				t = rtnl_dereference(t->next);
 			}
 		}

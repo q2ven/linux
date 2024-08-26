@@ -2618,15 +2618,14 @@ static void ipoib_remove_one(struct ib_device *device, void *client_data)
 	struct list_head *dev_list = client_data;
 
 	list_for_each_entry_safe(priv, tmp, dev_list, list) {
-		LIST_HEAD(head);
 		ipoib_parent_unregister_pre(priv->dev);
 
 		rtnl_lock();
 
 		list_for_each_entry_safe(cpriv, tcpriv, &priv->child_intfs,
 					 list)
-			unregister_netdevice_queue(cpriv->dev, &head);
-		unregister_netdevice_queue(priv->dev, &head);
+			unregister_netdevice_queue(cpriv->dev);
+		unregister_netdevice_queue(priv->dev);
 		unregister_netdevice_flush();
 
 		rtnl_unlock();

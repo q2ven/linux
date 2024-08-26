@@ -3285,7 +3285,7 @@ static void amt_dellink(struct net_device *dev, struct list_head *head)
 {
 	struct amt_dev *amt = netdev_priv(dev);
 
-	unregister_netdevice_queue(dev, head);
+	unregister_netdevice_queue(dev);
 	netdev_upper_dev_unlink(amt->stream_dev, dev);
 	dev_put(amt->stream_dev);
 }

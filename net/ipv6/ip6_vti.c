@@ -1021,7 +1021,7 @@ static void vti6_dellink(struct net_device *dev, struct list_head *head)
 	struct vti6_net *ip6n = net_generic(net, vti6_net_id);
 
 	if (dev != ip6n->fb_tnl_dev)
-		unregister_netdevice_queue(dev, head);
+		unregister_netdevice_queue(dev);
 }
 
 static int vti6_changelink(struct net_device *dev, struct nlattr *tb[],
@@ -1118,14 +1118,14 @@ static void __net_exit vti6_destroy_tunnels(struct vti6_net *ip6n,
 	for (h = 0; h < IP6_VTI_HASH_SIZE; h++) {
 		t = rtnl_dereference(ip6n->tnls_r_l[h]);
 		while (t) {
-			unregister_netdevice_queue(t->dev, list);
+			unregister_netdevice_queue(t->dev);
 			t = rtnl_dereference(t->next);
 		}
 	}
 
 	t = rtnl_dereference(ip6n->tnls_wc[0]);
 	if (t)
-		unregister_netdevice_queue(t->dev, list);
+		unregister_netdevice_queue(t->dev);
 }
 
 static int __net_init vti6_init_net(struct net *net)

@@ -1580,7 +1580,7 @@ static void ip6gre_destroy_tunnels(struct net *net, struct list_head *head)
 		if (dev->rtnl_link_ops == &ip6gre_link_ops ||
 		    dev->rtnl_link_ops == &ip6gre_tap_ops ||
 		    dev->rtnl_link_ops == &ip6erspan_tap_ops)
-			unregister_netdevice_queue(dev, head);
+			unregister_netdevice_queue(dev);
 
 	for (prio = 0; prio < 4; prio++) {
 		int h;
@@ -1594,8 +1594,8 @@ static void ip6gre_destroy_tunnels(struct net *net, struct list_head *head)
 				 * been added to the list by the previous loop.
 				 */
 				if (!net_eq(dev_net(t->dev), net))
-					unregister_netdevice_queue(t->dev,
-								   head);
+					unregister_netdevice_queue(t->dev);
+
 				t = rtnl_dereference(t->next);
 			}
 		}
@@ -2094,7 +2094,7 @@ static void ip6gre_dellink(struct net_device *dev, struct list_head *head)
 	struct ip6gre_net *ign = net_generic(net, ip6gre_net_id);
 
 	if (dev != ign->fb_tunnel_dev)
-		unregister_netdevice_queue(dev, head);
+		unregister_netdevice_queue(dev);
 }
 
 static size_t ip6gre_get_size(const struct net_device *dev)

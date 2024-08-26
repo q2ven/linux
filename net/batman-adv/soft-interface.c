@@ -1114,7 +1114,7 @@ static void batadv_softif_destroy_netlink(struct net_device *soft_iface,
 		batadv_softif_vlan_put(vlan);
 	}
 
-	unregister_netdevice_queue(soft_iface, head);
+	unregister_netdevice_queue(soft_iface);
 }
 
 /**

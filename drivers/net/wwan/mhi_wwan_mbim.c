@@ -577,7 +577,7 @@ static void mhi_mbim_dellink(void *ctxt, struct net_device *ndev,
 	hlist_del_init_rcu(&link->hlnode);
 	synchronize_rcu();
 
-	unregister_netdevice_queue(ndev, head);
+	unregister_netdevice_queue(ndev);
 }
 
 static void mhi_mbim_setup(struct net_device *ndev)

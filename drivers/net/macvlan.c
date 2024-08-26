@@ -1580,7 +1580,7 @@ void macvlan_dellink(struct net_device *dev, struct list_head *head)
 		macvlan_flush_sources(vlan->port, vlan);
 	list_del_rcu(&vlan->list);
 	update_port_bc_queue_len(vlan->port);
-	unregister_netdevice_queue(dev, head);
+	unregister_netdevice_queue(dev);
 	netdev_upper_dev_unlink(vlan->lowerdev, dev);
 }
 EXPORT_SYMBOL_GPL(macvlan_dellink);

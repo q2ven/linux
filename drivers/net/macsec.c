@@ -4019,7 +4019,7 @@ static void macsec_common_dellink(struct net_device *dev, struct list_head *head
 		}
 	}
 
-	unregister_netdevice_queue(dev, head);
+	unregister_netdevice_queue(dev);
 	list_del_rcu(&macsec->secys);
 	macsec_del_dev(macsec);
 	netdev_upper_dev_unlink(real_dev, dev);

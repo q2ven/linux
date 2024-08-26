@@ -1004,7 +1004,7 @@ static void wwan_rtnl_dellink(struct net_device *dev, struct list_head *head)
 	if (wwandev->ops->dellink)
 		wwandev->ops->dellink(wwandev->ops_ctxt, dev, head);
 	else
-		unregister_netdevice_queue(dev, head);
+		unregister_netdevice_queue(dev);
 
 out:
 	/* release the reference */

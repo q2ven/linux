@@ -115,7 +115,7 @@ void unregister_vlan_dev(struct net_device *dev, struct list_head *head)
 	 * grace period is respected before device freeing,
 	 * we dont need to call synchronize_net() here.
 	 */
-	unregister_netdevice_queue(dev, head);
+	unregister_netdevice_queue(dev);
 
 	if (grp->nr_vlan_devs == 0) {
 		vlan_mvrp_uninit_applicant(real_dev);

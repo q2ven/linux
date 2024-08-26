@@ -1723,7 +1723,7 @@ static void geneve_dellink(struct net_device *dev, struct list_head *head)
 	struct geneve_dev *geneve = netdev_priv(dev);
 
 	list_del(&geneve->next);
-	unregister_netdevice_queue(dev, head);
+	unregister_netdevice_queue(dev);
 }
 
 static size_t geneve_get_size(const struct net_device *dev)
@@ -1907,7 +1907,7 @@ static void geneve_destroy_tunnels(struct net *net, struct list_head *head)
 	/* gather any geneve devices that were moved into this ns */
 	for_each_netdev_safe(net, dev, aux)
 		if (dev->rtnl_link_ops == &geneve_link_ops)
-			unregister_netdevice_queue(dev, head);
+			unregister_netdevice_queue(dev);
 
 	/* now gather any other geneve devices that were created in this ns */
 	list_for_each_entry_safe(geneve, next, &gn->geneve_list, next) {
@@ -1915,7 +1915,7 @@ static void geneve_destroy_tunnels(struct net *net, struct list_head *head)
 		 * to the list by the previous loop.
 		 */
 		if (!net_eq(dev_net(geneve->dev), net))
-			unregister_netdevice_queue(geneve->dev, head);
+			unregister_netdevice_queue(geneve->dev);
 	}
 }
 

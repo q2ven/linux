@@ -673,7 +673,7 @@ static void bareudp_dellink(struct net_device *dev, struct list_head *head)
 	struct bareudp_dev *bareudp = netdev_priv(dev);
 
 	list_del(&bareudp->next);
-	unregister_netdevice_queue(dev, head);
+	unregister_netdevice_queue(dev);
 }
 
 static int bareudp_newlink(struct net *net, struct net_device *dev,
@@ -758,7 +758,7 @@ static void bareudp_destroy_tunnels(struct net *net, struct list_head *head)
 	struct bareudp_dev *bareudp, *next;
 
 	list_for_each_entry_safe(bareudp, next, &bn->bareudp_list, next)
-		unregister_netdevice_queue(bareudp->dev, head);
+		unregister_netdevice_queue(bareudp->dev);
 }
 
 static void __net_exit bareudp_exit_batch_rtnl(struct list_head *net_list,

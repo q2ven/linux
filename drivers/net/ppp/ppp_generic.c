@@ -1140,19 +1140,18 @@ static __net_exit void ppp_exit_net(struct net *net)
 	struct net_device *dev;
 	struct net_device *aux;
 	struct ppp *ppp;
-	LIST_HEAD(list);
 	int id;
 
 	rtnl_lock();
 	for_each_netdev_safe(net, dev, aux) {
 		if (dev->netdev_ops == &ppp_netdev_ops)
-			unregister_netdevice_queue(dev, &list);
+			unregister_netdevice_queue(dev);
 	}
 
 	idr_for_each_entry(&pn->units_idr, ppp, id)
 		/* Skip devices already unregistered by previous loop */
 		if (!net_eq(dev_net(ppp->dev), net))
-			unregister_netdevice_queue(ppp->dev, &list);
+			unregister_netdevice_queue(ppp->dev);
 
 	unregister_netdevice_flush();
 	rtnl_unlock();

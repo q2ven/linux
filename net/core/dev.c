@@ -11406,7 +11406,6 @@ static void unregister_netdevice_splice_net(struct list_head *head)
 /**
  *	unregister_netdevice_queue - remove device from the kernel
  *	@dev: device
- *	@head: list
  *
  *	This function shuts down a device interface and removes it
  *	from the kernel tables.
@@ -11416,13 +11415,19 @@ static void unregister_netdevice_splice_net(struct list_head *head)
  *	unregister_netdev() instead of this.
  */
 
-void unregister_netdevice_queue(struct net_device *dev, struct list_head *head)
+void unregister_netdevice_queue(struct net_device *dev)
 {
 	ASSERT_RTNL();
 
 	unregister_netdevice_queue_net(dev);
 }
 EXPORT_SYMBOL(unregister_netdevice_queue);
+
+void unregister_netdevice_dellink(struct net_device *dev, struct list_head *head)
+{
+	unregister_netdevice_queue(dev);
+}
+EXPORT_SYMBOL(unregister_netdevice_dellink);
 
 void unregister_netdevice_many_notify(u32 portid, const struct nlmsghdr *nlh)
 {
@@ -12038,7 +12043,7 @@ static void __net_exit default_device_exit_batch(struct list_head *net_list)
 			if (dev->rtnl_link_ops && dev->rtnl_link_ops->dellink)
 				rtnl_link_dellink(dev, &dev_kill_list);
 			else
-				unregister_netdevice_queue(dev, &dev_kill_list);
+				unregister_netdevice_queue(dev);
 		}
 	}
 	unregister_netdevice_flush();

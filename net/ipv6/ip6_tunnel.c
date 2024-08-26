@@ -2078,7 +2078,7 @@ static void ip6_tnl_dellink(struct net_device *dev, struct list_head *head)
 	struct ip6_tnl_net *ip6n = net_generic(net, ip6_tnl_net_id);
 
 	if (dev != ip6n->fb_tnl_dev)
-		unregister_netdevice_queue(dev, head);
+		unregister_netdevice_queue(dev);
 }
 
 static size_t ip6_tnl_get_size(const struct net_device *dev)
@@ -2214,7 +2214,7 @@ static void __net_exit ip6_tnl_destroy_tunnels(struct net *net, struct list_head
 
 	for_each_netdev_safe(net, dev, aux)
 		if (dev->rtnl_link_ops == &ip6_link_ops)
-			unregister_netdevice_queue(dev, list);
+			unregister_netdevice_queue(dev);
 
 	for (h = 0; h < IP6_TUNNEL_HASH_SIZE; h++) {
 		t = rtnl_dereference(ip6n->tnls_r_l[h]);
@@ -2223,7 +2223,7 @@ static void __net_exit ip6_tnl_destroy_tunnels(struct net *net, struct list_head
 			 * been added to the list by the previous loop.
 			 */
 			if (!net_eq(dev_net(t->dev), net))
-				unregister_netdevice_queue(t->dev, list);
+				unregister_netdevice_queue(t->dev);
 			t = rtnl_dereference(t->next);
 		}
 	}
@@ -2234,7 +2234,7 @@ static void __net_exit ip6_tnl_destroy_tunnels(struct net *net, struct list_head
 		 * been added to the list by the previous loop.
 		 */
 		if (!net_eq(dev_net(t->dev), net))
-			unregister_netdevice_queue(t->dev, list);
+			unregister_netdevice_queue(t->dev);
 		t = rtnl_dereference(t->next);
 	}
 }

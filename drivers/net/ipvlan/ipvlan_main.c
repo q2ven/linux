@@ -664,7 +664,7 @@ void ipvlan_link_delete(struct net_device *dev, struct list_head *head)
 
 	ida_free(&ipvlan->port->ida, dev->dev_id);
 	list_del_rcu(&ipvlan->pnode);
-	unregister_netdevice_queue(dev, head);
+	unregister_netdevice_queue(dev);
 	netdev_upper_dev_unlink(ipvlan->phy_dev, dev);
 }
 EXPORT_SYMBOL_GPL(ipvlan_link_delete);

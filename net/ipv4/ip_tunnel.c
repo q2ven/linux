@@ -1111,7 +1111,7 @@ void ip_tunnel_dellink(struct net_device *dev, struct list_head *head)
 
 	if (itn->fb_tunnel_dev != dev) {
 		ip_tunnel_del(itn, netdev_priv(dev));
-		unregister_netdevice_queue(dev, head);
+		unregister_netdevice_queue(dev);
 	}
 }
 EXPORT_SYMBOL_GPL(ip_tunnel_dellink);
@@ -1182,7 +1182,7 @@ static void ip_tunnel_destroy(struct net *net, struct ip_tunnel_net *itn,
 
 	for_each_netdev_safe(net, dev, aux)
 		if (dev->rtnl_link_ops == ops)
-			unregister_netdevice_queue(dev, head);
+			unregister_netdevice_queue(dev);
 
 	for (h = 0; h < IP_TNL_HASH_SIZE; h++) {
 		struct ip_tunnel *t;
@@ -1194,7 +1194,7 @@ static void ip_tunnel_destroy(struct net *net, struct ip_tunnel_net *itn,
 			 * been added to the list by the previous loop.
 			 */
 			if (!net_eq(dev_net(t->dev), net))
-				unregister_netdevice_queue(t->dev, head);
+				unregister_netdevice_queue(t->dev);
 	}
 }
 

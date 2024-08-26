@@ -155,7 +155,7 @@ static void ipoib_del_child_link(struct net_device *dev, struct list_head *head)
 	if (!priv->parent)
 		return;
 
-	unregister_netdevice_queue(dev, head);
+	unregister_netdevice_queue(dev);
 }
 
 static size_t ipoib_get_size(const struct net_device *dev)

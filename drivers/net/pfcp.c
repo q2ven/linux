@@ -225,7 +225,7 @@ static void pfcp_dellink(struct net_device *dev, struct list_head *head)
 	struct pfcp_dev *pfcp = netdev_priv(dev);
 
 	list_del_rcu(&pfcp->list);
-	unregister_netdevice_queue(dev, head);
+	unregister_netdevice_queue(dev);
 }
 
 static struct rtnl_link_ops pfcp_link_ops __read_mostly = {

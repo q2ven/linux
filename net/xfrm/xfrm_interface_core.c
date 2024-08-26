@@ -961,11 +961,11 @@ static void __net_exit xfrmi_exit_batch_rtnl(struct list_head *net_exit_list,
 			for (xip = &xfrmn->xfrmi[i];
 			     (xi = rtnl_dereference(*xip)) != NULL;
 			     xip = &xi->next)
-				unregister_netdevice_queue(xi->dev, dev_to_kill);
+				unregister_netdevice_queue(xi->dev);
 		}
 		xi = rtnl_dereference(xfrmn->collect_md_xfrmi);
 		if (xi)
-			unregister_netdevice_queue(xi->dev, dev_to_kill);
+			unregister_netdevice_queue(xi->dev);
 	}
 }
 

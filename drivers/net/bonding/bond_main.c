@@ -6560,7 +6560,7 @@ static void __net_exit bond_net_exit_batch_rtnl(struct list_head *net_list,
 
 		bn = net_generic(net, bond_net_id);
 		list_for_each_entry_safe(bond, tmp_bond, &bn->dev_list, bond_list)
-			unregister_netdevice_queue(bond->dev, dev_kill_list);
+			unregister_netdevice_queue(bond->dev);
 	}
 }
 
