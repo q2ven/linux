@@ -336,6 +336,7 @@ static __net_init void preinit_net(struct net *net, struct user_namespace *user_
 	mutex_init(&net->ipv4.ra_mutex);
 	mutex_init(&net->rtnl_mutex);
 	lock_set_cmp_fn(&net->rtnl_mutex, rtnl_net_lock_cmp_fn, NULL);
+	INIT_LIST_HEAD(&net->unreg_list);
 
 	preinit_net_sysctl(net);
 }

@@ -103,6 +103,9 @@ struct net {
 #endif
 
 	struct mutex		rtnl_mutex;
+	struct list_head	unreg_list;
+	struct list_head	dev_unreg_head;
+	spinlock_t		dev_unreg_lock;
 	struct sock 		*rtnl;			/* rtnetlink socket */
 	struct sock		*genl_sock;
 
