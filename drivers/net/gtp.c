@@ -2472,22 +2472,18 @@ static int __net_init gtp_net_init(struct net *net)
 	return 0;
 }
 
-static void __net_exit gtp_net_exit_batch_rtnl(struct list_head *net_list)
+static void __net_exit gtp_net_exit_rtnl(struct net *net)
 {
-	struct net *net;
+	struct gtp_net *gn = net_generic(net, gtp_net_id);
+	struct gtp_dev *gtp;
 
-	list_for_each_entry(net, net_list, exit_list) {
-		struct gtp_net *gn = net_generic(net, gtp_net_id);
-		struct gtp_dev *gtp;
-
-		list_for_each_entry(gtp, &gn->gtp_dev_list, list)
-			gtp_dellink(gtp->dev);
-	}
+	list_for_each_entry(gtp, &gn->gtp_dev_list, list)
+		gtp_dellink(gtp->dev);
 }
 
 static struct pernet_operations gtp_net_ops = {
 	.init	= gtp_net_init,
-	.exit_batch_rtnl = gtp_net_exit_batch_rtnl,
+	.exit_rtnl = gtp_net_exit_rtnl,
 	.id	= &gtp_net_id,
 	.size	= sizeof(struct gtp_net),
 };
