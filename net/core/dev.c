@@ -11421,9 +11421,6 @@ void unregister_netdevice_queue(struct net_device *dev, struct list_head *head)
 	ASSERT_RTNL();
 
 	unregister_netdevice_queue_net(dev);
-
-	if (!head)
-		unregister_netdevice_flush();
 }
 EXPORT_SYMBOL(unregister_netdevice_queue);
 
@@ -11550,6 +11547,13 @@ void unregister_netdevice_flush(void)
 	unregister_netdevice_many_notify(0, NULL);
 }
 EXPORT_SYMBOL(unregister_netdevice_flush);
+
+void unregister_netdevice(struct net_device *dev)
+{
+	unregister_netdevice_queue_net(dev);
+	unregister_netdevice_flush();
+}
+EXPORT_SYMBOL(unregister_netdevice);
 
 /**
  *	unregister_netdev - remove device from the kernel
