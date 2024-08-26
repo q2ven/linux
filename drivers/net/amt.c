@@ -3281,7 +3281,7 @@ err:
 	return err;
 }
 
-static void amt_dellink(struct net_device *dev, struct list_head *head)
+static void amt_dellink(struct net_device *dev)
 {
 	struct amt_dev *amt = netdev_priv(dev);
 
@@ -3365,7 +3365,6 @@ static int amt_device_event(struct notifier_block *unused,
 	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
 	struct net_device *upper_dev;
 	struct amt_dev *amt;
-	LIST_HEAD(list);
 	int new_mtu;
 
 	upper_dev = amt_lookup_upper_dev(dev);
@@ -3375,7 +3374,7 @@ static int amt_device_event(struct notifier_block *unused,
 
 	switch (event) {
 	case NETDEV_UNREGISTER:
-		amt_dellink(amt->dev, &list);
+		amt_dellink(amt->dev);
 		unregister_netdevice_flush();
 		break;
 	case NETDEV_CHANGEMTU:

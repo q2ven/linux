@@ -377,7 +377,7 @@ static void del_nbp(struct net_bridge_port *p)
 }
 
 /* Delete bridge device */
-void br_dev_delete(struct net_device *dev, struct list_head *head)
+void br_dev_delete(struct net_device *dev)
 {
 	struct net_bridge *br = netdev_priv(dev);
 	struct net_bridge_port *p, *n;
@@ -490,7 +490,7 @@ int br_del_bridge(struct net *net, const char *name)
 		/* Not shutdown yet. */
 		return -EBUSY;
 
-	br_dev_delete(dev, &dev_to_kill);
+	br_dev_delete(dev);
 	unregister_netdevice_flush();
 
 	return 0;

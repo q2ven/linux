@@ -589,7 +589,7 @@ int __rtnl_link_register(struct rtnl_link_ops *ops)
 	 * fill up dellink as well. That disables rtnl_dellink.
 	 */
 	if ((ops->alloc || ops->setup) && !ops->dellink)
-		ops->dellink = unregister_netdevice_dellink;
+		ops->dellink = unregister_netdevice_queue;
 
 	refcount_set(&ops->refcnt, 1);
 	list_add_tail(&ops->list, &link_ops);
@@ -625,11 +625,10 @@ EXPORT_SYMBOL_GPL(rtnl_link_register);
 static void __rtnl_kill_links(struct net *net, struct rtnl_link_ops *ops)
 {
 	struct net_device *dev;
-	LIST_HEAD(list_kill);
 
 	for_each_netdev(net, dev) {
 		if (dev->rtnl_link_ops == ops)
-			rtnl_link_dellink(dev, &list_kill);
+			rtnl_link_dellink(dev);
 	}
 	unregister_netdevice_flush();
 }
@@ -3426,7 +3425,6 @@ static int rtnl_setlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 static int rtnl_group_dellink(const struct net *net, int group)
 {
 	struct net_device *dev, *aux;
-	LIST_HEAD(list_kill);
 	bool found = false;
 
 	if (!group)
@@ -3448,7 +3446,7 @@ static int rtnl_group_dellink(const struct net *net, int group)
 
 	for_each_netdev_safe(net, dev, aux) {
 		if (dev->group == group)
-			rtnl_link_dellink(dev, &list_kill);
+			rtnl_link_dellink(dev);
 	}
 	unregister_netdevice_flush();
 
@@ -3458,7 +3456,6 @@ static int rtnl_group_dellink(const struct net *net, int group)
 int rtnl_delete_link(struct net_device *dev, u32 portid, const struct nlmsghdr *nlh)
 {
 	const struct rtnl_link_ops *ops;
-	LIST_HEAD(list_kill);
 
 	ASSERT_RTNL_NET(dev_net(dev));
 
@@ -3466,7 +3463,7 @@ int rtnl_delete_link(struct net_device *dev, u32 portid, const struct nlmsghdr *
 	if (!ops || !ops->dellink)
 		return -EOPNOTSUPP;
 
-	rtnl_link_dellink(dev, &list_kill);
+	rtnl_link_dellink(dev);
 	unregister_netdevice_many_notify(portid, nlh);
 
 	return 0;
@@ -3798,9 +3795,7 @@ out:
 	return err;
 out_unregister:
 	if (ops->newlink) {
-		LIST_HEAD(list_kill);
-
-		rtnl_link_dellink(dev, &list_kill);
+		rtnl_link_dellink(dev);
 		unregister_netdevice_flush();
 	} else {
 		unregister_netdevice(dev);

@@ -371,7 +371,7 @@ static inline void ip_tunnel_init_flow(struct flowi4 *fl4,
 
 int ip_tunnel_init(struct net_device *dev);
 void ip_tunnel_uninit(struct net_device *dev);
-void  ip_tunnel_dellink(struct net_device *dev, struct list_head *head);
+void  ip_tunnel_dellink(struct net_device *dev);
 struct net *ip_tunnel_get_link_net(const struct net_device *dev);
 int ip_tunnel_get_iflink(const struct net_device *dev);
 int ip_tunnel_init_net(struct net *net, unsigned int ip_tnl_net_id,

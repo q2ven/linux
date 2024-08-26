@@ -668,7 +668,7 @@ static int bareudp_link_config(struct net_device *dev,
 	return 0;
 }
 
-static void bareudp_dellink(struct net_device *dev, struct list_head *head)
+static void bareudp_dellink(struct net_device *dev)
 {
 	struct bareudp_dev *bareudp = netdev_priv(dev);
 
@@ -698,7 +698,8 @@ static int bareudp_newlink(struct net *net, struct net_device *dev,
 	return 0;
 
 err_unconfig:
-	bareudp_dellink(dev, NULL);
+	bareudp_dellink(dev);
+	unregister_netdevice_flush();
 	return err;
 }
 

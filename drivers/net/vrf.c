@@ -1683,7 +1683,7 @@ static int vrf_validate(struct nlattr *tb[], struct nlattr *data[],
 	return 0;
 }
 
-static void vrf_dellink(struct net_device *dev, struct list_head *head)
+static void vrf_dellink(struct net_device *dev)
 {
 	struct net_device *port_dev;
 	struct list_head *iter;

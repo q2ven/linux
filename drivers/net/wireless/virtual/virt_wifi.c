@@ -598,8 +598,7 @@ remove_handler:
 }
 
 /* Called with rtnl lock held. */
-static void virt_wifi_dellink(struct net_device *dev,
-			      struct list_head *head)
+static void virt_wifi_dellink(struct net_device *dev)
 {
 	struct virt_wifi_netdev_priv *priv = netdev_priv(dev);
 
@@ -638,7 +637,6 @@ static int virt_wifi_event(struct notifier_block *this, unsigned long event,
 	struct net_device *lower_dev = netdev_notifier_info_to_dev(ptr);
 	struct virt_wifi_netdev_priv *priv;
 	struct net_device *upper_dev;
-	LIST_HEAD(list_kill);
 
 	if (!netif_is_virt_wifi_dev(lower_dev))
 		return NOTIFY_DONE;
@@ -651,7 +649,7 @@ static int virt_wifi_event(struct notifier_block *this, unsigned long event,
 
 		upper_dev = priv->upperdev;
 
-		upper_dev->rtnl_link_ops->dellink(upper_dev, &list_kill);
+		upper_dev->rtnl_link_ops->dellink(upper_dev);
 		unregister_netdevice_flush();
 		break;
 	}

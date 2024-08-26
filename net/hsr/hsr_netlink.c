@@ -124,7 +124,7 @@ static int hsr_newlink(struct net *src_net, struct net_device *dev,
 				proto_version, extack);
 }
 
-static void hsr_dellink(struct net_device *dev, struct list_head *head)
+static void hsr_dellink(struct net_device *dev)
 {
 	struct hsr_priv *hsr = netdev_priv(dev);
 

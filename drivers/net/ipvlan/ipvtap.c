@@ -108,14 +108,13 @@ static int ipvtap_newlink(struct net *src_net, struct net_device *dev,
 	return err;
 }
 
-static void ipvtap_dellink(struct net_device *dev,
-			   struct list_head *head)
+static void ipvtap_dellink(struct net_device *dev)
 {
 	struct ipvtap_dev *vlan = netdev_priv(dev);
 
 	netdev_rx_handler_unregister(dev);
 	tap_del_queues(&vlan->tap);
-	ipvlan_link_delete(dev, head);
+	ipvlan_link_delete(dev);
 }
 
 static void ipvtap_setup(struct net_device *dev)

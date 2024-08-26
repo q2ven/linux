@@ -261,7 +261,7 @@ unregister_network_device:
 	return err;
 }
 
-static void vxcan_dellink(struct net_device *dev, struct list_head *head)
+static void vxcan_dellink(struct net_device *dev)
 {
 	struct vxcan_priv *priv;
 	struct net_device *peer;

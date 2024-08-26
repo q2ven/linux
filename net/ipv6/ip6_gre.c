@@ -2088,7 +2088,7 @@ static int ip6gre_changelink(struct net_device *dev, struct nlattr *tb[],
 	return 0;
 }
 
-static void ip6gre_dellink(struct net_device *dev, struct list_head *head)
+static void ip6gre_dellink(struct net_device *dev)
 {
 	struct net *net = dev_net(dev);
 	struct ip6gre_net *ign = net_generic(net, ip6gre_net_id);

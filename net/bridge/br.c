@@ -366,7 +366,7 @@ static void __net_exit br_net_exit_batch_rtnl(struct list_head *net_list,
 	list_for_each_entry(net, net_list, exit_list)
 		for_each_netdev(net, dev)
 			if (netif_is_bridge_master(dev))
-				br_dev_delete(dev, dev_to_kill);
+				br_dev_delete(dev);
 }
 
 static struct pernet_operations br_net_ops = {

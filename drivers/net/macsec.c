@@ -4002,7 +4002,7 @@ static void macsec_del_dev(struct macsec_dev *macsec)
 	}
 }
 
-static void macsec_common_dellink(struct net_device *dev, struct list_head *head)
+static void macsec_common_dellink(struct net_device *dev)
 {
 	struct macsec_dev *macsec = macsec_priv(dev);
 	struct net_device *real_dev = macsec->real_dev;
@@ -4027,13 +4027,13 @@ static void macsec_common_dellink(struct net_device *dev, struct list_head *head
 	macsec_generation++;
 }
 
-static void macsec_dellink(struct net_device *dev, struct list_head *head)
+static void macsec_dellink(struct net_device *dev)
 {
 	struct macsec_dev *macsec = macsec_priv(dev);
 	struct net_device *real_dev = macsec->real_dev;
 	struct macsec_rxh_data *rxd = macsec_data_rtnl(real_dev);
 
-	macsec_common_dellink(dev, head);
+	macsec_common_dellink(dev);
 
 	if (list_empty(&rxd->secys)) {
 		netdev_rx_handler_unregister(real_dev);
@@ -4472,9 +4472,8 @@ static int macsec_notify(struct notifier_block *this, unsigned long event,
 		struct macsec_rxh_data *rxd;
 
 		rxd = macsec_data_rtnl(real_dev);
-		list_for_each_entry_safe(m, n, &rxd->secys, secys) {
-			macsec_common_dellink(m->secy.netdev, &head);
-		}
+		list_for_each_entry_safe(m, n, &rxd->secys, secys)
+			macsec_common_dellink(m->secy.netdev);
 
 		netdev_rx_handler_unregister(real_dev);
 		kfree(rxd);

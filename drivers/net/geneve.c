@@ -1718,7 +1718,7 @@ static int geneve_changelink(struct net_device *dev, struct nlattr *tb[],
 	return 0;
 }
 
-static void geneve_dellink(struct net_device *dev, struct list_head *head)
+static void geneve_dellink(struct net_device *dev)
 {
 	struct geneve_dev *geneve = netdev_priv(dev);
 
@@ -1831,7 +1831,6 @@ struct net_device *geneve_dev_create_fb(struct net *net, const char *name,
 {
 	struct nlattr *tb[IFLA_MAX + 1];
 	struct net_device *dev;
-	LIST_HEAD(list_kill);
 	int err;
 	struct geneve_config cfg = {
 		.df = GENEVE_DF_UNSET,
@@ -1866,7 +1865,7 @@ struct net_device *geneve_dev_create_fb(struct net *net, const char *name,
 
 	return dev;
 err:
-	geneve_dellink(dev, &list_kill);
+	geneve_dellink(dev);
 	unregister_netdevice_flush();
 	return ERR_PTR(err);
 }

@@ -34,7 +34,6 @@ static int hsr_netdev_notify(struct notifier_block *nb, unsigned long event,
 	struct hsr_port *port, *master;
 	struct net_device *dev;
 	struct hsr_priv *hsr;
-	LIST_HEAD(list_kill);
 	int mtu_max;
 	int res;
 
@@ -106,7 +105,7 @@ static int hsr_netdev_notify(struct notifier_block *nb, unsigned long event,
 				const struct rtnl_link_ops *ops;
 
 				ops = master->dev->rtnl_link_ops;
-				ops->dellink(master->dev, &list_kill);
+				ops->dellink(master->dev);
 				unregister_netdevice_flush();
 			}
 		}

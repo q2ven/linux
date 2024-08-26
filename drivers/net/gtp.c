@@ -1542,7 +1542,7 @@ out_hashtable:
 	return err;
 }
 
-static void gtp_dellink(struct net_device *dev, struct list_head *head)
+static void gtp_dellink(struct net_device *dev)
 {
 	struct gtp_dev *gtp = netdev_priv(dev);
 	struct hlist_node *next;
@@ -2482,7 +2482,7 @@ static void __net_exit gtp_net_exit_batch_rtnl(struct list_head *net_list,
 		struct gtp_dev *gtp;
 
 		list_for_each_entry(gtp, &gn->gtp_dev_list, list)
-			gtp_dellink(gtp->dev, dev_to_kill);
+			gtp_dellink(gtp->dev);
 	}
 }
 

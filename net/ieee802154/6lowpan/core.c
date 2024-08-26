@@ -181,7 +181,7 @@ static int lowpan_newlink(struct net *src_net, struct net_device *ldev,
 	return 0;
 }
 
-static void lowpan_dellink(struct net_device *ldev, struct list_head *head)
+static void lowpan_dellink(struct net_device *ldev)
 {
 	struct net_device *wdev = lowpan_802154_dev(ldev)->wdev;
 
@@ -230,9 +230,7 @@ static int lowpan_device_event(struct notifier_block *unused,
 		 * to the wpan interface.
 		 */
 		if (wpan_dev->lowpan_dev) {
-			LIST_HEAD(dev_to_kill);
-
-			lowpan_dellink(wpan_dev->lowpan_dev, &dev_to_kill);
+			lowpan_dellink(wpan_dev->lowpan_dev);
 			unregister_netdevice_flush();
 		}
 		break;

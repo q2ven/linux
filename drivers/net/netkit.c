@@ -835,7 +835,7 @@ static void netkit_uninit(struct net_device *dev)
 	netkit_release_all(dev);
 }
 
-static void netkit_del_link(struct net_device *dev, struct list_head *head)
+static void netkit_del_link(struct net_device *dev)
 {
 	struct netkit *nk = netkit_priv(dev);
 	struct net_device *peer = rtnl_dereference(nk->peer);

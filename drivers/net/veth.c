@@ -1917,7 +1917,7 @@ err_register_peer:
 	return err;
 }
 
-static void veth_dellink(struct net_device *dev, struct list_head *head)
+static void veth_dellink(struct net_device *dev)
 {
 	struct veth_priv *priv;
 	struct net_device *peer;

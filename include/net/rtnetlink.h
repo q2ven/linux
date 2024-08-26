@@ -125,8 +125,7 @@ struct rtnl_link_ops {
 					      struct nlattr *tb[],
 					      struct nlattr *data[],
 					      struct netlink_ext_ack *extack);
-	void			(*dellink)(struct net_device *dev,
-					   struct list_head *head);
+	void			(*dellink)(struct net_device *dev);
 
 	size_t			(*get_size)(const struct net_device *dev);
 	int			(*fill_info)(struct sk_buff *skb,
@@ -164,7 +163,7 @@ void __rtnl_link_unregister(struct rtnl_link_ops *ops);
 int rtnl_link_register(struct rtnl_link_ops *ops);
 void rtnl_link_unregister(struct rtnl_link_ops *ops);
 
-static inline void rtnl_link_dellink(struct net_device *dev, struct list_head *list_kill)
+static inline void rtnl_link_dellink(struct net_device *dev)
 {
 	const struct rtnl_link_ops *ops = dev->rtnl_link_ops;
 

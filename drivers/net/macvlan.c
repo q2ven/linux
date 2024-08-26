@@ -1572,7 +1572,7 @@ static int macvlan_newlink(struct net *src_net, struct net_device *dev,
 	return macvlan_common_newlink(src_net, dev, tb, data, extack);
 }
 
-void macvlan_dellink(struct net_device *dev, struct list_head *head)
+void macvlan_dellink(struct net_device *dev)
 {
 	struct macvlan_dev *vlan = netdev_priv(dev);
 
@@ -1780,7 +1780,6 @@ static int macvlan_device_event(struct notifier_block *unused,
 	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
 	struct macvlan_dev *vlan, *next;
 	struct macvlan_port *port;
-	LIST_HEAD(list_kill);
 
 	if (!netif_is_macvlan_port(dev))
 		return NOTIFY_DONE;
@@ -1826,7 +1825,7 @@ static int macvlan_device_event(struct notifier_block *unused,
 			break;
 
 		list_for_each_entry_safe(vlan, next, &port->vlans, list)
-			vlan->dev->rtnl_link_ops->dellink(vlan->dev, &list_kill);
+			vlan->dev->rtnl_link_ops->dellink(vlan->dev);
 		unregister_netdevice_flush();
 		break;
 	case NETDEV_PRE_TYPE_CHANGE:

@@ -631,7 +631,7 @@ static int can_newlink(struct net *src_net, struct net_device *dev,
 	return -EOPNOTSUPP;
 }
 
-static void can_dellink(struct net_device *dev, struct list_head *head)
+static void can_dellink(struct net_device *dev)
 {
 }
 

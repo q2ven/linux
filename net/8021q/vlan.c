@@ -86,7 +86,7 @@ static void vlan_stacked_transfer_operstate(const struct net_device *rootdev,
 		netif_stacked_transfer_operstate(rootdev, dev);
 }
 
-void unregister_vlan_dev(struct net_device *dev, struct list_head *head)
+void unregister_vlan_dev(struct net_device *dev)
 {
 	struct vlan_dev_priv *vlan = vlan_dev_priv(dev);
 	struct net_device *real_dev = vlan->real_dev;
@@ -482,7 +482,7 @@ static int vlan_device_event(struct notifier_block *unused, unsigned long event,
 			if (vlan_info->nr_vids == 1)
 				last = true;
 
-			unregister_vlan_dev(vlandev, &list);
+			unregister_vlan_dev(vlandev);
 			if (last)
 				break;
 		}
@@ -541,7 +541,6 @@ static int vlan_ioctl_handler(struct net *net, void __user *arg)
 {
 	struct net_device *dev = NULL;
 	struct vlan_ioctl_args args;
-	LIST_HEAD(dev_to_kill);
 	int err;
 
 	if (copy_from_user(&args, arg, sizeof(struct vlan_ioctl_args)))
@@ -627,7 +626,7 @@ static int vlan_ioctl_handler(struct net *net, void __user *arg)
 		if (!ns_capable(net->user_ns, CAP_NET_ADMIN))
 			break;
 
-		unregister_vlan_dev(dev, &dev_to_kill);
+		unregister_vlan_dev(dev);
 		unregister_netdevice_flush();
 		err = 0;
 		break;

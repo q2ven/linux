@@ -148,7 +148,7 @@ static int ipoib_new_child_link(struct net *src_net, struct net_device *dev,
 	return 0;
 }
 
-static void ipoib_del_child_link(struct net_device *dev, struct list_head *head)
+static void ipoib_del_child_link(struct net_device *dev)
 {
 	struct ipoib_dev_priv *priv = ipoib_priv(dev);
 

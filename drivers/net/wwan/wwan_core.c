@@ -990,9 +990,10 @@ out:
 	return ret;
 }
 
-static void wwan_rtnl_dellink(struct net_device *dev, struct list_head *head)
+static void wwan_rtnl_dellink(struct net_device *dev)
 {
 	struct wwan_device *wwandev = wwan_dev_get_by_parent(dev->dev.parent);
+	LIST_HEAD(kill_list);
 
 	if (IS_ERR(wwandev))
 		return;
@@ -1002,7 +1003,7 @@ static void wwan_rtnl_dellink(struct net_device *dev, struct list_head *head)
 		goto out;
 
 	if (wwandev->ops->dellink)
-		wwandev->ops->dellink(wwandev->ops_ctxt, dev, head);
+		wwandev->ops->dellink(wwandev->ops_ctxt, dev, &kill_list);
 	else
 		unregister_netdevice_queue(dev);
 
@@ -1159,10 +1160,8 @@ EXPORT_SYMBOL_GPL(wwan_register_ops);
 /* Enqueue child netdev deletion */
 static int wwan_child_dellink(struct device *dev, void *data)
 {
-	struct list_head *kill_list = data;
-
 	if (dev->type == &wwan_type)
-		wwan_rtnl_dellink(to_net_dev(dev), kill_list);
+		wwan_rtnl_dellink(to_net_dev(dev));
 
 	return 0;
 }
@@ -1175,7 +1174,6 @@ static int wwan_child_dellink(struct device *dev, void *data)
 void wwan_unregister_ops(struct device *parent)
 {
 	struct wwan_device *wwandev = wwan_dev_get_by_parent(parent);
-	LIST_HEAD(kill_list);
 
 	if (WARN_ON(IS_ERR(wwandev)))
 		return;
@@ -1193,8 +1191,7 @@ void wwan_unregister_ops(struct device *parent)
 	rtnl_lock();	/* Prevent concurrent netdev(s) creation/destroying */
 
 	/* Remove all child netdev(s), using batch removing */
-	device_for_each_child(&wwandev->dev, &kill_list,
-			      wwan_child_dellink);
+	device_for_each_child(&wwandev->dev, NULL, wwan_child_dellink);
 	unregister_netdevice_flush();
 
 	wwandev->ops = NULL;	/* Finally remove ops */

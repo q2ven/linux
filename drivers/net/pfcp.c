@@ -220,7 +220,7 @@ exit_err:
 	return err;
 }
 
-static void pfcp_dellink(struct net_device *dev, struct list_head *head)
+static void pfcp_dellink(struct net_device *dev)
 {
 	struct pfcp_dev *pfcp = netdev_priv(dev);
 
@@ -248,11 +248,10 @@ static void __net_exit pfcp_net_exit(struct net *net)
 {
 	struct pfcp_net *pn = net_generic(net, pfcp_net_id);
 	struct pfcp_dev *pfcp;
-	LIST_HEAD(list);
 
 	rtnl_lock();
 	list_for_each_entry(pfcp, &pn->pfcp_dev_list, list)
-		pfcp_dellink(pfcp->dev, &list);
+		pfcp_dellink(pfcp->dev);
 
 	unregister_netdevice_flush();
 	rtnl_unlock();

@@ -1692,7 +1692,6 @@ struct net_device *gretap_fb_dev_create(struct net *net, const char *name,
 {
 	struct nlattr *tb[IFLA_MAX + 1];
 	struct net_device *dev;
-	LIST_HEAD(list_kill);
 	struct ip_tunnel *t;
 	int err;
 
@@ -1726,7 +1725,7 @@ struct net_device *gretap_fb_dev_create(struct net *net, const char *name,
 
 	return dev;
 out:
-	ip_tunnel_dellink(dev, &list_kill);
+	ip_tunnel_dellink(dev);
 	unregister_netdevice_flush();
 	return ERR_PTR(err);
 }

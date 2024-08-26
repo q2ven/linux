@@ -649,7 +649,7 @@ unregister_netdev:
 }
 EXPORT_SYMBOL_GPL(ipvlan_link_new);
 
-void ipvlan_link_delete(struct net_device *dev, struct list_head *head)
+void ipvlan_link_delete(struct net_device *dev)
 {
 	struct ipvl_dev *ipvlan = netdev_priv(dev);
 	struct ipvl_addr *addr, *next;
@@ -726,7 +726,6 @@ static int ipvlan_device_event(struct notifier_block *unused,
 	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
 	struct ipvl_dev *ipvlan, *next;
 	struct ipvl_port *port;
-	LIST_HEAD(lst_kill);
 	int err;
 
 	if (!netif_is_ipvlan_port(dev))
@@ -761,8 +760,8 @@ static int ipvlan_device_event(struct notifier_block *unused,
 			break;
 
 		list_for_each_entry_safe(ipvlan, next, &port->ipvlans, pnode)
-			ipvlan->dev->rtnl_link_ops->dellink(ipvlan->dev,
-							    &lst_kill);
+			ipvlan->dev->rtnl_link_ops->dellink(ipvlan->dev);
+
 		unregister_netdevice_flush();
 		break;
 

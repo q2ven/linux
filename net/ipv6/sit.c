@@ -1756,7 +1756,7 @@ static const struct nla_policy ipip6_policy[IFLA_IPTUN_MAX + 1] = {
 	[IFLA_IPTUN_FWMARK]		= { .type = NLA_U32 },
 };
 
-static void ipip6_dellink(struct net_device *dev, struct list_head *head)
+static void ipip6_dellink(struct net_device *dev)
 {
 	struct net *net = dev_net(dev);
 	struct sit_net *sitn = net_generic(net, sit_net_id);

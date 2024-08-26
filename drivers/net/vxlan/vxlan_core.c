@@ -4415,7 +4415,7 @@ static int vxlan_changelink(struct net_device *dev, struct nlattr *tb[],
 	return 0;
 }
 
-static void vxlan_dellink(struct net_device *dev, struct list_head *head)
+static void vxlan_dellink(struct net_device *dev)
 {
 	struct vxlan_dev *vxlan = netdev_priv(dev);
 	struct vxlan_fdb_flush_desc desc = {
@@ -4617,9 +4617,7 @@ struct net_device *vxlan_dev_create(struct net *net, const char *name,
 
 	err = rtnl_configure_link(dev, NULL, 0, NULL);
 	if (err < 0) {
-		LIST_HEAD(list_kill);
-
-		vxlan_dellink(dev, &list_kill);
+		vxlan_dellink(dev);
 		unregister_netdevice_flush();
 		return ERR_PTR(err);
 	}
@@ -4632,7 +4630,6 @@ static void vxlan_handle_lowerdev_unregister(struct vxlan_net *vn,
 					     struct net_device *dev)
 {
 	struct vxlan_dev *vxlan, *next;
-	LIST_HEAD(list_kill);
 
 	list_for_each_entry_safe(vxlan, next, &vn->vxlan_list, next) {
 		struct vxlan_rdst *dst = &vxlan->default_dst;
@@ -4644,7 +4641,7 @@ static void vxlan_handle_lowerdev_unregister(struct vxlan_net *vn,
 		 * is 0 here, so no matches.
 		 */
 		if (dst->remote_ifindex == dev->ifindex)
-			vxlan_dellink(vxlan->dev, &list_kill);
+			vxlan_dellink(vxlan->dev);
 	}
 
 	unregister_netdevice_flush();
@@ -4856,7 +4853,7 @@ static void __net_exit vxlan_destroy_tunnels(struct vxlan_net *vn,
 	struct vxlan_dev *vxlan, *next;
 
 	list_for_each_entry_safe(vxlan, next, &vn->vxlan_list, next)
-		vxlan_dellink(vxlan->dev, dev_to_kill);
+		vxlan_dellink(vxlan->dev);
 }
 
 static void __net_exit vxlan_exit_batch_rtnl(struct list_head *net_list,

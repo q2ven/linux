@@ -1102,7 +1102,7 @@ static void ip_tunnel_dev_free(struct net_device *dev)
 	dst_cache_destroy(&tunnel->dst_cache);
 }
 
-void ip_tunnel_dellink(struct net_device *dev, struct list_head *head)
+void ip_tunnel_dellink(struct net_device *dev)
 {
 	struct ip_tunnel *tunnel = netdev_priv(dev);
 	struct ip_tunnel_net *itn;

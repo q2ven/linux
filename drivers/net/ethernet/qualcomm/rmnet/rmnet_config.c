@@ -187,7 +187,7 @@ err0:
 	return err;
 }
 
-static void rmnet_dellink(struct net_device *dev, struct list_head *head)
+static void rmnet_dellink(struct net_device *dev)
 {
 	struct rmnet_priv *priv = netdev_priv(dev);
 	struct net_device *real_dev, *bridge_dev;

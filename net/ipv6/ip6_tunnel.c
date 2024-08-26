@@ -2072,7 +2072,7 @@ static int ip6_tnl_changelink(struct net_device *dev, struct nlattr *tb[],
 	return 0;
 }
 
-static void ip6_tnl_dellink(struct net_device *dev, struct list_head *head)
+static void ip6_tnl_dellink(struct net_device *dev)
 {
 	struct net *net = dev_net(dev);
 	struct ip6_tnl_net *ip6n = net_generic(net, ip6_tnl_net_id);

@@ -1093,10 +1093,8 @@ static int batadv_softif_newlink(struct net *src_net, struct net_device *dev,
  * batadv_softif_destroy_netlink() - deletion of batadv_soft_interface via
  *  netlink
  * @soft_iface: the to-be-removed batman-adv interface
- * @head: list pointer
  */
-static void batadv_softif_destroy_netlink(struct net_device *soft_iface,
-					  struct list_head *head)
+static void batadv_softif_destroy_netlink(struct net_device *soft_iface)
 {
 	struct batadv_priv *bat_priv = netdev_priv(soft_iface);
 	struct batadv_hard_iface *hard_iface;

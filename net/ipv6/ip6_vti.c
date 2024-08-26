@@ -1015,7 +1015,7 @@ static int vti6_newlink(struct net *src_net, struct net_device *dev,
 	return vti6_tnl_create2(dev);
 }
 
-static void vti6_dellink(struct net_device *dev, struct list_head *head)
+static void vti6_dellink(struct net_device *dev)
 {
 	struct net *net = dev_net(dev);
 	struct vti6_net *ip6n = net_generic(net, vti6_net_id);

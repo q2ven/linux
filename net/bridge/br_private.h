@@ -793,7 +793,7 @@ static inline void br_tc_skb_miss_set(struct sk_buff *skb, bool miss)
 
 /* br_device.c */
 void br_dev_setup(struct net_device *dev);
-void br_dev_delete(struct net_device *dev, struct list_head *list);
+void br_dev_delete(struct net_device *dev);
 netdev_tx_t br_dev_xmit(struct sk_buff *skb, struct net_device *dev);
 #ifdef CONFIG_NET_POLL_CONTROLLER
 static inline void br_netpoll_send_skb(const struct net_bridge_port *p,
