@@ -11310,6 +11310,38 @@ static void netdev_rss_contexts_free(struct net_device *dev)
 	mutex_unlock(&dev->ethtool->rss_lock);
 }
 
+static void unregister_netdevice_net(struct net *net)
+{
+	struct net_device *dev, *tmp;
+	LIST_HEAD(unreg_list);
+
+	/* Never schedule this until rtnl_lock() can be removed. */
+	WARN_ON_ONCE(1);
+
+	spin_lock(&net->dev_unreg_lock);
+	list_splice_init(&net->dev_unreg_head, &unreg_list);
+	spin_unlock(&net->dev_unreg_lock);
+
+	if (list_empty(&unreg_list))
+		return;
+
+	/* We will move unregister_netdevice_many_notify() here
+	 * just before we complete rtnl_lock() deprecation.
+	 */
+
+	list_for_each_entry_safe(dev, tmp, &unreg_list, unreg_list)
+		list_del(&dev->unreg_list);
+}
+
+static void unregister_netdevice_net_work_fn(struct work_struct *work)
+{
+	struct net *net = container_of(work, struct net, dev_unreg_work);
+
+	rtnl_net_lock(net);
+	unregister_netdevice_net(net);
+	rtnl_net_unlock(net);
+}
+
 static void unregister_netdevice_queue_net(struct net_device *dev)
 {
 	struct net *net = dev_net(dev);
@@ -11321,6 +11353,14 @@ static void unregister_netdevice_queue_net(struct net_device *dev)
 	spin_lock(&net->dev_unreg_lock);
 	list_add(&dev->unreg_list, &net->dev_unreg_head);
 	spin_unlock(&net->dev_unreg_lock);
+
+	/* We will call
+	 *   queue_work(system_unbound_wq, &net->dev_unreg_work);
+	 * here to execute delayed unregistration asynchronously and will put
+	 *   flush_work(&net->dev_unreg_work);
+	 * where we need synchronisation,
+	 * e.g. rtnl_net_unlock() and netns dismantle.
+	 */
 
 	/* Here starts the glue code for unregister_netdevice_many_notify().
 	 * net_unreg_list is protected by rtnl_lock().
@@ -11797,6 +11837,7 @@ static int __net_init netdev_init(struct net *net)
 	INIT_LIST_HEAD(&net->dev_base_head);
 	INIT_LIST_HEAD(&net->dev_unreg_head);
 	spin_lock_init(&net->dev_unreg_lock);
+	INIT_WORK(&net->dev_unreg_work, unregister_netdevice_net_work_fn);
 
 	net->dev_name_head = netdev_create_hash();
 	if (net->dev_name_head == NULL)

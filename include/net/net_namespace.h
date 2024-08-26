@@ -106,6 +106,7 @@ struct net {
 	struct list_head	unreg_list;
 	struct list_head	dev_unreg_head;
 	spinlock_t		dev_unreg_lock;
+	struct work_struct	dev_unreg_work;
 	struct sock 		*rtnl;			/* rtnetlink socket */
 	struct sock		*genl_sock;
 
