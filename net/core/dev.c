@@ -11980,7 +11980,9 @@ static void __net_exit default_device_exit_net(struct net *net)
 	 * Push all migratable network devices back to the
 	 * initial network namespace
 	 */
-	ASSERT_RTNL();
+	ASSERT_RTNL_NET(&inti_net);
+	ASSERT_RTNL_NET(net);
+
 	for_each_netdev_safe(net, dev, aux) {
 		int err;
 		char fb_name[IFNAMSIZ];
@@ -12023,7 +12025,10 @@ static void __net_exit default_device_exit_batch(struct list_head *net_list)
 
 	rtnl_lock();
 	list_for_each_entry(net, net_list, exit_list) {
+		rtnl_net_double_lock(&init_net, net);
 		default_device_exit_net(net);
+		rtnl_net_double_unlock(&init_net, net);
+
 		cond_resched();
 	}
 
