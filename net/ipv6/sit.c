@@ -1800,35 +1800,6 @@ static struct xfrm_tunnel mplsip_handler __read_mostly = {
 };
 #endif
 
-static void __net_exit sit_destroy_tunnels(struct net *net)
-{
-	struct sit_net *sitn = net_generic(net, sit_net_id);
-	struct net_device *dev, *aux;
-	int prio;
-
-	for_each_netdev_safe(net, dev, aux)
-		if (dev->rtnl_link_ops == &sit_link_ops)
-			unregister_netdevice_queue(dev);
-
-	for (prio = 0; prio < 4; prio++) {
-		int h;
-		for (h = 0; h < (prio ? IP6_SIT_HASH_SIZE : 1); h++) {
-			struct ip_tunnel *t;
-
-			t = rtnl_dereference(sitn->tunnels[prio][h]);
-			while (t) {
-				/* If dev is in the same netns, it has already
-				 * been added to the list by the previous loop.
-				 */
-				if (!net_eq(dev_net(t->dev), net))
-					unregister_netdevice_queue(t->dev);
-
-				t = rtnl_dereference(t->next);
-			}
-		}
-	}
-}
-
 static int __net_init sit_init_net(struct net *net)
 {
 	struct sit_net *sitn = net_generic(net, sit_net_id);
@@ -1875,18 +1846,41 @@ err_alloc_dev:
 	return err;
 }
 
-static void __net_exit sit_exit_batch_rtnl(struct list_head *net_list)
+static void __net_exit sit_exit_rtnl(struct net *net)
 {
-	struct net *net;
+	struct sit_net *sitn = net_generic(net, sit_net_id);
+	struct net_device *dev, *aux;
+	int prio;
 
-	ASSERT_RTNL();
-	list_for_each_entry(net, net_list, exit_list)
-		sit_destroy_tunnels(net);
+	ASSERT_RTNL_NET(net);
+
+	for_each_netdev_safe(net, dev, aux)
+		if (dev->rtnl_link_ops == &sit_link_ops)
+			unregister_netdevice_queue(dev);
+
+	for (prio = 0; prio < 4; prio++) {
+		int h;
+
+		for (h = 0; h < (prio ? IP6_SIT_HASH_SIZE : 1); h++) {
+			struct ip_tunnel *t;
+
+			t = rtnl_dereference(sitn->tunnels[prio][h]);
+			while (t) {
+				/* If dev is in the same netns, it has already
+				 * been added to the list by the previous loop.
+				 */
+				if (!net_eq(dev_net(t->dev), net))
+					unregister_netdevice_queue(t->dev);
+
+				t = rtnl_dereference(t->next);
+			}
+		}
+	}
 }
 
 static struct pernet_operations sit_net_ops = {
 	.init = sit_init_net,
-	.exit_batch_rtnl = sit_exit_batch_rtnl,
+	.exit_rtnl = sit_exit_rtnl,
 	.id   = &sit_net_id,
 	.size = sizeof(struct sit_net),
 };
