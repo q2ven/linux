@@ -387,12 +387,6 @@ out_undo:
 	}
 	rtnl_net_unlock(net);
 
-	ops = saved_ops;
-	list_for_each_entry_continue_reverse(ops, &pernet_list, list) {
-		if (ops->exit_batch_rtnl)
-			ops->exit_batch_rtnl(&net_exit_list);
-	}
-
 	unregister_netdevice_flush();
 	rtnl_unlock();
 
@@ -634,11 +628,6 @@ static void cleanup_net(struct work_struct *work)
 				ops->exit_rtnl(net);
 		}
 		rtnl_net_unlock(net);
-	}
-
-	list_for_each_entry_reverse(ops, &pernet_list, list) {
-		if (ops->exit_batch_rtnl)
-			ops->exit_batch_rtnl(&net_exit_list);
 	}
 
 	unregister_netdevice_flush();
@@ -1232,21 +1221,16 @@ static void free_exit_list(struct pernet_operations *ops, struct list_head *net_
 	ops_pre_exit_list(ops, net_exit_list);
 	synchronize_rcu();
 
-	if (ops->exit_batch_rtnl || ops->exit_rtnl) {
+	if (ops->exit_rtnl) {
 		struct net *net;
 
 		rtnl_lock();
 
-		if (ops->exit_rtnl) {
-			list_for_each_entry(net, net_exit_list, exit_list) {
-				rtnl_net_lock(net);
-				ops->exit_rtnl(net);
-				rtnl_net_unlock(net);
-			}
+		list_for_each_entry(net, net_exit_list, exit_list) {
+			rtnl_net_lock(net);
+			ops->exit_rtnl(net);
+			rtnl_net_unlock(net);
 		}
-
-		if (ops->exit_batch_rtnl)
-			ops->exit_batch_rtnl(net_exit_list);
 
 		unregister_netdevice_flush();
 		rtnl_unlock();

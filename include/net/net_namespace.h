@@ -455,7 +455,6 @@ struct pernet_operations {
 	void (*exit_batch)(struct list_head *net_exit_list);
 	/* Following method is called with RTNL held. */
 	void (*exit_rtnl)(struct net *net);
-	void (*exit_batch_rtnl)(struct list_head *net_exit_list);
 
 	unsigned int * const id;
 	const size_t size;
