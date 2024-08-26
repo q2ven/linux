@@ -10538,7 +10538,7 @@ int register_netdevice(struct net_device *dev)
 	if (ret) {
 		/* Expect explicit free_netdev() on failure */
 		dev->needs_free_netdev = false;
-		unregister_netdevice_queue(dev, NULL);
+		unregister_netdevice(dev);
 		goto out;
 	}
 	/*

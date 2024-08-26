@@ -1591,7 +1591,7 @@ static int ipip6_newlink(struct net *src_net, struct net_device *dev,
 	if (ipip6_netlink_6rd_parms(data, &ip6rd)) {
 		err = ipip6_tunnel_update_6rd(nt, &ip6rd);
 		if (err < 0)
-			unregister_netdevice_queue(dev, NULL);
+			unregister_netdevice(dev);
 	}
 #endif
 
