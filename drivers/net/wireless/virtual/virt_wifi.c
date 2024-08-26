@@ -652,7 +652,7 @@ static int virt_wifi_event(struct notifier_block *this, unsigned long event,
 		upper_dev = priv->upperdev;
 
 		upper_dev->rtnl_link_ops->dellink(upper_dev, &list_kill);
-		unregister_netdevice_many(&list_kill);
+		unregister_netdevice_flush();
 		break;
 	}
 

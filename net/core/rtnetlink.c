@@ -631,7 +631,7 @@ static void __rtnl_kill_links(struct net *net, struct rtnl_link_ops *ops)
 		if (dev->rtnl_link_ops == ops)
 			rtnl_link_dellink(dev, &list_kill);
 	}
-	unregister_netdevice_many(&list_kill);
+	unregister_netdevice_flush();
 }
 
 /**
@@ -3450,7 +3450,7 @@ static int rtnl_group_dellink(const struct net *net, int group)
 		if (dev->group == group)
 			rtnl_link_dellink(dev, &list_kill);
 	}
-	unregister_netdevice_many(&list_kill);
+	unregister_netdevice_flush();
 
 	return 0;
 }
@@ -3467,7 +3467,7 @@ int rtnl_delete_link(struct net_device *dev, u32 portid, const struct nlmsghdr *
 		return -EOPNOTSUPP;
 
 	rtnl_link_dellink(dev, &list_kill);
-	unregister_netdevice_many_notify(&list_kill, portid, nlh);
+	unregister_netdevice_many_notify(portid, nlh);
 
 	return 0;
 }
@@ -3801,7 +3801,7 @@ out_unregister:
 		LIST_HEAD(list_kill);
 
 		rtnl_link_dellink(dev, &list_kill);
-		unregister_netdevice_many(&list_kill);
+		unregister_netdevice_flush();
 	} else {
 		unregister_netdevice(dev);
 	}

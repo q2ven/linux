@@ -4479,7 +4479,7 @@ static int macsec_notify(struct notifier_block *this, unsigned long event,
 		netdev_rx_handler_unregister(real_dev);
 		kfree(rxd);
 
-		unregister_netdevice_many(&head);
+		unregister_netdevice_flush();
 		break;
 	}
 	case NETDEV_CHANGEMTU: {

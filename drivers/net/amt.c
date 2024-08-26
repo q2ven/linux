@@ -3376,7 +3376,7 @@ static int amt_device_event(struct notifier_block *unused,
 	switch (event) {
 	case NETDEV_UNREGISTER:
 		amt_dellink(amt->dev, &list);
-		unregister_netdevice_many(&list);
+		unregister_netdevice_flush();
 		break;
 	case NETDEV_CHANGEMTU:
 		if (amt->mode == AMT_MODE_RELAY)

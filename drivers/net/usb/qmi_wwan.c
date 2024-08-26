@@ -1575,7 +1575,7 @@ static void qmi_wwan_disconnect(struct usb_interface *intf)
 		netdev_for_each_upper_dev_rcu(dev->net, ldev, iter)
 			qmimux_unregister_device(ldev, &list);
 		rcu_read_unlock();
-		unregister_netdevice_many(&list);
+		unregister_netdevice_flush();
 		rtnl_unlock();
 		info->flags &= ~QMI_WWAN_FLAG_MUX;
 	}

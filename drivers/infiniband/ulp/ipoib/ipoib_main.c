@@ -2627,7 +2627,7 @@ static void ipoib_remove_one(struct ib_device *device, void *client_data)
 					 list)
 			unregister_netdevice_queue(cpriv->dev, &head);
 		unregister_netdevice_queue(priv->dev, &head);
-		unregister_netdevice_many(&head);
+		unregister_netdevice_flush();
 
 		rtnl_unlock();
 	}

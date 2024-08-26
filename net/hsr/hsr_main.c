@@ -107,7 +107,7 @@ static int hsr_netdev_notify(struct notifier_block *nb, unsigned long event,
 
 				ops = master->dev->rtnl_link_ops;
 				ops->dellink(master->dev, &list_kill);
-				unregister_netdevice_many(&list_kill);
+				unregister_netdevice_flush();
 			}
 		}
 		break;

@@ -1527,7 +1527,7 @@ static void mroute_clean_tables(struct mr_table *mrt, int flags)
 				continue;
 			mif6_delete(mrt, i, 0, &list);
 		}
-		unregister_netdevice_many(&list);
+		unregister_netdevice_flush();
 	}
 
 	/* Wipe the cache */

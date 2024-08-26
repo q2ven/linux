@@ -240,7 +240,7 @@ static void rmnet_force_unassociate_device(struct net_device *real_dev)
 			kfree(ep);
 		}
 		rmnet_unregister_real_device(real_dev);
-		unregister_netdevice_many(&list);
+		unregister_netdevice_flush();
 	} else {
 		rmnet_unregister_bridge(port);
 	}

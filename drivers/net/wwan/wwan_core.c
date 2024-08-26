@@ -1195,7 +1195,7 @@ void wwan_unregister_ops(struct device *parent)
 	/* Remove all child netdev(s), using batch removing */
 	device_for_each_child(&wwandev->dev, &kill_list,
 			      wwan_child_dellink);
-	unregister_netdevice_many(&kill_list);
+	unregister_netdevice_flush();
 
 	wwandev->ops = NULL;	/* Finally remove ops */
 

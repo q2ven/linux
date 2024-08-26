@@ -859,7 +859,7 @@ static void bam_dmux_remove(struct platform_device *pdev)
 	for (i = 0; i < BAM_DMUX_NUM_CH; ++i)
 		if (dmux->netdevs[i])
 			unregister_netdevice_queue(dmux->netdevs[i], &list);
-	unregister_netdevice_many(&list);
+	unregister_netdevice_flush();
 	rtnl_unlock();
 	cancel_work_sync(&dmux->tx_wakeup_work);
 

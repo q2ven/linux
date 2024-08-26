@@ -1727,7 +1727,7 @@ struct net_device *gretap_fb_dev_create(struct net *net, const char *name,
 	return dev;
 out:
 	ip_tunnel_dellink(dev, &list_kill);
-	unregister_netdevice_many(&list_kill);
+	unregister_netdevice_flush();
 	return ERR_PTR(err);
 }
 EXPORT_SYMBOL_GPL(gretap_fb_dev_create);

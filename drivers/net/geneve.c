@@ -1867,7 +1867,7 @@ struct net_device *geneve_dev_create_fb(struct net *net, const char *name,
 	return dev;
 err:
 	geneve_dellink(dev, &list_kill);
-	unregister_netdevice_many(&list_kill);
+	unregister_netdevice_flush();
 	return ERR_PTR(err);
 }
 EXPORT_SYMBOL_GPL(geneve_dev_create_fb);

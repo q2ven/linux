@@ -6045,7 +6045,7 @@ static void flush_all_backlogs(void)
 	}
 
 	/* we can have in flight packet[s] on the cpus we are not flushing,
-	 * synchronize_net() in unregister_netdevice_many() will take care of
+	 * synchronize_net() in unregister_netdevice_flush() will take care of
 	 * them
 	 */
 	for_each_cpu(cpu, &flush_cpus)
@@ -11422,30 +11422,27 @@ void unregister_netdevice_queue(struct net_device *dev, struct list_head *head)
 
 	unregister_netdevice_queue_net(dev);
 
-	if (!head) {
-		LIST_HEAD(single);
-
-		unregister_netdevice_many(&single);
-	}
+	if (!head)
+		unregister_netdevice_flush();
 }
 EXPORT_SYMBOL(unregister_netdevice_queue);
 
-void unregister_netdevice_many_notify(struct list_head *head,
-				      u32 portid, const struct nlmsghdr *nlh)
+void unregister_netdevice_many_notify(u32 portid, const struct nlmsghdr *nlh)
 {
 	struct net_device *dev, *tmp;
 	LIST_HEAD(close_head);
+	LIST_HEAD(head);
 	int cnt = 0;
 
 	BUG_ON(dev_boot_phase);
 	ASSERT_RTNL();
 
-	unregister_netdevice_splice_net(head);
+	unregister_netdevice_splice_net(&head);
 
-	if (list_empty(head))
+	if (list_empty(&head))
 		return;
 
-	list_for_each_entry_safe(dev, tmp, head, unreg_list) {
+	list_for_each_entry_safe(dev, tmp, &head, unreg_list) {
 		/* Some devices call without registering
 		 * for initialization unwind. Remove those
 		 * devices and proceed with the remaining.
@@ -11463,11 +11460,11 @@ void unregister_netdevice_many_notify(struct list_head *head,
 	}
 
 	/* If device is running, close it first. */
-	list_for_each_entry(dev, head, unreg_list)
+	list_for_each_entry(dev, &head, unreg_list)
 		list_add_tail(&dev->close_list, &close_head);
 	dev_close_many(&close_head, true);
 
-	list_for_each_entry(dev, head, unreg_list) {
+	list_for_each_entry(dev, &head, unreg_list) {
 		/* And unlink it from device chain. */
 		unlist_netdevice(dev);
 		WRITE_ONCE(dev->reg_state, NETREG_UNREGISTERING);
@@ -11476,7 +11473,7 @@ void unregister_netdevice_many_notify(struct list_head *head,
 
 	synchronize_net();
 
-	list_for_each_entry(dev, head, unreg_list) {
+	list_for_each_entry(dev, &head, unreg_list) {
 		struct sk_buff *skb = NULL;
 
 		/* Shutdown queueing discipline. */
@@ -11534,28 +11531,25 @@ void unregister_netdevice_many_notify(struct list_head *head,
 
 	synchronize_net();
 
-	list_for_each_entry(dev, head, unreg_list) {
+	list_for_each_entry(dev, &head, unreg_list) {
 		netdev_put(dev, &dev->dev_registered_tracker);
 		net_set_todo(dev);
 		cnt++;
 	}
 	atomic_add(cnt, &dev_unreg_count);
 
-	list_del(head);
+	list_del(&head);
 }
 
 /**
- *	unregister_netdevice_many - unregister many devices
+ *	unregister_netdevice_flush - unregister many devices
  *	@head: list of devices
- *
- *  Note: As most callers use a stack allocated list_head,
- *  we force a list_del() to make sure stack won't be corrupted later.
  */
-void unregister_netdevice_many(struct list_head *head)
+void unregister_netdevice_flush(void)
 {
-	unregister_netdevice_many_notify(head, 0, NULL);
+	unregister_netdevice_many_notify(0, NULL);
 }
-EXPORT_SYMBOL(unregister_netdevice_many);
+EXPORT_SYMBOL(unregister_netdevice_flush);
 
 /**
  *	unregister_netdev - remove device from the kernel
@@ -12043,7 +12037,7 @@ static void __net_exit default_device_exit_batch(struct list_head *net_list)
 				unregister_netdevice_queue(dev, &dev_kill_list);
 		}
 	}
-	unregister_netdevice_many(&dev_kill_list);
+	unregister_netdevice_flush();
 	rtnl_unlock();
 }
 

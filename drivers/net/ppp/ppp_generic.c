@@ -1154,7 +1154,7 @@ static __net_exit void ppp_exit_net(struct net *net)
 		if (!net_eq(dev_net(ppp->dev), net))
 			unregister_netdevice_queue(ppp->dev, &list);
 
-	unregister_netdevice_many(&list);
+	unregister_netdevice_flush();
 	rtnl_unlock();
 
 	mutex_destroy(&pn->all_ppp_mutex);

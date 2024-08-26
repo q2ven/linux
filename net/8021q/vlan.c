@@ -486,7 +486,7 @@ static int vlan_device_event(struct notifier_block *unused, unsigned long event,
 			if (last)
 				break;
 		}
-		unregister_netdevice_many(&list);
+		unregister_netdevice_flush();
 		break;
 
 	case NETDEV_PRE_TYPE_CHANGE:

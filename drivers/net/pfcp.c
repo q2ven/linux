@@ -254,7 +254,7 @@ static void __net_exit pfcp_net_exit(struct net *net)
 	list_for_each_entry(pfcp, &pn->pfcp_dev_list, list)
 		pfcp_dellink(pfcp->dev, &list);
 
-	unregister_netdevice_many(&list);
+	unregister_netdevice_flush();
 	rtnl_unlock();
 }
 

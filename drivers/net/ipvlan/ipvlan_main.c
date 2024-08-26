@@ -763,7 +763,7 @@ static int ipvlan_device_event(struct notifier_block *unused,
 		list_for_each_entry_safe(ipvlan, next, &port->ipvlans, pnode)
 			ipvlan->dev->rtnl_link_ops->dellink(ipvlan->dev,
 							    &lst_kill);
-		unregister_netdevice_many(&lst_kill);
+		unregister_netdevice_flush();
 		break;
 
 	case NETDEV_FEAT_CHANGE:

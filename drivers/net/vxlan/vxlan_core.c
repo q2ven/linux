@@ -4620,7 +4620,7 @@ struct net_device *vxlan_dev_create(struct net *net, const char *name,
 		LIST_HEAD(list_kill);
 
 		vxlan_dellink(dev, &list_kill);
-		unregister_netdevice_many(&list_kill);
+		unregister_netdevice_flush();
 		return ERR_PTR(err);
 	}
 
@@ -4647,7 +4647,7 @@ static void vxlan_handle_lowerdev_unregister(struct vxlan_net *vn,
 			vxlan_dellink(vxlan->dev, &list_kill);
 	}
 
-	unregister_netdevice_many(&list_kill);
+	unregister_netdevice_flush();
 }
 
 static int vxlan_netdevice_event(struct notifier_block *unused,

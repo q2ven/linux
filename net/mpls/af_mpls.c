@@ -2697,7 +2697,7 @@ static void mpls_net_exit(struct net *net)
 	/* An rcu grace period has passed since there was a device in
 	 * the network namespace (and thus the last in flight packet)
 	 * left this network namespace.  This is because
-	 * unregister_netdevice_many and netdev_run_todo has completed
+	 * unregister_netdevice_flush and netdev_run_todo has completed
 	 * for each network device that was in this network namespace.
 	 *
 	 * As such no additional rcu synchronization is necessary when
