@@ -44,6 +44,25 @@ static inline int rtnl_msg_family(const struct nlmsghdr *nlh)
 		return AF_UNSPEC;
 }
 
+struct rtnl_nets {
+	/* ->newlink() needs to freeze 3 netns at most;
+	 * 2 for the new device, 1 for its peer.
+	 */
+	struct net *net[3];
+	unsigned char len;
+};
+
+void rtnl_nets_add(struct rtnl_nets *rtnl_nets, struct net *net);
+
+/* Just to show the big picture without a real patch without
+ * "no prototype" error or "defined but not used" warning.
+ * I'll remove this part in non-RFC patch.
+ */
+void rtnl_nets_init(struct rtnl_nets *rtnl_nets);
+void rtnl_nets_lock(struct rtnl_nets *rtnl_nets);
+void rtnl_nets_unlock(struct rtnl_nets *rtnl_nets);
+void rtnl_nets_destroy(struct rtnl_nets *rtnl_nets);
+
 /**
  *	struct rtnl_link_ops - rtnetlink link operations
  *
@@ -53,6 +72,7 @@ static inline int rtnl_msg_family(const struct nlmsghdr *nlh)
  *	@maxtype: Highest device specific netlink attribute number
  *	@policy: Netlink policy for device specific attribute validation
  *	@validate: Optional validation function for netlink/changelink parameters
+ *	@get_peer_net: Function to prefetch netns of the peer device for ->newlink().
  *	@alloc: netdev allocation function, can be %NULL and is then used
  *		in place of alloc_netdev_mqs(), in this case @priv_size
  *		and @setup are unused. Returns a netdev or ERR_PTR().
@@ -95,6 +115,10 @@ struct rtnl_link_ops {
 	int			(*validate)(struct nlattr *tb[],
 					    struct nlattr *data[],
 					    struct netlink_ext_ack *extack);
+	int			(*get_peer_net)(struct rtnl_nets *rtnl_nets,
+						struct nlattr *tb[],
+						struct nlattr *data[],
+						struct netlink_ext_ack *extack);
 
 	int			(*newlink)(struct net *src_net,
 					   struct net_device *dev,
