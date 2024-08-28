@@ -257,6 +257,66 @@ bool lockdep_rtnl_net_is_held(struct net *net)
 EXPORT_SYMBOL(lockdep_rtnl_net_is_held);
 #endif /* #ifdef CONFIG_PROVE_LOCKING */
 
+void rtnl_nets_init(struct rtnl_nets *rtnl_nets)
+{
+	memset(rtnl_nets, 0, sizeof(*rtnl_nets));
+}
+
+/**
+ * rtnl_nets_add - Add netns to be locked before ->newlink().
+ *
+ * @rtnl_nets: rtnl_nets pointer passed to ->get_peer_net().
+ * @net: netns pointer with an additional refcnt held.
+ *
+ * Note that the additional refcnt is released in rtnl_nets_destroy().
+ */
+void rtnl_nets_add(struct rtnl_nets *rtnl_nets, struct net *net)
+{
+	int i;
+
+	if (WARN_ON_ONCE(rtnl_nets->len == ARRAY_SIZE(rtnl_nets->net)))
+		return;
+
+	for (i = 0; i < rtnl_nets->len; i++) {
+		switch (rtnl_net_cmp_locks(net, rtnl_nets->net[i])) {
+		case 0:
+			return;
+		case -1:
+			swap(net, rtnl_nets->net[i]);
+		}
+	}
+
+	rtnl_nets->net[i] = net;
+	rtnl_nets->len++;
+}
+EXPORT_SYMBOL(rtnl_nets_add);
+
+void rtnl_nets_lock(struct rtnl_nets *rtnl_nets)
+{
+	int i;
+
+	for (i = 0; i < rtnl_nets->len; i++)
+		rtnl_net_lock(rtnl_nets->net[i]);
+}
+
+void rtnl_nets_unlock(struct rtnl_nets *rtnl_nets)
+{
+	int i;
+
+	for (i = rtnl_nets->len - 1; i >= 0; i--)
+		rtnl_net_unlock(rtnl_nets->net[i]);
+}
+
+void rtnl_nets_destroy(struct rtnl_nets *rtnl_nets)
+{
+	int i;
+
+	for (i = 0; i < rtnl_nets->len; i++) {
+		put_net(rtnl_nets->net[i]);
+		rtnl_nets->net[i] = NULL;
+	}
+}
+
 static struct rtnl_link __rcu *__rcu *rtnl_msg_handlers[RTNL_FAMILY_MAX + 1];
 
 static inline int rtm_msgindex(int msgtype)
