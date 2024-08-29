@@ -73,6 +73,8 @@ void rtnl_nets_destroy(struct rtnl_nets *rtnl_nets);
  *	@policy: Netlink policy for device specific attribute validation
  *	@validate: Optional validation function for netlink/changelink parameters
  *	@get_peer_net: Function to prefetch netns of the peer device for ->newlink().
+ *	@sync_links: Function to acquire/release a lock shared by links in
+ *		     diffrent netns to synchronise ->setlink() and ->dellink().
  *	@alloc: netdev allocation function, can be %NULL and is then used
  *		in place of alloc_netdev_mqs(), in this case @priv_size
  *		and @setup are unused. Returns a netdev or ERR_PTR().
@@ -119,6 +121,7 @@ struct rtnl_link_ops {
 						struct nlattr *tb[],
 						struct nlattr *data[],
 						struct netlink_ext_ack *extack);
+	void			(*sync_links)(struct net_device *dev, bool in_sync);
 
 	int			(*newlink)(struct net *src_net,
 					   struct net_device *dev,
@@ -167,6 +170,19 @@ void __rtnl_link_unregister(struct rtnl_link_ops *ops);
 
 int rtnl_link_register(struct rtnl_link_ops *ops);
 void rtnl_link_unregister(struct rtnl_link_ops *ops);
+
+static inline void rtnl_link_dellink(struct net_device *dev, struct list_head *list_kill)
+{
+	const struct rtnl_link_ops *ops = dev->rtnl_link_ops;
+
+	if (ops->sync_links) {
+		ops->sync_links(dev, false);
+		ops->dellink(dev, list_kill);
+		ops->sync_links(dev, true);
+	} else {
+		ops->dellink(dev, list_kill);
+	}
+}
 
 /**
  * 	struct rtnl_af_ops - rtnetlink address family operations

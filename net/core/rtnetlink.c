@@ -592,7 +592,7 @@ static void __rtnl_kill_links(struct net *net, struct rtnl_link_ops *ops)
 
 	for_each_netdev(net, dev) {
 		if (dev->rtnl_link_ops == ops)
-			ops->dellink(dev, &list_kill);
+			rtnl_link_dellink(dev, &list_kill);
 	}
 	unregister_netdevice_many(&list_kill);
 }
@@ -2918,6 +2918,9 @@ static int do_setlink(const struct sk_buff *skb,
 	char ifname[IFNAMSIZ];
 	int err;
 
+	if (dev->rtnl_link_ops && dev->rtnl_link_ops->sync_links)
+		dev->rtnl_link_ops->sync_links(dev, false);
+
 	if (tb[IFLA_IFNAME])
 		nla_strscpy(ifname, tb[IFLA_IFNAME], IFNAMSIZ);
 	else
@@ -3282,6 +3285,9 @@ errout:
 					     dev->name);
 	}
 
+	if (dev->rtnl_link_ops && dev->rtnl_link_ops->sync_links)
+		dev->rtnl_link_ops->sync_links(dev, true);
+
 	return err;
 }
 
@@ -3365,12 +3371,8 @@ static int rtnl_group_dellink(const struct net *net, int group)
 		return -ENODEV;
 
 	for_each_netdev_safe(net, dev, aux) {
-		if (dev->group == group) {
-			const struct rtnl_link_ops *ops;
-
-			ops = dev->rtnl_link_ops;
-			ops->dellink(dev, &list_kill);
-		}
+		if (dev->group == group)
+			rtnl_link_dellink(dev, &list_kill);
 	}
 	unregister_netdevice_many(&list_kill);
 
@@ -3386,7 +3388,7 @@ int rtnl_delete_link(struct net_device *dev, u32 portid, const struct nlmsghdr *
 	if (!ops || !ops->dellink)
 		return -EOPNOTSUPP;
 
-	ops->dellink(dev, &list_kill);
+	rtnl_link_dellink(dev, &list_kill);
 	unregister_netdevice_many_notify(&list_kill, portid, nlh);
 
 	return 0;
@@ -3675,7 +3677,7 @@ out_unregister:
 	if (ops->newlink) {
 		LIST_HEAD(list_kill);
 
-		ops->dellink(dev, &list_kill);
+		rtnl_link_dellink(dev, &list_kill);
 		unregister_netdevice_many(&list_kill);
 	} else {
 		unregister_netdevice(dev);
