@@ -55,15 +55,6 @@ struct rtnl_nets {
 
 void rtnl_nets_add(struct rtnl_nets *rtnl_nets, struct net *net);
 
-/* Just to show the big picture without a real patch without
- * "no prototype" error or "defined but not used" warning.
- * I'll remove this part in non-RFC patch.
- */
-void rtnl_nets_init(struct rtnl_nets *rtnl_nets);
-void rtnl_nets_lock(struct rtnl_nets *rtnl_nets);
-void rtnl_nets_unlock(struct rtnl_nets *rtnl_nets);
-void rtnl_nets_destroy(struct rtnl_nets *rtnl_nets);
-
 /**
  *	struct rtnl_link_ops - rtnetlink link operations
  *

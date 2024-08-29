@@ -264,7 +264,7 @@ bool lockdep_rtnl_net_is_held(struct net *net)
 EXPORT_SYMBOL(lockdep_rtnl_net_is_held);
 #endif /* #ifdef CONFIG_PROVE_LOCKING */
 
-void rtnl_nets_init(struct rtnl_nets *rtnl_nets)
+static void rtnl_nets_init(struct rtnl_nets *rtnl_nets)
 {
 	memset(rtnl_nets, 0, sizeof(*rtnl_nets));
 }
@@ -298,7 +298,7 @@ void rtnl_nets_add(struct rtnl_nets *rtnl_nets, struct net *net)
 }
 EXPORT_SYMBOL(rtnl_nets_add);
 
-void rtnl_nets_lock(struct rtnl_nets *rtnl_nets)
+static void rtnl_nets_lock(struct rtnl_nets *rtnl_nets)
 {
 	int i;
 
@@ -306,7 +306,7 @@ void rtnl_nets_lock(struct rtnl_nets *rtnl_nets)
 		rtnl_net_lock(rtnl_nets->net[i]);
 }
 
-void rtnl_nets_unlock(struct rtnl_nets *rtnl_nets)
+static void rtnl_nets_unlock(struct rtnl_nets *rtnl_nets)
 {
 	int i;
 
@@ -314,7 +314,7 @@ void rtnl_nets_unlock(struct rtnl_nets *rtnl_nets)
 		rtnl_net_unlock(rtnl_nets->net[i]);
 }
 
-void rtnl_nets_destroy(struct rtnl_nets *rtnl_nets)
+static void rtnl_nets_destroy(struct rtnl_nets *rtnl_nets)
 {
 	int i;
 
@@ -3863,6 +3863,7 @@ static int rtnl_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 	struct net *tgt_net, *link_net = NULL;
 	struct rtnl_link_ops *ops = NULL;
 	struct rtnl_newlink_tbs *tbs;
+	struct rtnl_nets rtnl_nets;
 	int ret;
 
 	tbs = kmalloc(sizeof(*tbs), GFP_KERNEL);
@@ -3903,6 +3904,8 @@ static int rtnl_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 #endif
 	}
 
+	rtnl_nets_init(&rtnl_nets);
+
 	if (ops) {
 		if (ops->maxtype > RTNL_MAX_TYPE)
 			return -EINVAL;
@@ -3930,6 +3933,8 @@ static int rtnl_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 		goto put_ops;
 	}
 
+	rtnl_nets_add(&rtnl_nets, tgt_net);
+
 	if (tb[IFLA_LINK_NETNSID]) {
 		int id = nla_get_s32(tb[IFLA_LINK_NETNSID]);
 
@@ -3944,20 +3949,20 @@ static int rtnl_newlink(struct sk_buff *skb, struct nlmsghdr *nlh,
 			ret = -EPERM;
 			goto put_net;
 		}
+
+		rtnl_nets_add(&rtnl_nets, link_net);
 	}
 
 	rtnl_lock_deprecated();
-	rtnl_net_double_lock(link_net ? : sock_net(skb->sk), tgt_net);
+	rtnl_nets_lock(&rtnl_nets);
 
 	ret = __rtnl_newlink(skb, nlh, ops, tgt_net, link_net, tbs, data, extack);
 
-	rtnl_net_double_unlock(link_net ? : sock_net(skb->sk), tgt_net);
+	rtnl_nets_unlock(&rtnl_nets);
 	rtnl_unlock_deprecated();
 
-	if (link_net)
-		put_net(link_net);
 put_net:
-	put_net(tgt_net);
+	rtnl_nets_destroy(&rtnl_nets);
 put_ops:
 	if (ops)
 		rtnl_link_ops_put(ops);
