@@ -1739,6 +1739,33 @@ static int veth_validate(struct nlattr *tb[], struct nlattr *data[],
 	return 0;
 }
 
+static int veth_get_peer_net(struct rtnl_nets *rtnl_nets, struct nlattr *tb[],
+			     struct nlattr *data[], struct netlink_ext_ack *extack)
+{
+	struct nlattr *peer_tb[IFLA_MAX + 1];
+	struct net *net;
+	int err;
+
+	if (!data || !data[VETH_INFO_PEER])
+		return 0;
+
+	err = rtnl_nla_parse_ifinfomsg(peer_tb, data[VETH_INFO_PEER], extack);
+	if (err < 0)
+		return err;
+
+	err = veth_validate(peer_tb, NULL, extack);
+	if (err < 0)
+		return err;
+
+	net = rtnl_link_get_net_tb(peer_tb);
+	if (IS_ERR(net))
+		return PTR_ERR(net);
+	if (net)
+		rtnl_nets_add(rtnl_nets, net);
+
+	return 0;
+}
+
 static struct rtnl_link_ops veth_link_ops;
 
 static void veth_disable_gro(struct net_device *dev)
@@ -1782,18 +1809,10 @@ static int veth_newlink(struct net *src_net, struct net_device *dev,
 	 * create and register peer first
 	 */
 	if (data != NULL && data[VETH_INFO_PEER] != NULL) {
-		struct nlattr *nla_peer;
+		struct nlattr *nla_peer = data[VETH_INFO_PEER];
 
-		nla_peer = data[VETH_INFO_PEER];
 		ifmp = nla_data(nla_peer);
-		err = rtnl_nla_parse_ifinfomsg(peer_tb, nla_peer, extack);
-		if (err < 0)
-			return err;
-
-		err = veth_validate(peer_tb, NULL, extack);
-		if (err < 0)
-			return err;
-
+		rtnl_nla_parse_ifinfomsg(peer_tb, nla_peer, extack);
 		tbp = peer_tb;
 	} else {
 		ifmp = NULL;
@@ -1809,8 +1828,6 @@ static int veth_newlink(struct net *src_net, struct net_device *dev,
 	}
 
 	net = rtnl_link_get_net(src_net, tbp);
-	if (IS_ERR(net))
-		return PTR_ERR(net);
 
 	peer = rtnl_create_link(net, ifname, name_assign_type,
 				&veth_link_ops, tbp, extack);
@@ -1949,6 +1966,7 @@ static struct rtnl_link_ops veth_link_ops = {
 	.priv_size	= sizeof(struct veth_priv),
 	.setup		= veth_setup,
 	.validate	= veth_validate,
+	.get_peer_net	= veth_get_peer_net,
 	.newlink	= veth_newlink,
 	.dellink	= veth_dellink,
 	.policy		= veth_policy,
