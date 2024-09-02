@@ -273,7 +273,7 @@ static inline void ethnl_parse_header_dev_put(struct ethnl_req_info *req_info)
 
 /**
  * ethnl_req_get_phydev() - Gets the phy_device targeted by this request,
- *			    if any. Must be called under rntl_lock().
+ *			    if any. Must be called under rtnl_lock().
  * @req_info:	The ethnl request to get the phy from.
  * @header:	The netlink header, used for error reporting.
  * @extack:	The netlink extended ACK, for error reporting.
