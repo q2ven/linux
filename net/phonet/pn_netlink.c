@@ -93,7 +93,7 @@ static int addr_doit(struct sk_buff *skb, struct nlmsghdr *nlh,
 }
 
 static int fill_addr(struct sk_buff *skb, struct net_device *dev, u8 addr,
-			u32 portid, u32 seq, int event)
+		     u32 portid, u32 seq, int event)
 {
 	struct ifaddrmsg *ifm;
 	struct nlmsghdr *nlh;
@@ -107,7 +107,7 @@ static int fill_addr(struct sk_buff *skb, struct net_device *dev, u8 addr,
 	ifm->ifa_prefixlen = 0;
 	ifm->ifa_flags = IFA_F_PERMANENT;
 	ifm->ifa_scope = RT_SCOPE_LINK;
-	ifm->ifa_index = dev->ifindex;
+	ifm->ifa_index = READ_ONCE(dev->ifindex);
 	if (nla_put_u8(skb, IFA_LOCAL, addr))
 		goto nla_put_failure;
 	nlmsg_end(skb, nlh);
@@ -120,14 +120,16 @@ nla_put_failure:
 
 static int getaddr_dumpit(struct sk_buff *skb, struct netlink_callback *cb)
 {
+	int addr_idx = 0, addr_start_idx = cb->args[1];
+	int dev_idx = 0, dev_start_idx = cb->args[0];
 	struct phonet_device_list *pndevs;
 	struct phonet_device *pnd;
-	int dev_idx = 0, dev_start_idx = cb->args[0];
-	int addr_idx = 0, addr_start_idx = cb->args[1];
+	int err = 0;
 
 	pndevs = phonet_device_list(sock_net(skb->sk));
 	rcu_read_lock();
 	list_for_each_entry_rcu(pnd, &pndevs->list, list) {
+		DECLARE_BITMAP(addrs, 64);
 		u8 addr;
 
 		if (dev_idx > dev_start_idx)
@@ -136,13 +138,16 @@ static int getaddr_dumpit(struct sk_buff *skb, struct netlink_callback *cb)
 			continue;
 
 		addr_idx = 0;
-		for_each_set_bit(addr, pnd->addrs, 64) {
+		memcpy(addrs, pnd->addrs, sizeof(pnd->addrs));
+
+		for_each_set_bit(addr, addrs, 64) {
 			if (addr_idx++ < addr_start_idx)
 				continue;
 
-			if (fill_addr(skb, pnd->netdev, addr << 2,
-					 NETLINK_CB(cb->skb).portid,
-					cb->nlh->nlmsg_seq, RTM_NEWADDR) < 0)
+			err = fill_addr(skb, pnd->netdev, addr << 2,
+					NETLINK_CB(cb->skb).portid,
+					cb->nlh->nlmsg_seq, RTM_NEWADDR);
+			if (err < 0)
 				goto out;
 		}
 	}
@@ -152,7 +157,7 @@ out:
 	cb->args[0] = dev_idx;
 	cb->args[1] = addr_idx;
 
-	return skb->len;
+	return err;
 }
 
 /* Routes handling */
@@ -288,7 +293,8 @@ static int route_dumpit(struct sk_buff *skb, struct netlink_callback *cb)
 static struct rtnl_msg_handler phonet_rtnl_msg_handlers[] __initdata_or_module = {
 	{THIS_MODULE, PF_PHONET, RTM_NEWADDR, addr_doit, NULL, 0},
 	{THIS_MODULE, PF_PHONET, RTM_DELADDR, addr_doit, NULL, 0},
-	{THIS_MODULE, PF_PHONET, RTM_GETADDR, NULL, getaddr_dumpit, 0},
+	{THIS_MODULE, PF_PHONET, RTM_GETADDR, NULL, getaddr_dumpit,
+	 RTNL_FLAG_DUMP_UNLOCKED},
 	{THIS_MODULE, PF_PHONET, RTM_NEWROUTE, route_doit, NULL, 0},
 	{THIS_MODULE, PF_PHONET, RTM_DELROUTE, route_doit, NULL, 0},
 	{THIS_MODULE, PF_PHONET, RTM_GETROUTE, NULL, route_dumpit,
