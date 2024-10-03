@@ -64,8 +64,6 @@ static int addr_doit(struct sk_buff *skb, struct nlmsghdr *nlh,
 	if (!netlink_capable(skb, CAP_SYS_ADMIN))
 		return -EPERM;
 
-	ASSERT_RTNL();
-
 	err = nlmsg_parse_deprecated(nlh, sizeof(*ifm), tb, IFA_MAX,
 				     ifa_phonet_policy, extack);
 	if (err < 0)
@@ -79,9 +77,13 @@ static int addr_doit(struct sk_buff *skb, struct nlmsghdr *nlh,
 		/* Phonet addresses only have 6 high-order bits */
 		return -EINVAL;
 
+	rtnl_net_lock(net);
+
 	dev = __dev_get_by_index(net, ifm->ifa_index);
-	if (dev == NULL)
-		return -ENODEV;
+	if (!dev) {
+		err = -ENODEV;
+		goto unlock;
+	}
 
 	if (nlh->nlmsg_type == RTM_NEWADDR)
 		err = phonet_address_add(dev, pnaddr);
@@ -89,6 +91,10 @@ static int addr_doit(struct sk_buff *skb, struct nlmsghdr *nlh,
 		err = phonet_address_del(dev, pnaddr);
 	if (!err)
 		phonet_address_notify(nlh->nlmsg_type, dev, pnaddr);
+
+unlock:
+	rtnl_net_unlock(net);
+
 	return err;
 }
 
@@ -291,8 +297,10 @@ static int route_dumpit(struct sk_buff *skb, struct netlink_callback *cb)
 }
 
 static struct rtnl_msg_handler phonet_rtnl_msg_handlers[] __initdata_or_module = {
-	{THIS_MODULE, PF_PHONET, RTM_NEWADDR, addr_doit, NULL, 0},
-	{THIS_MODULE, PF_PHONET, RTM_DELADDR, addr_doit, NULL, 0},
+	{THIS_MODULE, PF_PHONET, RTM_NEWADDR, addr_doit, NULL,
+	 RTNL_FLAG_DOIT_PERNET},
+	{THIS_MODULE, PF_PHONET, RTM_DELADDR, addr_doit, NULL,
+	 RTNL_FLAG_DOIT_PERNET},
 	{THIS_MODULE, PF_PHONET, RTM_GETADDR, NULL, getaddr_dumpit,
 	 RTNL_FLAG_DUMP_UNLOCKED},
 	{THIS_MODULE, PF_PHONET, RTM_NEWROUTE, route_doit, NULL, 0},
