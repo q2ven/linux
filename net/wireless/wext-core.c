@@ -20,6 +20,7 @@
 #include <net/netlink.h>
 #include <net/wext.h>
 #include <net/net_namespace.h>
+#include <net/netns/generic.h>
 
 typedef int (*wext_ioctl_func)(struct net_device *, struct iwreq *,
 			       unsigned int, struct iw_request_info *,
@@ -343,24 +344,32 @@ static const int compat_event_type_size[] = {
 
 /* IW event code */
 
-void wireless_nlevent_flush(void)
+static void wireless_nlevent_flush_net(struct net *net)
 {
 	struct sk_buff *skb;
+
+	while ((skb = skb_dequeue(&net->wext_nlevents)))
+		rtnl_notify(skb, net, 0, RTNLGRP_LINK, NULL,  GFP_KERNEL);
+}
+
+void wireless_nlevent_flush(void)
+{
 	struct net *net;
 
 	down_read(&net_rwsem);
-	for_each_net(net) {
-		while ((skb = skb_dequeue(&net->wext_nlevents)))
-			rtnl_notify(skb, net, 0, RTNLGRP_LINK, NULL,
-				    GFP_KERNEL);
-	}
+	for_each_net(net)
+		wireless_nlevent_flush_net(net);
 	up_read(&net_rwsem);
 }
 EXPORT_SYMBOL_GPL(wireless_nlevent_flush);
 
+static int wext_pernet_id;
+
 static int wext_netdev_notifier_call(struct notifier_block *nb,
 				     unsigned long state, void *ptr)
 {
+	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
+
 	/*
 	 * When a netdev changes state in any way, flush all pending messages
 	 * to avoid them going out in a strange order, e.g. RTM_NEWLINK after
@@ -368,42 +377,43 @@ static int wext_netdev_notifier_call(struct notifier_block *nb,
 	 * or similar - all of which could otherwise happen due to delays from
 	 * schedule_work().
 	 */
-	wireless_nlevent_flush();
+	wireless_nlevent_flush_net(dev_net(dev));
 
 	return NOTIFY_OK;
 }
 
-static struct notifier_block wext_netdev_notifier = {
-	.notifier_call = wext_netdev_notifier_call,
-};
-
 static int __net_init wext_pernet_init(struct net *net)
 {
+	struct notifier_block *nb;
+
 	skb_queue_head_init(&net->wext_nlevents);
-	return 0;
+
+	nb = net_generic(net, wext_pernet_id);
+	nb->notifier_call = wext_netdev_notifier_call;
+
+	return register_netdevice_notifier_net(net, nb);
 }
 
 static void __net_exit wext_pernet_exit(struct net *net)
 {
+	struct notifier_block *nb;
+
+	nb = net_generic(net, wext_pernet_id);
+	unregister_netdevice_notifier_net(net, nb);
+
 	skb_queue_purge(&net->wext_nlevents);
 }
 
 static struct pernet_operations wext_pernet_ops = {
 	.init = wext_pernet_init,
 	.exit = wext_pernet_exit,
+	.id = &wext_pernet_id,
+	.size = sizeof(struct notifier_block),
 };
 
 static int __init wireless_nlevent_init(void)
 {
-	int err = register_pernet_subsys(&wext_pernet_ops);
-
-	if (err)
-		return err;
-
-	err = register_netdevice_notifier(&wext_netdev_notifier);
-	if (err)
-		unregister_pernet_subsys(&wext_pernet_ops);
-	return err;
+	return register_pernet_subsys(&wext_pernet_ops);
 }
 
 subsys_initcall(wireless_nlevent_init);
