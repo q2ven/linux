@@ -339,57 +339,6 @@ unlock:
 }
 
 /**
- * rtnl_register_module - Register a rtnetlink message type
- *
- * @owner: module registering the hook (THIS_MODULE)
- * @protocol: Protocol family or PF_UNSPEC
- * @msgtype: rtnetlink message type
- * @doit: Function pointer called for each request message
- * @dumpit: Function pointer called for each dump request (NLM_F_DUMP) message
- * @flags: rtnl_link_flags to modify behaviour of doit/dumpit functions
- *
- * Like rtnl_register, but for use by removable modules.
- */
-int rtnl_register_module(struct module *owner,
-			 int protocol, int msgtype,
-			 rtnl_doit_func doit, rtnl_dumpit_func dumpit,
-			 unsigned int flags)
-{
-	return rtnl_register_internal(owner, protocol, msgtype,
-				      doit, dumpit, flags);
-}
-EXPORT_SYMBOL_GPL(rtnl_register_module);
-
-/**
- * rtnl_register - Register a rtnetlink message type
- * @protocol: Protocol family or PF_UNSPEC
- * @msgtype: rtnetlink message type
- * @doit: Function pointer called for each request message
- * @dumpit: Function pointer called for each dump request (NLM_F_DUMP) message
- * @flags: rtnl_link_flags to modify behaviour of doit/dumpit functions
- *
- * Registers the specified function pointers (at least one of them has
- * to be non-NULL) to be called whenever a request message for the
- * specified protocol family and message type is received.
- *
- * The special protocol family PF_UNSPEC may be used to define fallback
- * function pointers for the case when no entry for the specific protocol
- * family exists.
- */
-void rtnl_register(int protocol, int msgtype,
-		   rtnl_doit_func doit, rtnl_dumpit_func dumpit,
-		   unsigned int flags)
-{
-	int err;
-
-	err = rtnl_register_internal(NULL, protocol, msgtype, doit, dumpit,
-				     flags);
-	if (err)
-		pr_err("Unable to register rtnetlink message handler, "
-		       "protocol = %d, message type = %d\n", protocol, msgtype);
-}
-
-/**
  * rtnl_unregister - Unregister a rtnetlink message type
  * @protocol: Protocol family or PF_UNSPEC
  * @msgtype: rtnetlink message type
@@ -454,6 +403,22 @@ void rtnl_unregister_all(int protocol)
 }
 EXPORT_SYMBOL_GPL(rtnl_unregister_all);
 
+/**
+ * __rtnl_register_many - Register rtnetlink message types
+ * @protocol: Protocol family or PF_UNSPEC
+ * @msgtype: rtnetlink message type
+ * @doit: Function pointer called for each request message
+ * @dumpit: Function pointer called for each dump request (NLM_F_DUMP) message
+ * @flags: rtnl_link_flags to modify behaviour of doit/dumpit functions
+ *
+ * Registers the specified function pointers (at least one of them has
+ * to be non-NULL) to be called whenever a request message for the
+ * specified protocol family and message type is received.
+ *
+ * The special protocol family PF_UNSPEC may be used to define fallback
+ * function pointers for the case when no entry for the specific protocol
+ * family exists.
+ */
 int __rtnl_register_many(struct rtnl_msg_handler *handlers, int n)
 {
 	struct rtnl_msg_handler *handler;
@@ -464,6 +429,10 @@ int __rtnl_register_many(struct rtnl_msg_handler *handlers, int n)
 					     handler->msgtype, handler->doit,
 					     handler->dumpit, handler->flags);
 		if (err) {
+			pr_err("Unable to register rtnetlink message handler, "
+			       "protocol = %d, message type = %d\n",
+			       handler->protocol, handler->msgtype);
+
 			__rtnl_unregister_many(handlers, i);
 			break;
 		}
