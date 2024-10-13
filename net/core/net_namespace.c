@@ -61,7 +61,7 @@ EXPORT_SYMBOL_GPL(pernet_ops_rwsem);
 #define MIN_PERNET_OPS_ID	\
 	((sizeof(struct net_generic) + sizeof(void *) - 1) / sizeof(void *))
 
-#define INITIAL_NET_GEN_PTRS	13 /* +1 for len +2 for rcu_head */
+#define INITIAL_NET_GEN_PTRS	14 /* +1 for net, +1 for len, +2 for rcu_head */
 
 static unsigned int max_gen_ptrs = INITIAL_NET_GEN_PTRS;
 
@@ -114,6 +114,7 @@ static int net_assign_generic(struct net *net, unsigned int id, void *data)
 	       (old_ng->s.len - MIN_PERNET_OPS_ID) * sizeof(void *));
 	ng->ptr[id] = data;
 
+	ng->s.net = net;
 	rcu_assign_pointer(net->gen, ng);
 	kfree_rcu(old_ng, s.rcu);
 	return 0;
@@ -436,6 +437,7 @@ static struct net *net_alloc(void)
 	refcount_set(&net->key_domain->usage, 1);
 #endif
 
+	ng->s.net = net;
 	rcu_assign_pointer(net->gen, ng);
 out:
 	return net;

@@ -29,6 +29,7 @@
 struct net_generic {
 	union {
 		struct {
+			struct net *net;
 			unsigned int len;
 			struct rcu_head rcu;
 		} s;
@@ -48,5 +49,14 @@ static inline void *net_generic(const struct net *net, unsigned int id)
 	rcu_read_unlock();
 
 	return ptr;
+}
+
+static inline struct net *net_from_generic(const void *ptr, unsigned int id)
+{
+	struct net_generic *ng;
+
+	ng = container_of(ptr, struct net_generic, ptr[id]);
+
+	return ng->s.net;
 }
 #endif
