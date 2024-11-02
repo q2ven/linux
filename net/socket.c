@@ -1618,7 +1618,7 @@ out_release:
 }
 
 /**
- *	sock_create - creates a socket
+ *	sock_create_user - creates a socket
  *	@family: protocol family (AF_INET, ...)
  *	@type: communication type (SOCK_STREAM, ...)
  *	@protocol: protocol (0, ...)
@@ -1628,12 +1628,12 @@ out_release:
  *	Returns 0 or an error. This function internally uses GFP_KERNEL.
  */
 
-int sock_create(int family, int type, int protocol, struct socket **res)
+int sock_create_user(int family, int type, int protocol, struct socket **res)
 {
 	return __sock_create(current->nsproxy->net_ns, family, type, protocol,
 			     res, false, true);
 }
-EXPORT_SYMBOL(sock_create);
+EXPORT_SYMBOL(sock_create_user);
 
 /**
  *	sock_create_kern - creates a socket (kernel space)
@@ -1669,7 +1669,7 @@ static struct socket *__sys_socket_create(int family, int type, int protocol)
 		return ERR_PTR(-EINVAL);
 	type &= SOCK_TYPE_MASK;
 
-	retval = sock_create(family, type, protocol, &sock);
+	retval = sock_create_user(family, type, protocol, &sock);
 	if (retval < 0)
 		return ERR_PTR(retval);
 
@@ -1779,11 +1779,11 @@ int __sys_socketpair(int family, int type, int protocol, int __user *usockvec)
 	 * supports the socketpair call.
 	 */
 
-	err = sock_create(family, type, protocol, &sock1);
+	err = sock_create_user(family, type, protocol, &sock1);
 	if (unlikely(err < 0))
 		goto out;
 
-	err = sock_create(family, type, protocol, &sock2);
+	err = sock_create_user(family, type, protocol, &sock2);
 	if (unlikely(err < 0)) {
 		sock_release(sock1);
 		goto out;
