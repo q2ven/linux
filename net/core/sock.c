@@ -2218,16 +2218,21 @@ struct sock *sk_alloc(struct net *net, int family, gfp_t priority,
 		 * why we need sk_prot_creator -acme
 		 */
 		sk->sk_prot = sk->sk_prot_creator = prot;
+
+		DEBUG_NET_WARN_ON_ONCE(!kern && !netref);
+
 		sk->sk_kern_sock = kern;
-		sock_lock_init(sk);
-		sk->sk_net_refcnt = kern ? 0 : 1;
-		if (likely(sk->sk_net_refcnt)) {
-			get_net_track(net, &sk->ns_tracker, priority);
+		if (likely(!kern))
 			sock_inuse_add(net, 1);
-		} else {
+
+		sock_lock_init(sk);
+
+		sk->sk_net_refcnt = netref;
+		if (likely(netref))
+			get_net_track(net, &sk->ns_tracker, priority);
+		else
 			__netns_tracker_alloc(net, &sk->ns_tracker,
 					      false, priority);
-		}
 
 		sock_net_set(sk, net);
 		refcount_set(&sk->sk_wmem_alloc, 1);
@@ -2305,7 +2310,7 @@ void sk_destruct(struct sock *sk)
 
 static void __sk_free(struct sock *sk)
 {
-	if (likely(sk->sk_net_refcnt))
+	if (likely(!sk->sk_kern_sock))
 		sock_inuse_add(sock_net(sk), -1);
 
 	if (unlikely(sk->sk_net_refcnt && sock_diag_has_destroy_listeners(sk)))
@@ -2374,10 +2379,13 @@ struct sock *sk_clone_lock(const struct sock *sk, const gfp_t priority)
 
 	newsk->sk_prot_creator = prot;
 
-	/* SANITY */
+	if (likely(!sk->sk_kern_sock))
+		sock_inuse_add(sock_net(newsk), 1);
+
+	sock_lock_init(newsk);
+
 	if (likely(newsk->sk_net_refcnt)) {
 		get_net_track(sock_net(newsk), &newsk->ns_tracker, priority);
-		sock_inuse_add(sock_net(newsk), 1);
 	} else {
 		/* Kernel sockets are not elevating the struct net refcount.
 		 * Instead, use a tracker to more easily detect if a layer
@@ -2387,8 +2395,8 @@ struct sock *sk_clone_lock(const struct sock *sk, const gfp_t priority)
 		__netns_tracker_alloc(sock_net(newsk), &newsk->ns_tracker,
 				      false, priority);
 	}
+
 	sk_node_init(&newsk->sk_node);
-	sock_lock_init(newsk);
 	bh_lock_sock(newsk);
 	newsk->sk_backlog.head	= newsk->sk_backlog.tail = NULL;
 	newsk->sk_backlog.len = 0;
