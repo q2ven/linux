@@ -1636,6 +1636,25 @@ int sock_create_user(int family, int type, int protocol, struct socket **res)
 EXPORT_SYMBOL(sock_create_user);
 
 /**
+ *	sock_create_net - creates a socket (kernel space)
+ *	@net: net namespace
+ *	@family: protocol family (AF_INET, ...)
+ *	@type: communication type (SOCK_STREAM, ...)
+ *	@protocol: protocol (0, ...)
+ *	@res: new socket
+ *
+ *	A wrapper around __sock_create().
+ *	Returns 0 or an error. This function internally uses GFP_KERNEL.
+ */
+
+int sock_create_net(struct net *net, int family, int type, int protocol,
+		    struct socket **res)
+{
+	return __sock_create(net, family, type, protocol, res, true, true);
+}
+EXPORT_SYMBOL(sock_create_net);
+
+/**
  *	sock_create_net_noref - creates a socket (kernel space)
  *	@net: net namespace
  *	@family: protocol family (AF_INET, ...)
