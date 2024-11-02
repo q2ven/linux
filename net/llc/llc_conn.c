@@ -931,7 +931,7 @@ static void llc_sk_init(struct sock *sk)
 struct sock *llc_sk_alloc(struct net *net, int family, gfp_t priority, struct proto *prot,
 			  bool kern, bool netref)
 {
-	struct sock *sk = sk_alloc(net, family, priority, prot, kern);
+	struct sock *sk = sk_alloc(net, family, priority, prot, kern, netref);
 
 	if (!sk)
 		goto out;

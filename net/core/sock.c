@@ -2203,9 +2203,10 @@ static void sk_prot_free(struct proto *prot, struct sock *sk)
  *	@priority: for allocation (%GFP_KERNEL, %GFP_ATOMIC, etc)
  *	@prot: struct proto associated with this new sock instance
  *	@kern: is this to be a kernel socket?
+ *	@netref: is this to hold netns refcnt?
  */
 struct sock *sk_alloc(struct net *net, int family, gfp_t priority,
-		      struct proto *prot, int kern)
+		      struct proto *prot, bool kern, bool netref)
 {
 	struct sock *sk;
 
