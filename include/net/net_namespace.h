@@ -94,6 +94,9 @@ struct net {
 	struct ref_tracker_dir  notrefcnt_tracker; /* tracker for objects not
 						    * refcounted against netns
 						    */
+#ifdef CONFIG_DEBUG_NET
+	bool			initialized;
+#endif
 	struct list_head 	dev_base_head;
 	struct proc_dir_entry 	*proc_net;
 	struct proc_dir_entry 	*proc_net_stat;
@@ -259,6 +262,9 @@ void __put_net(struct net *net);
 /* Try using get_net_track() instead */
 static inline struct net *get_net(struct net *net)
 {
+#ifdef CONFIG_DEBUG_NET
+	DEBUG_NET_WARN_ON_ONCE(!net->initialized);
+#endif
 	refcount_inc(&net->ns.count);
 	return net;
 }
