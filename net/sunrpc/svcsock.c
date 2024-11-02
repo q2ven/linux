@@ -1526,7 +1526,7 @@ static struct svc_xprt *svc_create_socket(struct svc_serv *serv,
 		return ERR_PTR(-EINVAL);
 	}
 
-	error = sock_create_kern(net, family, type, protocol, &sock);
+	error = sock_create_net_noref(net, family, type, protocol, &sock);
 	if (error < 0)
 		return ERR_PTR(error);
 

@@ -13702,8 +13702,8 @@ static int nl80211_parse_wowlan_tcp(struct cfg80211_registered_device *rdev,
 		port = 0;
 #ifdef CONFIG_INET
 	/* allocate a socket and port for it and use it */
-	err = sock_create_kern(wiphy_net(&rdev->wiphy), PF_INET, SOCK_STREAM,
-			       IPPROTO_TCP, &cfg->sock);
+	err = sock_create_net_noref(wiphy_net(&rdev->wiphy), PF_INET, SOCK_STREAM,
+				    IPPROTO_TCP, &cfg->sock);
 	if (err) {
 		kfree(cfg);
 		return err;
