@@ -505,7 +505,7 @@ static struct proto x25_proto = {
 	.obj_size = sizeof(struct x25_sock),
 };
 
-static struct sock *x25_alloc_socket(struct net *net, int kern)
+static struct sock *x25_alloc_socket(struct net *net, bool kern, bool netref)
 {
 	struct x25_sock *x25;
 	struct sock *sk = sk_alloc(net, AF_X25, GFP_ATOMIC, &x25_proto, kern);
@@ -525,7 +525,7 @@ out:
 }
 
 static int x25_create(struct net *net, struct socket *sock, int protocol,
-		      int kern)
+		      bool kern, bool netref)
 {
 	struct sock *sk;
 	struct x25_sock *x25;
@@ -543,7 +543,8 @@ static int x25_create(struct net *net, struct socket *sock, int protocol,
 		goto out;
 
 	rc = -ENOMEM;
-	if ((sk = x25_alloc_socket(net, kern)) == NULL)
+	sk = x25_alloc_socket(net, kern, netref);
+	if (!sk)
 		goto out;
 
 	x25 = x25_sk(sk);
@@ -592,7 +593,8 @@ static struct sock *x25_make_new(struct sock *osk)
 	if (osk->sk_type != SOCK_SEQPACKET)
 		goto out;
 
-	if ((sk = x25_alloc_socket(sock_net(osk), 0)) == NULL)
+	sk = x25_alloc_socket(sock_net(osk), false, true);
+	if (!sk)
 		goto out;
 
 	x25 = x25_sk(sk);

@@ -247,7 +247,7 @@ static struct proto hidp_proto = {
 };
 
 static int hidp_sock_create(struct net *net, struct socket *sock, int protocol,
-			    int kern)
+			    bool kern, bool netref)
 {
 	struct sock *sk;
 
@@ -256,7 +256,8 @@ static int hidp_sock_create(struct net *net, struct socket *sock, int protocol,
 	if (sock->type != SOCK_RAW)
 		return -ESOCKTNOSUPPORT;
 
-	sk = bt_sock_alloc(net, sock, &hidp_proto, protocol, GFP_ATOMIC, kern);
+	sk = bt_sock_alloc(net, sock, &hidp_proto, protocol, GFP_ATOMIC,
+			   kern, netref);
 	if (!sk)
 		return -ENOMEM;
 

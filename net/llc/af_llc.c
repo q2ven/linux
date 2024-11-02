@@ -169,7 +169,7 @@ static struct proto llc_proto = {
  *	Returns 0 upon success, negative upon failure.
  */
 static int llc_ui_create(struct net *net, struct socket *sock, int protocol,
-			 int kern)
+			 bool kern, bool netref)
 {
 	struct sock *sk;
 	int rc = -ESOCKTNOSUPPORT;
@@ -182,7 +182,7 @@ static int llc_ui_create(struct net *net, struct socket *sock, int protocol,
 
 	if (likely(sock->type == SOCK_DGRAM || sock->type == SOCK_STREAM)) {
 		rc = -ENOMEM;
-		sk = llc_sk_alloc(net, PF_LLC, GFP_KERNEL, &llc_proto, kern);
+		sk = llc_sk_alloc(net, PF_LLC, GFP_KERNEL, &llc_proto, kern, netref);
 		if (sk) {
 			rc = 0;
 			llc_ui_sk_init(sock, sk);

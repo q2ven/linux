@@ -636,7 +636,7 @@ static struct proto netlink_proto = {
 };
 
 static int __netlink_create(struct net *net, struct socket *sock,
-			    int protocol, int kern)
+			    int protocol, bool kern, bool netref)
 {
 	struct sock *sk;
 	struct netlink_sock *nlk;
@@ -662,7 +662,7 @@ static int __netlink_create(struct net *net, struct socket *sock,
 }
 
 static int netlink_create(struct net *net, struct socket *sock, int protocol,
-			  int kern)
+			  bool kern, bool netref)
 {
 	struct module *module = NULL;
 	struct netlink_sock *nlk;
@@ -701,7 +701,7 @@ static int netlink_create(struct net *net, struct socket *sock, int protocol,
 	if (err < 0)
 		goto out;
 
-	err = __netlink_create(net, sock, protocol, kern);
+	err = __netlink_create(net, sock, protocol, kern, netref);
 	if (err < 0)
 		goto out_module;
 
@@ -2022,7 +2022,7 @@ __netlink_kernel_create(struct net *net, int unit, struct module *module,
 	if (sock_create_lite(PF_NETLINK, SOCK_DGRAM, unit, &sock))
 		return NULL;
 
-	if (__netlink_create(net, sock, unit, 1) < 0)
+	if (__netlink_create(net, sock, unit, true, false) < 0)
 		goto out_sock_release_nosk;
 
 	sk = sock->sk;

@@ -730,7 +730,7 @@ static struct sock *__vsock_create(struct net *net,
 				   struct sock *parent,
 				   gfp_t priority,
 				   unsigned short type,
-				   int kern)
+				   bool kern, bool netref)
 {
 	struct sock *sk;
 	struct vsock_sock *psk;
@@ -861,7 +861,7 @@ static int vsock_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 struct sock *vsock_create_connected(struct sock *parent)
 {
 	return __vsock_create(sock_net(parent), NULL, parent, GFP_KERNEL,
-			      parent->sk_type, 0);
+			      parent->sk_type, false, true);
 }
 EXPORT_SYMBOL_GPL(vsock_create_connected);
 
@@ -2380,7 +2380,7 @@ static const struct proto_ops vsock_seqpacket_ops = {
 };
 
 static int vsock_create(struct net *net, struct socket *sock,
-			int protocol, int kern)
+			int protocol, bool kern, bool netref)
 {
 	struct vsock_sock *vsk;
 	struct sock *sk;
@@ -2408,7 +2408,7 @@ static int vsock_create(struct net *net, struct socket *sock,
 
 	sock->state = SS_UNCONNECTED;
 
-	sk = __vsock_create(net, sock, NULL, GFP_KERNEL, 0, kern);
+	sk = __vsock_create(net, sock, NULL, GFP_KERNEL, 0, kern, netref);
 	if (!sk)
 		return -ENOMEM;
 

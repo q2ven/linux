@@ -424,7 +424,7 @@ static struct proto nr_proto = {
 };
 
 static int nr_create(struct net *net, struct socket *sock, int protocol,
-		     int kern)
+		     bool kern, bool netref)
 {
 	struct sock *sk;
 	struct nr_sock *nr;
