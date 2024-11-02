@@ -1214,6 +1214,7 @@ struct proto_accept_arg {
 	int err;
 	int is_empty;
 	bool kern;
+	bool netref;
 };
 
 /* Networking protocol blocks we attach to sockets.

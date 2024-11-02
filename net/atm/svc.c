@@ -336,7 +336,7 @@ static int svc_accept(struct socket *sock, struct socket *newsock,
 
 	lock_sock(sk);
 
-	error = svc_create(sock_net(sk), newsock, 0, arg->kern, !arg->kern);
+	error = svc_create(sock_net(sk), newsock, 0, arg->kern, arg->netref);
 	if (error)
 		goto out;
 
