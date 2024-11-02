@@ -1488,22 +1488,28 @@ call_kill:
 EXPORT_SYMBOL(sock_wake_async);
 
 /**
- *	__sock_create - creates a socket
- *	@net: net namespace
- *	@family: protocol family (AF_INET, ...)
- *	@type: communication type (SOCK_STREAM, ...)
- *	@protocol: protocol (0, ...)
- *	@res: new socket
- *	@kern: boolean for kernel space sockets
+ * __sock_create - creates a socket
  *
- *	Creates a new socket and assigns it to @res, passing through LSM.
- *	Returns 0 or an error. On failure @res is set to %NULL. @kern must
- *	be set to true if the socket resides in kernel space.
- *	This function internally uses GFP_KERNEL.
+ * @net: net namespace
+ * @family: protocol family (AF_INET, ...)
+ * @type: communication type (SOCK_STREAM, ...)
+ * @protocol: protocol (0, ...)
+ * @res: new socket
+ * @kern: boolean for kernel space sockets
+ * @hold_net: boolean for netns refcnt
+ *
+ * Creates a new socket and assigns it to @res, passing through LSM.
+ *
+ * @kern must be set to true if the socket resides in kernel space.
+ * If @hold_net is false, the caller must ensure that the socket is
+ * always freed before @net.
+ *
+ * Context: Process context. This function internally uses GFP_KERNEL.
+ * Return: 0 or an error. On failure @res is set to %NULL.
  */
 
 static int __sock_create(struct net *net, int family, int type, int protocol,
-			 struct socket **res, int kern)
+			 struct socket **res, bool kern, bool hold_net)
 {
 	int err;
 	struct socket *sock;
@@ -1630,7 +1636,8 @@ out_release:
 
 int sock_create(int family, int type, int protocol, struct socket **res)
 {
-	return __sock_create(current->nsproxy->net_ns, family, type, protocol, res, 0);
+	return __sock_create(current->nsproxy->net_ns, family, type, protocol,
+			     res, false, true);
 }
 EXPORT_SYMBOL(sock_create);
 
@@ -1646,9 +1653,10 @@ EXPORT_SYMBOL(sock_create);
  *	Returns 0 or an error. This function internally uses GFP_KERNEL.
  */
 
-int sock_create_kern(struct net *net, int family, int type, int protocol, struct socket **res)
+int sock_create_kern(struct net *net, int family, int type, int protocol,
+		     struct socket **res)
 {
-	return __sock_create(net, family, type, protocol, res, 1);
+	return __sock_create(net, family, type, protocol, res, true, false);
 }
 EXPORT_SYMBOL(sock_create_kern);
 
