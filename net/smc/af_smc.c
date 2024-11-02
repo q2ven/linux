@@ -392,7 +392,7 @@ static struct sock *smc_sock_alloc(struct net *net, struct socket *sock,
 	struct sock *sk;
 
 	prot = (protocol == SMCPROTO_SMC6) ? &smc_proto6 : &smc_proto;
-	sk = sk_alloc(net, PF_SMC, GFP_KERNEL, prot, kern);
+	sk = sk_alloc(net, PF_SMC, GFP_KERNEL, prot, kern, netref);
 	if (!sk)
 		return NULL;
 

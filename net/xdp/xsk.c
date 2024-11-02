@@ -1702,7 +1702,7 @@ static int xsk_create(struct net *net, struct socket *sock, int protocol,
 
 	sock->state = SS_UNCONNECTED;
 
-	sk = sk_alloc(net, PF_XDP, GFP_KERNEL, &xsk_proto, kern);
+	sk = sk_alloc(net, PF_XDP, GFP_KERNEL, &xsk_proto, kern, netref);
 	if (!sk)
 		return -ENOBUFS;
 

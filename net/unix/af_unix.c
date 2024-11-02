@@ -1010,6 +1010,7 @@ static struct sock *unix_create1(struct net *net, struct socket *sock, int type,
 				 bool kern, bool netref)
 {
 	struct unix_sock *u;
+	struct proto *prot;
 	struct sock *sk;
 	int err;
 
@@ -1020,10 +1021,11 @@ static struct sock *unix_create1(struct net *net, struct socket *sock, int type,
 	}
 
 	if (type == SOCK_STREAM)
-		sk = sk_alloc(net, PF_UNIX, GFP_KERNEL, &unix_stream_proto, kern);
-	else /*dgram and  seqpacket */
-		sk = sk_alloc(net, PF_UNIX, GFP_KERNEL, &unix_dgram_proto, kern);
+		prot = &unix_stream_proto;
+	else /* dgram and seqpacket */
+		prot = &unix_dgram_proto;
 
+	sk = sk_alloc(net, PF_UNIX, GFP_KERNEL, prot, kern, netref);
 	if (!sk) {
 		err = -ENOMEM;
 		goto err;

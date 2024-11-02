@@ -776,7 +776,8 @@ static struct sock *sctp_v6_create_accept_sk(struct sock *sk,
 	struct sctp6_sock *newsctp6sk;
 	struct sock *newsk;
 
-	newsk = sk_alloc(sock_net(sk), PF_INET6, GFP_KERNEL, sk->sk_prot, kern);
+	newsk = sk_alloc(sock_net(sk), PF_INET6, GFP_KERNEL, sk->sk_prot,
+			 arg->kern, arg->netref);
 	if (!newsk)
 		goto out;
 

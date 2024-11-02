@@ -508,8 +508,9 @@ static struct proto x25_proto = {
 static struct sock *x25_alloc_socket(struct net *net, bool kern, bool netref)
 {
 	struct x25_sock *x25;
-	struct sock *sk = sk_alloc(net, AF_X25, GFP_ATOMIC, &x25_proto, kern);
+	struct sock *sk;
 
+	sk = sk_alloc(net, AF_X25, GFP_ATOMIC, &x25_proto, kern, netref);
 	if (!sk)
 		goto out;
 
