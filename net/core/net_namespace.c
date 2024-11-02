@@ -364,6 +364,11 @@ static __net_init int setup_net(struct net *net)
 		if (error < 0)
 			goto out_undo;
 	}
+
+#ifdef CONFIG_DEBUG_NET
+	net->initialized = true;
+#endif
+
 	down_write(&net_rwsem);
 	list_add_tail_rcu(&net->list, &net_namespace_list);
 	up_write(&net_rwsem);
