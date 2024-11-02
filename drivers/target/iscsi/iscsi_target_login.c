@@ -837,10 +837,10 @@ int iscsit_setup_np(
 		return -EINVAL;
 	}
 
-	ret = sock_create(sockaddr->ss_family, np->np_sock_type,
-			np->np_ip_proto, &sock);
+	ret = sock_create_user(sockaddr->ss_family, np->np_sock_type,
+			       np->np_ip_proto, &sock);
 	if (ret < 0) {
-		pr_err("sock_create() failed.\n");
+		pr_err("sock_create_user() failed.\n");
 		return ret;
 	}
 	np->np_socket = sock;
