@@ -590,7 +590,8 @@ static const struct proto_ops data_sock_ops = {
 };
 
 static int
-data_sock_create(struct net *net, struct socket *sock, int protocol, int kern)
+data_sock_create(struct net *net, struct socket *sock, int protocol,
+		 bool kern, bool netref)
 {
 	struct sock *sk;
 
