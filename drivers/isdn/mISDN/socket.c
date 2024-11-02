@@ -747,7 +747,8 @@ static const struct proto_ops base_sock_ops = {
 
 
 static int
-base_sock_create(struct net *net, struct socket *sock, int protocol, int kern)
+base_sock_create(struct net *net, struct socket *sock, int protocol,
+		 bool kern, bool netref)
 {
 	struct sock *sk;
 
@@ -772,13 +773,14 @@ base_sock_create(struct net *net, struct socket *sock, int protocol, int kern)
 }
 
 static int
-mISDN_sock_create(struct net *net, struct socket *sock, int proto, int kern)
+mISDN_sock_create(struct net *net, struct socket *sock, int proto,
+		  bool kern, bool netref)
 {
 	int err = -EPROTONOSUPPORT;
 
 	switch (proto) {
 	case ISDN_P_BASE:
-		err = base_sock_create(net, sock, proto, kern);
+		err = base_sock_create(net, sock, proto, kern, netref);
 		break;
 	case ISDN_P_TE_S0:
 	case ISDN_P_NT_S0:
@@ -792,7 +794,7 @@ mISDN_sock_create(struct net *net, struct socket *sock, int proto, int kern)
 	case ISDN_P_B_L2DTMF:
 	case ISDN_P_B_L2DSP:
 	case ISDN_P_B_L2DSPHDLC:
-		err = data_sock_create(net, sock, proto, kern);
+		err = data_sock_create(net, sock, proto, kern, netref);
 		break;
 	default:
 		return err;

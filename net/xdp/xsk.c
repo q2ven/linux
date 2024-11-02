@@ -1687,7 +1687,7 @@ static void xsk_destruct(struct sock *sk)
 }
 
 static int xsk_create(struct net *net, struct socket *sock, int protocol,
-		      int kern)
+		      bool kern, bool netref)
 {
 	struct xdp_sock *xs;
 	struct sock *sk;

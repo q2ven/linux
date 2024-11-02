@@ -820,11 +820,11 @@ static struct bt_iso_qos default_qos = {
 };
 
 static struct sock *iso_sock_alloc(struct net *net, struct socket *sock,
-				   int proto, gfp_t prio, int kern)
+				   int proto, gfp_t prio, bool kern, bool netref)
 {
 	struct sock *sk;
 
-	sk = bt_sock_alloc(net, sock, &iso_proto, proto, prio, kern);
+	sk = bt_sock_alloc(net, sock, &iso_proto, proto, prio, kern, netref);
 	if (!sk)
 		return NULL;
 
@@ -842,7 +842,7 @@ static struct sock *iso_sock_alloc(struct net *net, struct socket *sock,
 }
 
 static int iso_sock_create(struct net *net, struct socket *sock, int protocol,
-			   int kern)
+			   bool kern, bool netref)
 {
 	struct sock *sk;
 
@@ -855,7 +855,7 @@ static int iso_sock_create(struct net *net, struct socket *sock, int protocol,
 
 	sock->ops = &iso_sock_ops;
 
-	sk = iso_sock_alloc(net, sock, protocol, GFP_ATOMIC, kern);
+	sk = iso_sock_alloc(net, sock, protocol, GFP_ATOMIC, kern, netref);
 	if (!sk)
 		return -ENOMEM;
 
@@ -1800,7 +1800,7 @@ static void iso_conn_ready(struct iso_conn *conn)
 		lock_sock(parent);
 
 		sk = iso_sock_alloc(sock_net(parent), NULL,
-				    BTPROTO_ISO, GFP_ATOMIC, 0);
+				    BTPROTO_ISO, GFP_ATOMIC, false, true);
 		if (!sk) {
 			release_sock(parent);
 			return;

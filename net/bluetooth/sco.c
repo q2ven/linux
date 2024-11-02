@@ -499,11 +499,11 @@ static struct proto sco_proto = {
 };
 
 static struct sock *sco_sock_alloc(struct net *net, struct socket *sock,
-				   int proto, gfp_t prio, int kern)
+				   int proto, gfp_t prio, bool kern, bool netref)
 {
 	struct sock *sk;
 
-	sk = bt_sock_alloc(net, sock, &sco_proto, proto, prio, kern);
+	sk = bt_sock_alloc(net, sock, &sco_proto, proto, prio, kern, netref);
 	if (!sk)
 		return NULL;
 
@@ -521,7 +521,7 @@ static struct sock *sco_sock_alloc(struct net *net, struct socket *sock,
 }
 
 static int sco_sock_create(struct net *net, struct socket *sock, int protocol,
-			   int kern)
+			   bool kern, bool netref)
 {
 	struct sock *sk;
 
@@ -534,7 +534,7 @@ static int sco_sock_create(struct net *net, struct socket *sock, int protocol,
 
 	sock->ops = &sco_sock_ops;
 
-	sk = sco_sock_alloc(net, sock, protocol, GFP_ATOMIC, kern);
+	sk = sco_sock_alloc(net, sock, protocol, GFP_ATOMIC, kern, netref);
 	if (!sk)
 		return -ENOMEM;
 
@@ -1296,7 +1296,7 @@ static void sco_conn_ready(struct sco_conn *conn)
 		lock_sock(parent);
 
 		sk = sco_sock_alloc(sock_net(parent), NULL,
-				    BTPROTO_SCO, GFP_ATOMIC, 0);
+				    BTPROTO_SCO, GFP_ATOMIC, false, true);
 		if (!sk) {
 			release_sock(parent);
 			sco_conn_unlock(conn);

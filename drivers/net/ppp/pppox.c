@@ -112,7 +112,7 @@ EXPORT_SYMBOL(pppox_compat_ioctl);
 #endif
 
 static int pppox_create(struct net *net, struct socket *sock, int protocol,
-			int kern)
+			bool kern, bool netref)
 {
 	int rc = -EPROTOTYPE;
 
@@ -126,7 +126,7 @@ static int pppox_create(struct net *net, struct socket *sock, int protocol,
 	    !try_module_get(pppox_protos[protocol]->owner))
 		goto out;
 
-	rc = pppox_protos[protocol]->create(net, sock, kern);
+	rc = pppox_protos[protocol]->create(net, sock, kern, netref);
 
 	module_put(pppox_protos[protocol]->owner);
 out:

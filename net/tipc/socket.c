@@ -456,7 +456,7 @@ static int tipc_sk_sock_err(struct socket *sock, long *timeout)
  * Return: 0 on success, errno otherwise
  */
 static int tipc_sk_create(struct net *net, struct socket *sock,
-			  int protocol, int kern)
+			  int protocol, bool kern, bool netref)
 {
 	const struct proto_ops *ops;
 	struct sock *sk;
@@ -2735,7 +2735,8 @@ static int tipc_accept(struct socket *sock, struct socket *new_sock,
 
 	buf = skb_peek(&sk->sk_receive_queue);
 
-	res = tipc_sk_create(sock_net(sock->sk), new_sock, 0, arg->kern);
+	res = tipc_sk_create(sock_net(sock->sk), new_sock, 0,
+			     arg->kern, !arg->kern);
 	if (res)
 		goto exit;
 	security_sk_clone(sock->sk, new_sock->sk);

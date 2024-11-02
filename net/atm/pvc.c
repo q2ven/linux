@@ -130,13 +130,13 @@ static const struct proto_ops pvc_proto_ops = {
 
 
 static int pvc_create(struct net *net, struct socket *sock, int protocol,
-		      int kern)
+		      bool kern, bool netref)
 {
 	if (net != &init_net)
 		return -EAFNOSUPPORT;
 
 	sock->ops = &pvc_proto_ops;
-	return vcc_create(net, sock, protocol, PF_ATMPVC, kern);
+	return vcc_create(net, sock, protocol, PF_ATMPVC, kern, netref);
 }
 
 static const struct net_proto_family pvc_family_ops = {
