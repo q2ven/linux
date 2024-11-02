@@ -1503,7 +1503,7 @@ EXPORT_SYMBOL(sock_wake_async);
  */
 
 static int __sock_create(struct net *net, int family, int type, int protocol,
-			 struct socket **res, int kern)
+			 struct socket **res, bool kern, bool netref)
 {
 	int err;
 	struct socket *sock;
@@ -1630,7 +1630,8 @@ out_release:
 
 int sock_create(int family, int type, int protocol, struct socket **res)
 {
-	return __sock_create(current->nsproxy->net_ns, family, type, protocol, res, 0);
+	return __sock_create(current->nsproxy->net_ns, family, type, protocol,
+			     res, false, true);
 }
 EXPORT_SYMBOL(sock_create);
 
@@ -1646,9 +1647,10 @@ EXPORT_SYMBOL(sock_create);
  *	Returns 0 or an error. This function internally uses GFP_KERNEL.
  */
 
-int sock_create_kern(struct net *net, int family, int type, int protocol, struct socket **res)
+int sock_create_kern(struct net *net, int family, int type, int protocol,
+		     struct socket **res)
 {
-	return __sock_create(net, family, type, protocol, res, 1);
+	return __sock_create(net, family, type, protocol, res, true, false);
 }
 EXPORT_SYMBOL(sock_create_kern);
 
