@@ -446,7 +446,8 @@ static void iucv_sock_init(struct sock *sk, struct sock *parent)
 	}
 }
 
-static struct sock *iucv_sock_alloc(struct socket *sock, int proto, gfp_t prio, int kern)
+static struct sock *iucv_sock_alloc(struct socket *sock, int proto, gfp_t prio,
+				    bool kern, bool hold_net)
 {
 	struct sock *sk;
 	struct iucv_sock *iucv;
@@ -1624,7 +1625,7 @@ static int iucv_callback_connreq(struct iucv_path *path,
 	}
 
 	/* Create the new socket */
-	nsk = iucv_sock_alloc(NULL, sk->sk_protocol, GFP_ATOMIC, 0);
+	nsk = iucv_sock_alloc(NULL, sk->sk_protocol, GFP_ATOMIC, false, true);
 	if (!nsk) {
 		err = pr_iucv->path_sever(path, user_data);
 		iucv_path_free(path);
@@ -1846,7 +1847,7 @@ static int afiucv_hs_callback_syn(struct sock *sk, struct sk_buff *skb)
 		goto out;
 	}
 
-	nsk = iucv_sock_alloc(NULL, sk->sk_protocol, GFP_ATOMIC, 0);
+	nsk = iucv_sock_alloc(NULL, sk->sk_protocol, GFP_ATOMIC, false, true);
 	bh_lock_sock(sk);
 	if ((sk->sk_state != IUCV_LISTEN) ||
 	    sk_acceptq_is_full(sk) ||
@@ -2221,7 +2222,7 @@ static const struct proto_ops iucv_sock_ops = {
 };
 
 static int iucv_sock_create(struct net *net, struct socket *sock, int protocol,
-			    int kern)
+			    bool kern, bool hold_net)
 {
 	struct sock *sk;
 
@@ -2240,7 +2241,7 @@ static int iucv_sock_create(struct net *net, struct socket *sock, int protocol,
 		return -ESOCKTNOSUPPORT;
 	}
 
-	sk = iucv_sock_alloc(sock, protocol, GFP_KERNEL, kern);
+	sk = iucv_sock_alloc(sock, protocol, GFP_KERNEL, kern, hold_net);
 	if (!sk)
 		return -ENOMEM;
 
