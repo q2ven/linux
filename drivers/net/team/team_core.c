@@ -990,11 +990,11 @@ static void team_port_disable(struct team *team,
 
 static void __team_compute_features(struct team *team)
 {
+	unsigned short max_hard_header_len = ETH_HLEN, max_needed_headroom = 0;
 	struct team_port *port;
 	netdev_features_t vlan_features = TEAM_VLAN_FEATURES &
 					  NETIF_F_ALL_FOR_ALL;
 	netdev_features_t enc_features  = TEAM_ENC_FEATURES;
-	unsigned short max_hard_header_len = ETH_HLEN;
 	unsigned int dst_release_flag = IFF_XMIT_DST_RELEASE |
 					IFF_XMIT_DST_RELEASE_PERM;
 
@@ -1012,6 +1012,8 @@ static void __team_compute_features(struct team *team)
 		dst_release_flag &= port->dev->priv_flags;
 		if (port->dev->hard_header_len > max_hard_header_len)
 			max_hard_header_len = port->dev->hard_header_len;
+		if (port->dev->needed_headroom > max_needed_headroom)
+			max_needed_headroom = port->dev->needed_headroom;
 	}
 	rcu_read_unlock();
 
@@ -1020,6 +1022,7 @@ static void __team_compute_features(struct team *team)
 				     NETIF_F_HW_VLAN_CTAG_TX |
 				     NETIF_F_HW_VLAN_STAG_TX;
 	team->dev->hard_header_len = max_hard_header_len;
+	team->dev->needed_heaedroom = max_needed_heaedroom;
 
 	team->dev->priv_flags &= ~IFF_XMIT_DST_RELEASE;
 	if (dst_release_flag == (IFF_XMIT_DST_RELEASE | IFF_XMIT_DST_RELEASE_PERM))
