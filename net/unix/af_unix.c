@@ -1981,6 +1981,7 @@ static int unix_dgram_sendmsg(struct socket *sock, struct msghdr *msg,
 {
 	struct sock *sk = sock->sk, *other = NULL;
 	struct unix_sock *u = unix_sk(sk);
+	enum skb_drop_reason reason;
 	struct scm_cookie scm;
 	struct sk_buff *skb;
 	int data_len = 0;
@@ -2041,15 +2042,19 @@ static int unix_dgram_sendmsg(struct socket *sock, struct msghdr *msg,
 		goto out;
 
 	err = unix_scm_to_skb(&scm, skb, true);
-	if (err < 0)
+	if (err < 0) {
+		reason = unix_scm_err_to_reason(err);
 		goto out_free;
+	}
 
 	skb_put(skb, len - data_len);
 	skb->data_len = data_len;
 	skb->len = len;
 	err = skb_copy_datagram_from_iter(skb, 0, &msg->msg_iter, len);
-	if (err)
+	if (err) {
+		reason = SKB_DROP_REASON_SKB_UCOPY_FAULT;
 		goto out_free;
+	}
 
 	timeo = sock_sndtimeo(sk, msg->msg_flags & MSG_DONTWAIT);
 
@@ -2059,12 +2064,14 @@ lookup:
 					msg->msg_namelen, sk->sk_type);
 		if (IS_ERR(other)) {
 			err = PTR_ERR(other);
+			reason = SKB_DROP_REASON_NO_SOCKET;
 			goto out_free;
 		}
 	} else {
 		other = unix_peer_get(sk);
 		if (!other) {
 			err = -ENOTCONN;
+			reason = SKB_DROP_REASON_NO_SOCKET;
 			goto out_free;
 		}
 	}
@@ -2072,6 +2079,7 @@ lookup:
 	if (sk_filter(other, skb) < 0) {
 		/* Toss the packet but do not return any error to the sender */
 		err = len;
+		reason = SKB_DROP_REASON_SOCKET_FILTER;
 		goto out_sock_put;
 	}
 
@@ -2082,6 +2090,7 @@ restart_locked:
 
 	if (!unix_may_send(sk, other)) {
 		err = -EPERM;
+		reason = SKB_DROP_REASON_UNIX_NO_PERM;
 		goto out_unlock;
 	}
 
@@ -2096,6 +2105,7 @@ restart_locked:
 			 * unlike SOCK_DGRAM wants.
 			 */
 			err = -EPIPE;
+			reason = SKB_DROP_REASON_SOCKET_PEER_CLOSED;
 			goto out_sock_put;
 		}
 
@@ -2112,6 +2122,7 @@ restart_locked:
 			unix_dgram_disconnected(sk, other);
 			sock_put(other);
 			err = -ECONNREFUSED;
+			reason = SKB_DROP_REASON_SOCKET_PEER_CLOSED;
 			goto out_sock_put;
 		}
 
@@ -2119,6 +2130,7 @@ restart_locked:
 
 		if (!msg->msg_namelen) {
 			err = -ECONNRESET;
+			reason = SKB_DROP_REASON_SOCKET_PEER_CLOSED;
 			goto out_sock_put;
 		}
 
@@ -2127,13 +2139,16 @@ restart_locked:
 
 	if (other->sk_shutdown & RCV_SHUTDOWN) {
 		err = -EPIPE;
+		reason = SKB_DROP_REASON_SOCKET_RCV_SHUTDOWN;
 		goto out_unlock;
 	}
 
 	if (sk->sk_type != SOCK_SEQPACKET) {
 		err = security_unix_may_send(sk->sk_socket, other->sk_socket);
-		if (err)
+		if (err) {
+			reason = SKB_DROP_REASON_SECURITY_HOOK;
 			goto out_unlock;
+		}
 	}
 
 	/* other == sk && unix_peer(other) != sk if
@@ -2147,8 +2162,10 @@ restart_locked:
 			timeo = unix_wait_for_peer(other, timeo);
 
 			err = sock_intr_errno(timeo);
-			if (signal_pending(current))
+			if (signal_pending(current)) {
+				reason = SKB_DROP_REASON_SOCKET_RCVBUFF;
 				goto out_sock_put;
+			}
 
 			goto restart;
 		}
@@ -2162,6 +2179,12 @@ restart_locked:
 		    unix_dgram_peer_wake_me(sk, other)) {
 			err = -EAGAIN;
 			sk_locked = 1;
+		}
+
+		unix_state_unlock(sk);
+
+		if (err) {
+			reason = SKB_DROP_REASON_SOCKET_RCVBUFF;
 			goto out_unlock;
 		}
 
@@ -2192,7 +2215,7 @@ out_unlock:
 out_sock_put:
 	sock_put(other);
 out_free:
-	kfree_skb(skb);
+	kfree_skb_reason(skb, reason);
 out:
 	scm_destroy(&scm);
 	return err;

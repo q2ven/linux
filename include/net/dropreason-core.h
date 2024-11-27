@@ -16,6 +16,7 @@
 	FN(SOCKET_PEER_CLOSED)		\
 	FN(UNIX_TOO_MANY_FD)		\
 	FN(UNIX_SKIP_OOB)		\
+	FN(UNIX_NO_PERM)		\
 	FN(UDP_CSUM)			\
 	FN(NETFILTER_DROP)		\
 	FN(OTHERHOST)			\
@@ -167,6 +168,8 @@ enum skb_drop_reason {
 	 * without MSG_OOB.
 	 */
 	SKB_DROP_REASON_UNIX_SKIP_OOB,
+	/** @SKB_DROP_REASON_UNIX_NO_PERM: No permission. */
+	SKB_DROP_REASON_UNIX_NO_PERM,
 	/** @SKB_DROP_REASON_UDP_CSUM: UDP checksum error */
 	SKB_DROP_REASON_UDP_CSUM,
 	/** @SKB_DROP_REASON_NETFILTER_DROP: dropped by netfilter */
