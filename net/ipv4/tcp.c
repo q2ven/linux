@@ -3220,8 +3220,12 @@ void tcp_close(struct sock *sk, long timeout)
 	lock_sock(sk);
 	__tcp_close(sk, timeout);
 	release_sock(sk);
+
+#ifdef CONFIG_NET_NS_REFCNT_TRACKER
 	if (!sk->sk_net_refcnt)
-		inet_csk_clear_xmit_timers_sync(sk);
+		stack_depot_print(sk->ns_tracker);
+#endif
+
 	sock_put(sk);
 }
 EXPORT_SYMBOL(tcp_close);
