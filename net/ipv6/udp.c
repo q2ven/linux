@@ -465,14 +465,13 @@ static int udp6_skb_len(struct sk_buff *skb)
 int udpv6_recvmsg(struct sock *sk, struct msghdr *msg, size_t len,
 		  int flags, int *addr_len)
 {
+	int off, err, peeking = flags & MSG_PEEK;
 	struct ipv6_pinfo *np = inet6_sk(sk);
 	struct inet_sock *inet = inet_sk(sk);
-	struct sk_buff *skb;
-	unsigned int ulen, copied;
-	int off, err, peeking = flags & MSG_PEEK;
-	int is_udplite = IS_UDPLITE(sk);
 	struct udp_mib __percpu *mib;
 	bool checksum_valid = false;
+	unsigned int ulen, copied;
+	struct sk_buff *skb;
 	int is_udp4;
 
 	if (flags & MSG_ERRQUEUE)
@@ -503,8 +502,7 @@ try_again:
 	 * coverage checksum (UDP-Lite), do it before the copy.
 	 */
 
-	if (copied < ulen || peeking ||
-	    (is_udplite && UDP_SKB_CB(skb)->partial_cov)) {
+	if (copied < ulen || peeking) {
 		checksum_valid = udp_skb_csum_unnecessary(skb) ||
 				!__udp_lib_checksum_complete(skb);
 		if (!checksum_valid)
@@ -1083,7 +1081,7 @@ static int __udp6_lib_rcv(struct sk_buff *skb, struct udp_table *udptable,
 		}
 	}
 
-	if (udp6_csum_init(skb, uh, proto))
+	if (udp6_csum_init(skb, uh))
 		goto csum_error;
 
 	/* Check if the socket is already available, e.g. due to early demux */
@@ -1346,7 +1344,6 @@ static int udp_v6_send_skb(struct sk_buff *skb, struct flowi6 *fl6,
 	struct udphdr *uh;
 	int err = 0;
 	int is_udplite = IS_UDPLITE(sk);
-	__wsum csum = 0;
 	int offset = skb_transport_offset(skb);
 	int len = skb->len - offset;
 	int datalen = len - sizeof(*uh);
@@ -1392,21 +1389,18 @@ static int udp_v6_send_skb(struct sk_buff *skb, struct flowi6 *fl6,
 		}
 	}
 
-	if (is_udplite)
-		csum = udplite_csum(skb);
-	else if (udp_get_no_check6_tx(sk)) {   /* UDP csum disabled */
+	if (udp_get_no_check6_tx(sk)) {   /* UDP csum disabled */
 		skb->ip_summed = CHECKSUM_NONE;
 		goto send;
 	} else if (skb->ip_summed == CHECKSUM_PARTIAL) { /* UDP hardware csum */
 csum_partial:
 		udp6_hwcsum_outgoing(sk, skb, &fl6->saddr, &fl6->daddr, len);
 		goto send;
-	} else
-		csum = udp_csum(skb);
+	}
 
 	/* add protocol-dependent pseudo-header */
 	uh->check = csum_ipv6_magic(&fl6->saddr, &fl6->daddr,
-				    len, fl6->flowi6_proto, csum);
+				    len, fl6->flowi6_proto, udp_csum(skb));
 	if (uh->check == 0)
 		uh->check = CSUM_MANGLED_0;
 
