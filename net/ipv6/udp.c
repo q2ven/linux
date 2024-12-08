@@ -56,7 +56,6 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <trace/events/skb.h>
-#include <net/udplite.h>
 
 static void udpv6_destruct_sock(struct sock *sk)
 {
@@ -1029,7 +1028,7 @@ static int udp6_unicast_rcv_skb(struct sock *sk, struct sk_buff *skb,
 {
 	int ret;
 
-	if (inet_get_convert_csum(sk) && uh->check && !IS_UDPLITE(sk))
+	if (inet_get_convert_csum(sk) && uh->check)
 		skb_checksum_try_convert(skb, IPPROTO_UDP, ip6_compute_pseudo);
 
 	ret = udpv6_queue_rcv_skb(sk, skb);
@@ -1341,12 +1340,13 @@ static int udp_v6_send_skb(struct sk_buff *skb, struct flowi6 *fl6,
 			   struct inet_cork *cork)
 {
 	struct sock *sk = skb->sk;
+	int offset, len, datalen;
 	struct udphdr *uh;
 	int err = 0;
-	int is_udplite = IS_UDPLITE(sk);
-	int offset = skb_transport_offset(skb);
-	int len = skb->len - offset;
-	int datalen = len - sizeof(*uh);
+
+	offset = skb_transport_offset(skb);
+	len = skb->len - offset;
+	datalen = len - sizeof(*uh);
 
 	/*
 	 * Create a UDP header
@@ -1373,7 +1373,7 @@ static int udp_v6_send_skb(struct sk_buff *skb, struct flowi6 *fl6,
 			kfree_skb(skb);
 			return -EINVAL;
 		}
-		if (is_udplite || dst_xfrm(skb_dst(skb))) {
+		if (dst_xfrm(skb_dst(skb))) {
 			kfree_skb(skb);
 			return -EIO;
 		}
@@ -1440,26 +1440,23 @@ out:
 
 int udpv6_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 {
-	struct ipv6_txoptions opt_space;
-	struct udp_sock *up = udp_sk(sk);
+	int corkreq = udp_test_bit(CORK, sk) || msg->msg_flags & MSG_MORE;
+	DECLARE_SOCKADDR(struct sockaddr_in6 *, sin6, msg->msg_name);
+	struct ipv6_txoptions *opt = NULL, *opt_to_free = NULL;
+	struct in6_addr *daddr, *final_p, final;
+	struct ip6_flowlabel *flowlabel = NULL;
 	struct inet_sock *inet = inet_sk(sk);
 	struct ipv6_pinfo *np = inet6_sk(sk);
-	DECLARE_SOCKADDR(struct sockaddr_in6 *, sin6, msg->msg_name);
-	struct in6_addr *daddr, *final_p, final;
-	struct ipv6_txoptions *opt = NULL;
-	struct ipv6_txoptions *opt_to_free = NULL;
-	struct ip6_flowlabel *flowlabel = NULL;
-	struct inet_cork_full cork;
-	struct flowi6 *fl6 = &cork.fl.u.ip6;
-	struct dst_entry *dst;
-	struct ipcm6_cookie ipc6;
+	struct udp_sock *up = udp_sk(sk);
+	struct ipv6_txoptions opt_space;
 	int addr_len = msg->msg_namelen;
+	struct inet_cork_full cork;
+	struct ipcm6_cookie ipc6;
 	bool connected = false;
+	struct dst_entry *dst;
+	struct flowi6 *fl6;
 	int ulen = len;
-	int corkreq = udp_test_bit(CORK, sk) || msg->msg_flags & MSG_MORE;
 	int err;
-	int is_udplite = IS_UDPLITE(sk);
-	int (*getfrag)(void *, char *, int, int, int, struct sk_buff *);
 
 	ipcm6_init_sk(&ipc6, sk);
 	ipc6.gso_size = READ_ONCE(up->gso_size);
@@ -1519,7 +1516,6 @@ do_udp_sendmsg:
 	if (len > INT_MAX - sizeof(struct udphdr))
 		return -EMSGSIZE;
 
-	getfrag  =  is_udplite ?  udplite_getfrag : ip_generic_getfrag;
 	if (READ_ONCE(up->pending)) {
 		if (READ_ONCE(up->pending) == AF_INET)
 			return udp_sendmsg(sk, msg, len);
@@ -1540,6 +1536,7 @@ do_udp_sendmsg:
 	}
 	ulen += sizeof(struct udphdr);
 
+	fl6 = &cork.fl.u.ip6;
 	memset(fl6, 0, sizeof(*fl6));
 
 	if (sin6) {
@@ -1688,7 +1685,7 @@ back_from_confirm:
 	if (!corkreq) {
 		struct sk_buff *skb;
 
-		skb = ip6_make_skb(sk, getfrag, msg, ulen,
+		skb = ip6_make_skb(sk, ip_generic_getfrag, msg, ulen,
 				   sizeof(struct udphdr), &ipc6,
 				   dst_rt6_info(dst),
 				   msg->msg_flags, &cork);
@@ -1714,8 +1711,8 @@ back_from_confirm:
 
 do_append_data:
 	up->len += ulen;
-	err = ip6_append_data(sk, getfrag, msg, ulen, sizeof(struct udphdr),
-			      &ipc6, fl6, dst_rt6_info(dst),
+	err = ip6_append_data(sk, ip_generic_getfrag, msg, ulen,
+			      sizeof(struct udphdr), &ipc6, fl6, dst_rt6_info(dst),
 			      corkreq ? msg->msg_flags|MSG_MORE : msg->msg_flags);
 	if (err)
 		udp_v6_flush_pending_frames(sk);
