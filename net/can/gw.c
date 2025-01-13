@@ -1250,19 +1250,18 @@ static int __net_init cangw_pernet_init(struct net *net)
 	return 0;
 }
 
-static void __net_exit cangw_pernet_exit_batch(struct list_head *net_list)
+static void __net_exit cangw_pernet_exit_batch_rtnl(struct list_head *net_exit_list,
+						    struct list_head *dev_kill_list)
 {
 	struct net *net;
 
-	rtnl_lock();
-	list_for_each_entry(net, net_list, exit_list)
+	list_for_each_entry(net, net_exit_list, exit_list)
 		cgw_remove_all_jobs(net);
-	rtnl_unlock();
 }
 
 static struct pernet_operations cangw_pernet_ops = {
 	.init = cangw_pernet_init,
-	.exit_batch = cangw_pernet_exit_batch,
+	.exit_batch_rtnl = cangw_pernet_exit_batch_rtnl,
 };
 
 static const struct rtnl_msg_handler cgw_rtnl_msg_handlers[] __initconst_or_module = {
