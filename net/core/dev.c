@@ -12309,8 +12309,6 @@ static int __net_init netdev_init(struct net *net)
 	BUILD_BUG_ON(GRO_HASH_BUCKETS >
 		     BITS_PER_BYTE * sizeof_field(struct gro_node, bitmask));
 
-	INIT_LIST_HEAD(&net->dev_base_head);
-
 	net->dev_name_head = netdev_create_hash();
 	if (net->dev_name_head == NULL)
 		goto err_name;
@@ -12467,7 +12465,7 @@ static void __net_exit default_device_exit_net(struct net *net)
 	}
 }
 
-static void __net_exit default_device_exit_batch(struct list_head *net_list)
+void __net_exit default_device_exit_batch(struct list_head *net_list)
 {
 	/* At exit all network devices most be removed from a network
 	 * namespace.  Do this in the reverse order of registration.
@@ -12495,10 +12493,6 @@ static void __net_exit default_device_exit_batch(struct list_head *net_list)
 	unregister_netdevice_many(&dev_kill_list);
 	rtnl_unlock();
 }
-
-static struct pernet_operations __net_initdata default_device_ops = {
-	.exit_batch = default_device_exit_batch,
-};
 
 static void __init net_dev_struct_check(void)
 {
@@ -12695,9 +12689,6 @@ static int __init net_dev_init(void)
 	 * that disappears.
 	 */
 	if (register_pernet_device(&loopback_net_ops))
-		goto out;
-
-	if (register_pernet_device(&default_device_ops))
 		goto out;
 
 	open_softirq(NET_TX_SOFTIRQ, net_tx_action);

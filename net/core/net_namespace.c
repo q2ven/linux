@@ -27,6 +27,8 @@
 #include <net/net_namespace.h>
 #include <net/netns/generic.h>
 
+#include "dev.h"
+
 /*
  *	Our network namespace constructor/destructor lists
  */
@@ -331,6 +333,7 @@ static __net_init void preinit_net(struct net *net, struct user_namespace *user_
 	net->dev_base_seq = 1;
 	net->user_ns = user_ns;
 
+	INIT_LIST_HEAD(&net->dev_base_head);
 	idr_init(&net->netns_ids);
 	spin_lock_init(&net->nsid_lock);
 	mutex_init(&net->ipv4.ra_mutex);
@@ -388,6 +391,8 @@ out_undo:
 	}
 	unregister_netdevice_many(&dev_kill_list);
 	rtnl_unlock();
+
+	default_device_exit_batch(&net_exit_list);
 
 	ops = saved_ops;
 	list_for_each_entry_continue_reverse(ops, &pernet_list, list)
@@ -646,6 +651,8 @@ static void cleanup_net(struct work_struct *work)
 	}
 	unregister_netdevice_many(&dev_kill_list);
 	rtnl_unlock();
+
+	default_device_exit_batch(&net_exit_list);
 
 	/* Run all of the network namespace exit methods */
 	list_for_each_entry_reverse(ops, &pernet_list, list)
