@@ -2670,24 +2670,35 @@ static void __net_exit list_vports_from_net(struct net *net, struct net *dnet,
 	}
 }
 
-static void __net_exit ovs_exit_net(struct net *dnet)
+static void __net_exit ovs_exit_net_batch(struct list_head *net_exit_list)
 {
-	struct datapath *dp, *dp_next;
-	struct ovs_net *ovs_net = net_generic(dnet, ovs_net_id);
 	struct vport *vport, *vport_next;
+	struct ovs_net *ovs_net;
 	struct net *net;
 	LIST_HEAD(head);
 
 	ovs_lock();
 
-	ovs_ct_exit(dnet);
+	list_for_each_entry(net, net_exit_list, exit_list) {
+		struct datapath *dp, *dp_next;
 
-	list_for_each_entry_safe(dp, dp_next, &ovs_net->dps, list_node)
-		__dp_destroy(dp);
+		ovs_ct_exit(net);
+
+		ovs_net = net_generic(net, ovs_net_id);
+
+		list_for_each_entry_safe(dp, dp_next, &ovs_net->dps, list_node)
+			__dp_destroy(dp);
+	}
 
 	down_read(&net_rwsem);
-	for_each_net(net)
-		list_vports_from_net(net, dnet, &head);
+
+	list_for_each_entry(net, net_exit_list, exit_list) {
+		struct net *tmp;
+
+		for_each_net(tmp)
+			list_vports_from_net(tmp, net, &head);
+	}
+
 	up_read(&net_rwsem);
 
 	/* Detach all vports from given namespace. */
@@ -2698,13 +2709,16 @@ static void __net_exit ovs_exit_net(struct net *dnet)
 
 	ovs_unlock();
 
-	cancel_delayed_work_sync(&ovs_net->masks_rebalance);
-	cancel_work_sync(&ovs_net->dp_notify_work);
+	list_for_each_entry(net, net_exit_list, exit_list) {
+		ovs_net = net_generic(net, ovs_net_id);
+		cancel_delayed_work_sync(&ovs_net->masks_rebalance);
+		cancel_work_sync(&ovs_net->dp_notify_work);
+	}
 }
 
 static struct pernet_operations ovs_net_ops = {
 	.init = ovs_init_net,
-	.exit = ovs_exit_net,
+	.exit_batch = ovs_exit_net_batch,
 	.id   = &ovs_net_id,
 	.size = sizeof(struct ovs_net),
 };
