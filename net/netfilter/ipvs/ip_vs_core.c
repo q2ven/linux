@@ -2368,7 +2368,12 @@ static void __net_exit __ip_vs_dev_cleanup_batch(struct list_head *net_list)
 		ip_vs_unregister_hooks(ipvs, AF_INET);
 		ip_vs_unregister_hooks(ipvs, AF_INET6);
 		ipvs->enable = 0;	/* Disable packet reception */
-		smp_wmb();
+	}
+
+	smp_wmb();
+
+	list_for_each_entry(net, net_list, exit_list) {
+		ipvs = net_ipvs(net);
 		ip_vs_sync_net_cleanup(ipvs);
 	}
 }

@@ -520,12 +520,12 @@ static int caif_init_net(struct net *net)
 
 static void caif_exit_net(struct net *net)
 {
+	struct caif_device_entry_list *caifdevs;
 	struct caif_device_entry *caifd, *tmp;
-	struct caif_device_entry_list *caifdevs =
-	    caif_device_list(net);
-	struct cfcnfg *cfg =  get_cfcnfg(net);
+	struct cfcnfg *cfg = get_cfcnfg(net);
 
-	rtnl_lock();
+	caifdevs = caif_device_list(net);
+
 	mutex_lock(&caifdevs->lock);
 
 	list_for_each_entry_safe(caifd, tmp, &caifdevs->list, list) {
@@ -541,7 +541,7 @@ static void caif_exit_net(struct net *net)
 			msleep(250);
 			i++;
 		}
-		synchronize_rcu();
+//		synchronize_rcu();
 		dev_put(caifd->netdev);
 		free_percpu(caifd->pcpu_refcnt);
 		kfree(caifd);
@@ -549,7 +549,15 @@ static void caif_exit_net(struct net *net)
 	cfcnfg_remove(cfg);
 
 	mutex_unlock(&caifdevs->lock);
-	rtnl_unlock();
+}
+
+static void caif_exit_net_batch_rtnl(struct list_head *net_exit_list,
+				     struct list_head *dev_kill_list)
+{
+	struct net *net;
+
+	list_for_each_entry(net, net_exit_list, exit_list)
+		caif_exit_net(net);
 }
 
 static struct pernet_operations caif_net_ops = {

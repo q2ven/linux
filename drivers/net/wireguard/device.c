@@ -408,14 +408,18 @@ static struct rtnl_link_ops link_ops __read_mostly = {
 	.newlink		= wg_newlink,
 };
 
-static void wg_netns_pre_exit(struct net *net)
+static void wg_netns_exit_batch_rtnl(struct list_head *net_exit_list,
+				     struct list_head *dev_kill_list)
 {
 	struct wg_device *wg;
 	struct wg_peer *peer;
+	struct net *net;
 
-	rtnl_lock();
-	list_for_each_entry(wg, &device_list, device_list) {
-		if (rcu_access_pointer(wg->creating_net) == net) {
+	list_for_each_entry(net, net_exit_list, exit_list) {
+		list_for_each_entry(wg, &device_list, device_list) {
+			if (!net_eq(rcu_access_pointer(wg->creating_net), net))
+				continue;
+
 			pr_debug("%s: Creating namespace exiting\n", wg->dev->name);
 			netif_carrier_off(wg->dev);
 			mutex_lock(&wg->device_update_lock);
@@ -426,11 +430,10 @@ static void wg_netns_pre_exit(struct net *net)
 			mutex_unlock(&wg->device_update_lock);
 		}
 	}
-	rtnl_unlock();
 }
 
 static struct pernet_operations pernet_ops = {
-	.pre_exit = wg_netns_pre_exit
+	.exit_batch_rtnl = wg_netns_exit_batch_rtnl
 };
 
 int __init wg_device_init(void)
