@@ -46,7 +46,6 @@ static int rtnl_net_debug_event(struct notifier_block *nb,
 	case NETDEV_CHANGELOWERSTATE:
 	case NETDEV_UDP_TUNNEL_PUSH_INFO:
 	case NETDEV_UDP_TUNNEL_DROP_INFO:
-	case NETDEV_CHANGE_TX_QUEUE_LEN:
 	case NETDEV_CVLAN_FILTER_PUSH_INFO:
 	case NETDEV_CVLAN_FILTER_DROP_INFO:
 	case NETDEV_SVLAN_FILTER_PUSH_INFO:
@@ -60,6 +59,7 @@ static int rtnl_net_debug_event(struct notifier_block *nb,
 		break;
 
 	case NETDEV_CHANGENAME:
+	case NETDEV_CHANGE_TX_QUEUE_LEN:
 		ASSERT_RTNL_NET(net);
 		break;
 	}

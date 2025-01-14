@@ -95,7 +95,7 @@ static ssize_t netdev_store(struct device *dev, struct device_attribute *attr,
 	if (ret)
 		goto err;
 
-	if (!rtnl_trylock())
+	if (!rtnl_net_trylock(net))
 		return restart_syscall();
 
 	if (dev_isalive(netdev)) {
@@ -103,7 +103,8 @@ static ssize_t netdev_store(struct device *dev, struct device_attribute *attr,
 		if (ret == 0)
 			ret = len;
 	}
-	rtnl_unlock();
+
+	rtnl_net_unlock(net);
  err:
 	return ret;
 }
@@ -493,7 +494,7 @@ static ssize_t ifalias_store(struct device *dev, struct device_attribute *attr,
 	if (len >  0 && buf[len - 1] == '\n')
 		--count;
 
-	if (!rtnl_trylock())
+	if (!rtnl_net_trylock(net))
 		return restart_syscall();
 
 	if (dev_isalive(netdev)) {
@@ -504,7 +505,7 @@ static ssize_t ifalias_store(struct device *dev, struct device_attribute *attr,
 		netdev_state_change(netdev);
 	}
 err:
-	rtnl_unlock();
+	rtnl_net_unlock(net);
 
 	return ret;
 }
@@ -1357,8 +1358,9 @@ static ssize_t tx_maxrate_show(struct netdev_queue *queue,
 static ssize_t tx_maxrate_store(struct netdev_queue *queue,
 				const char *buf, size_t len)
 {
-	struct net_device *dev = queue->dev;
 	int err, index = get_netdev_queue_index(queue);
+	struct net_device *dev = queue->dev;
+	struct net *net = dev_net(dev);
 	u32 rate = 0;
 
 	if (!capable(CAP_NET_ADMIN))
@@ -1374,14 +1376,14 @@ static ssize_t tx_maxrate_store(struct netdev_queue *queue,
 	if (err < 0)
 		return err;
 
-	if (!rtnl_trylock())
+	if (!rtnl_net_trylock(net))
 		return restart_syscall();
 
 	err = -EOPNOTSUPP;
 	if (dev->netdev_ops->ndo_set_tx_maxrate)
 		err = dev->netdev_ops->ndo_set_tx_maxrate(dev, index, rate);
 
-	rtnl_unlock();
+	rtnl_net_unlock(net);
 	if (!err) {
 		queue->tx_maxrate = rate;
 		return len;
@@ -1658,6 +1660,7 @@ static ssize_t xps_cpus_store(struct netdev_queue *queue,
 			      const char *buf, size_t len)
 {
 	struct net_device *dev = queue->dev;
+	struct net *net = dev_net(dev);
 	unsigned int index;
 	cpumask_var_t mask;
 	int err;
@@ -1679,13 +1682,13 @@ static ssize_t xps_cpus_store(struct netdev_queue *queue,
 		return err;
 	}
 
-	if (!rtnl_trylock()) {
+	if (!rtnl_net_trylock(net)) {
 		free_cpumask_var(mask);
 		return restart_syscall();
 	}
 
 	err = netif_set_xps_queue(dev, mask, index);
-	rtnl_unlock();
+	rtnl_net_unlock(net);
 
 	free_cpumask_var(mask);
 
@@ -1739,7 +1742,7 @@ static ssize_t xps_rxqs_store(struct netdev_queue *queue, const char *buf,
 		return err;
 	}
 
-	if (!rtnl_trylock()) {
+	if (!rtnl_net_trylock(net)) {
 		bitmap_free(mask);
 		return restart_syscall();
 	}
@@ -1748,7 +1751,7 @@ static ssize_t xps_rxqs_store(struct netdev_queue *queue, const char *buf,
 	err = __netif_set_xps_queue(dev, mask, index, XPS_RXQS);
 	cpus_read_unlock();
 
-	rtnl_unlock();
+	rtnl_net_unlock(net);
 
 	bitmap_free(mask);
 	return err ? : len;
