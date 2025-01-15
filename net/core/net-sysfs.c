@@ -232,9 +232,10 @@ static ssize_t carrier_show(struct device *dev,
 			    struct device_attribute *attr, char *buf)
 {
 	struct net_device *netdev = to_net_dev(dev);
+	struct net *net = dev_net(netdev);
 	int ret = -EINVAL;
 
-	if (!rtnl_trylock())
+	if (!rtnl_net_trylock(net))
 		return restart_syscall();
 
 	if (netif_running(netdev)) {
@@ -245,7 +246,7 @@ static ssize_t carrier_show(struct device *dev,
 
 		ret = sysfs_emit(buf, fmt_dec, !!netif_carrier_ok(netdev));
 	}
-	rtnl_unlock();
+	rtnl_net_unlock(net);
 
 	return ret;
 }
@@ -255,6 +256,7 @@ static ssize_t speed_show(struct device *dev,
 			  struct device_attribute *attr, char *buf)
 {
 	struct net_device *netdev = to_net_dev(dev);
+	struct net *net = dev_net(netdev);
 	int ret = -EINVAL;
 
 	/* The check is also done in __ethtool_get_link_ksettings; this helps
@@ -263,7 +265,7 @@ static ssize_t speed_show(struct device *dev,
 	if (!netdev->ethtool_ops->get_link_ksettings)
 		return ret;
 
-	if (!rtnl_trylock())
+	if (!rtnl_net_trylock(net))
 		return restart_syscall();
 
 	if (netif_running(netdev)) {
@@ -272,7 +274,7 @@ static ssize_t speed_show(struct device *dev,
 		if (!__ethtool_get_link_ksettings(netdev, &cmd))
 			ret = sysfs_emit(buf, fmt_dec, cmd.base.speed);
 	}
-	rtnl_unlock();
+	rtnl_net_unlock(net);
 	return ret;
 }
 static DEVICE_ATTR_RO(speed);
@@ -281,6 +283,7 @@ static ssize_t duplex_show(struct device *dev,
 			   struct device_attribute *attr, char *buf)
 {
 	struct net_device *netdev = to_net_dev(dev);
+	struct net *net = dev_net(netdev);
 	int ret = -EINVAL;
 
 	/* The check is also done in __ethtool_get_link_ksettings; this helps
@@ -289,7 +292,7 @@ static ssize_t duplex_show(struct device *dev,
 	if (!netdev->ethtool_ops->get_link_ksettings)
 		return ret;
 
-	if (!rtnl_trylock())
+	if (!rtnl_net_trylock(net))
 		return restart_syscall();
 
 	if (netif_running(netdev)) {
@@ -312,7 +315,7 @@ static ssize_t duplex_show(struct device *dev,
 			ret = sysfs_emit(buf, "%s\n", duplex);
 		}
 	}
-	rtnl_unlock();
+	rtnl_net_unlock(net);
 	return ret;
 }
 static DEVICE_ATTR_RO(duplex);
@@ -551,6 +554,7 @@ static ssize_t phys_port_id_show(struct device *dev,
 				 struct device_attribute *attr, char *buf)
 {
 	struct net_device *netdev = to_net_dev(dev);
+	struct net *net = dev_net(netdev);
 	ssize_t ret = -EINVAL;
 
 	/* The check is also done in dev_get_phys_port_id; this helps returning
@@ -559,7 +563,7 @@ static ssize_t phys_port_id_show(struct device *dev,
 	if (!netdev->netdev_ops->ndo_get_phys_port_id)
 		return -EOPNOTSUPP;
 
-	if (!rtnl_trylock())
+	if (!rtnl_net_trylock(net))
 		return restart_syscall();
 
 	if (dev_isalive(netdev)) {
@@ -569,7 +573,7 @@ static ssize_t phys_port_id_show(struct device *dev,
 		if (!ret)
 			ret = sysfs_emit(buf, "%*phN\n", ppid.id_len, ppid.id);
 	}
-	rtnl_unlock();
+	rtnl_net_unlock(net);
 
 	return ret;
 }
@@ -579,6 +583,7 @@ static ssize_t phys_port_name_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
 	struct net_device *netdev = to_net_dev(dev);
+	struct net *net = dev_net(netdev);
 	ssize_t ret = -EINVAL;
 
 	/* The checks are also done in dev_get_phys_port_name; this helps
@@ -588,7 +593,7 @@ static ssize_t phys_port_name_show(struct device *dev,
 	    !netdev->devlink_port)
 		return -EOPNOTSUPP;
 
-	if (!rtnl_trylock())
+	if (!rtnl_net_trylock(net))
 		return restart_syscall();
 
 	if (dev_isalive(netdev)) {
@@ -598,7 +603,7 @@ static ssize_t phys_port_name_show(struct device *dev,
 		if (!ret)
 			ret = sysfs_emit(buf, "%s\n", name);
 	}
-	rtnl_unlock();
+	rtnl_net_unlock(net);
 
 	return ret;
 }
@@ -608,6 +613,7 @@ static ssize_t phys_switch_id_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
 	struct net_device *netdev = to_net_dev(dev);
+	struct net *net = dev_net(netdev);
 	ssize_t ret = -EINVAL;
 
 	/* The checks are also done in dev_get_phys_port_name; this helps
@@ -618,7 +624,7 @@ static ssize_t phys_switch_id_show(struct device *dev,
 	    !netdev->devlink_port)
 		return -EOPNOTSUPP;
 
-	if (!rtnl_trylock())
+	if (!rtnl_net_trylock(net))
 		return restart_syscall();
 
 	if (dev_isalive(netdev)) {
@@ -628,7 +634,7 @@ static ssize_t phys_switch_id_show(struct device *dev,
 		if (!ret)
 			ret = sysfs_emit(buf, "%*phN\n", ppid.id_len, ppid.id);
 	}
-	rtnl_unlock();
+	rtnl_net_unlock(net);
 
 	return ret;
 }
@@ -1307,13 +1313,14 @@ static ssize_t traffic_class_show(struct netdev_queue *queue,
 				  char *buf)
 {
 	struct net_device *dev = queue->dev;
+	struct net *net = dev_net(dev);
 	int num_tc, tc;
 	int index;
 
 	if (!netif_is_multiqueue(dev))
 		return -ENOENT;
 
-	if (!rtnl_trylock())
+	if (!rtnl_net_trylock(net))
 		return restart_syscall();
 
 	index = get_netdev_queue_index(queue);
@@ -1324,7 +1331,7 @@ static ssize_t traffic_class_show(struct netdev_queue *queue,
 	num_tc = dev->num_tc;
 	tc = netdev_txq_to_tc(dev, index);
 
-	rtnl_unlock();
+	rtnl_net_unlock(net);
 
 	if (tc < 0)
 		return -EINVAL;
@@ -1616,6 +1623,7 @@ out_no_maps:
 static ssize_t xps_cpus_show(struct netdev_queue *queue, char *buf)
 {
 	struct net_device *dev = queue->dev;
+	struct net *net = dev_net(dev);
 	unsigned int index;
 	int len, tc;
 
@@ -1624,7 +1632,7 @@ static ssize_t xps_cpus_show(struct netdev_queue *queue, char *buf)
 
 	index = get_netdev_queue_index(queue);
 
-	if (!rtnl_trylock())
+	if (!rtnl_net_trylock(net))
 		return restart_syscall();
 
 	/* If queue belongs to subordinate dev use its map */
@@ -1632,13 +1640,13 @@ static ssize_t xps_cpus_show(struct netdev_queue *queue, char *buf)
 
 	tc = netdev_txq_to_tc(dev, index);
 	if (tc < 0) {
-		rtnl_unlock();
+		rtnl_net_unlock(net);
 		return -EINVAL;
 	}
 
 	/* Make sure the subordinate device can't be freed */
 	get_device(&dev->dev);
-	rtnl_unlock();
+	rtnl_net_unlock(net);
 
 	len = xps_queue_show(dev, index, tc, buf, XPS_CPUS);
 
@@ -1690,16 +1698,17 @@ static struct netdev_queue_attribute xps_cpus_attribute __ro_after_init
 static ssize_t xps_rxqs_show(struct netdev_queue *queue, char *buf)
 {
 	struct net_device *dev = queue->dev;
+	struct net *net = dev_net(dev);
 	unsigned int index;
 	int tc;
 
 	index = get_netdev_queue_index(queue);
 
-	if (!rtnl_trylock())
+	if (!rtnl_net_trylock(net))
 		return restart_syscall();
 
 	tc = netdev_txq_to_tc(dev, index);
-	rtnl_unlock();
+	rtnl_net_unlock(net);
 	if (tc < 0)
 		return -EINVAL;
 
