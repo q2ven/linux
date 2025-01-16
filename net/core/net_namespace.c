@@ -425,10 +425,9 @@ out_undo:
 
 	rtnl_lock();
 	ops_exit_rtnl_list(&pernet_list, ops, &net_exit_list, &dev_kill_list);
+	default_device_exit_batch(&net_exit_list, &dev_kill_list);
 	unregister_netdevice_many(&dev_kill_list);
 	rtnl_unlock();
-
-	default_device_exit_batch(&net_exit_list);
 
 	ops_undo_list(&pernet_list, ops, &net_exit_list, ops_exit_list);
 
@@ -676,10 +675,9 @@ static void cleanup_net(struct work_struct *work)
 
 	rtnl_lock();
 	ops_exit_rtnl_list(&pernet_list, NULL, &net_exit_list, &dev_kill_list);
+	default_device_exit_batch(&net_exit_list, &dev_kill_list);
 	unregister_netdevice_many(&dev_kill_list);
 	rtnl_unlock();
-
-	default_device_exit_batch(&net_exit_list);
 
 	/* Run all of the network namespace exit methods */
 	ops_undo_list(&pernet_list, NULL, &net_exit_list, ops_exit_list);

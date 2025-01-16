@@ -12436,8 +12436,11 @@ static void __net_exit default_device_exit_net(struct net *net)
 	 */
 	ASSERT_RTNL();
 	for_each_netdev_safe(net, dev, aux) {
-		int err;
 		char fb_name[IFNAMSIZ];
+		int err;
+
+		if (!list_empty(&dev->unreg_list))
+			continue;
 
 		/* Ignore unmoveable devices (i.e. loopback) */
 		if (dev->netns_immutable)
@@ -12465,7 +12468,8 @@ static void __net_exit default_device_exit_net(struct net *net)
 	}
 }
 
-void __net_exit default_device_exit_batch(struct list_head *net_list)
+void __net_exit default_device_exit_batch(struct list_head *net_exit_list,
+					  struct list_head *dev_kill_list)
 {
 	/* At exit all network devices most be removed from a network
 	 * namespace.  Do this in the reverse order of registration.
@@ -12474,24 +12478,23 @@ void __net_exit default_device_exit_batch(struct list_head *net_list)
 	 */
 	struct net_device *dev;
 	struct net *net;
-	LIST_HEAD(dev_kill_list);
 
-	rtnl_lock();
-	list_for_each_entry(net, net_list, exit_list) {
+	list_for_each_entry(net, net_exit_list, exit_list) {
 		default_device_exit_net(net);
 		cond_resched();
 	}
 
-	list_for_each_entry(net, net_list, exit_list) {
+	list_for_each_entry(net, net_exit_list, exit_list) {
 		for_each_netdev_reverse(net, dev) {
+			if (!list_empty(&dev->unreg_list))
+				continue;
+
 			if (dev->rtnl_link_ops && dev->rtnl_link_ops->dellink)
-				dev->rtnl_link_ops->dellink(dev, &dev_kill_list);
+				dev->rtnl_link_ops->dellink(dev, dev_kill_list);
 			else
-				unregister_netdevice_queue(dev, &dev_kill_list);
+				unregister_netdevice_queue(dev, dev_kill_list);
 		}
 	}
-	unregister_netdevice_many(&dev_kill_list);
-	rtnl_unlock();
 }
 
 static void __init net_dev_struct_check(void)
