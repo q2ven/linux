@@ -188,6 +188,19 @@ static void ops_free_list(const struct pernet_operations *ops,
 	}
 }
 
+static void ops_undo_list(struct list_head *ops_list,
+			  const struct pernet_operations *ops,
+			  struct list_head *net_exit_list,
+			  void (*ops_list_func)(const struct pernet_operations *,
+						struct list_head *))
+{
+	if (!ops)
+		ops = list_entry(ops_list, typeof(*ops), list);
+
+	list_for_each_entry_continue_reverse(ops, ops_list, list)
+		ops_list_func(ops, net_exit_list);
+}
+
 /* should be called with nsid_lock held */
 static int alloc_netid(struct net *net, struct net *peer, int reqid)
 {
@@ -374,13 +387,13 @@ out_undo:
 	 * for the pernet modules whose init functions did not fail.
 	 */
 	list_add(&net->exit_list, &net_exit_list);
-	saved_ops = ops;
-	list_for_each_entry_continue_reverse(ops, &pernet_list, list)
-		ops_pre_exit_list(ops, &net_exit_list);
+
+	ops_undo_list(&pernet_list, ops, &net_exit_list, ops_pre_exit_list);
 
 	synchronize_rcu();
 
-	ops = saved_ops;
+	saved_ops = ops;
+
 	rtnl_lock();
 	list_for_each_entry_continue_reverse(ops, &pernet_list, list) {
 		if (ops->exit_batch_rtnl)
@@ -390,12 +403,10 @@ out_undo:
 	rtnl_unlock();
 
 	ops = saved_ops;
-	list_for_each_entry_continue_reverse(ops, &pernet_list, list)
-		ops_exit_list(ops, &net_exit_list);
 
-	ops = saved_ops;
-	list_for_each_entry_continue_reverse(ops, &pernet_list, list)
-		ops_free_list(ops, &net_exit_list);
+	ops_undo_list(&pernet_list, ops, &net_exit_list, ops_exit_list);
+
+	ops_undo_list(&pernet_list, ops, &net_exit_list, ops_free_list);
 
 	rcu_barrier();
 	goto out;
@@ -628,8 +639,7 @@ static void cleanup_net(struct work_struct *work)
 	}
 
 	/* Run all of the network namespace pre_exit methods */
-	list_for_each_entry_reverse(ops, &pernet_list, list)
-		ops_pre_exit_list(ops, &net_exit_list);
+	ops_undo_list(&pernet_list, NULL, &net_exit_list, ops_pre_exit_list);
 
 	/*
 	 * Another CPU might be rcu-iterating the list, wait for it.
@@ -648,12 +658,10 @@ static void cleanup_net(struct work_struct *work)
 	rtnl_unlock();
 
 	/* Run all of the network namespace exit methods */
-	list_for_each_entry_reverse(ops, &pernet_list, list)
-		ops_exit_list(ops, &net_exit_list);
+	ops_undo_list(&pernet_list, NULL, &net_exit_list, ops_exit_list);
 
 	/* Free the net generic variables */
-	list_for_each_entry_reverse(ops, &pernet_list, list)
-		ops_free_list(ops, &net_exit_list);
+	ops_undo_list(&pernet_list, NULL, &net_exit_list, ops_free_list);
 
 	up_read(&pernet_ops_rwsem);
 
