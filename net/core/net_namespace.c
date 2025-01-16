@@ -31,8 +31,8 @@
  *	Our network namespace constructor/destructor lists
  */
 
-static LIST_HEAD(pernet_list);
-static struct list_head *first_device = &pernet_list;
+static LIST_HEAD(pernet_subsys_list);
+static LIST_HEAD(pernet_device_list);
 
 LIST_HEAD(net_namespace_list);
 EXPORT_SYMBOL_GPL(net_namespace_list);
@@ -50,8 +50,8 @@ EXPORT_SYMBOL(init_net);
 
 static bool init_net_initialized;
 /*
- * pernet_ops_rwsem: protects: pernet_list, net_generic_ids,
- * init_net_initialized and first_device pointer.
+ * pernet_ops_rwsem: protects: pernet_subsys_list, pernet_device_list,
+ * net_generic_ids, and init_net_initialized.
  * This is internal net namespace object. Please, don't use it
  * outside.
  */
@@ -374,7 +374,7 @@ static __net_init void preinit_net(struct net *net, struct user_namespace *user_
 static __net_init int setup_net(struct net *net)
 {
 	/* Must be called with pernet_ops_rwsem held */
-	const struct pernet_operations *ops;
+	const struct pernet_operations *device_ops, *subsys_ops;
 	LIST_HEAD(net_exit_list);
 	LIST_HEAD(dev_kill_list);
 	int error = 0;
@@ -383,11 +383,20 @@ static __net_init int setup_net(struct net *net)
 	net->net_cookie = gen_cookie_next(&net_cookie);
 	preempt_enable();
 
-	list_for_each_entry(ops, &pernet_list, list) {
-		error = ops_init(ops, net);
+	device_ops = list_first_entry(&pernet_device_list, typeof(*device_ops), list);
+
+	list_for_each_entry(subsys_ops, &pernet_subsys_list, list) {
+		error = ops_init(subsys_ops, net);
 		if (error < 0)
 			goto out_undo;
 	}
+
+	list_for_each_entry(device_ops, &pernet_device_list, list) {
+		error = ops_init(device_ops, net);
+		if (error < 0)
+			goto out_undo;
+	}
+
 	down_write(&net_rwsem);
 	list_add_tail_rcu(&net->list, &net_namespace_list);
 	up_write(&net_rwsem);
@@ -400,16 +409,19 @@ out_undo:
 	 */
 	list_add(&net->exit_list, &net_exit_list);
 
-	ops_undo_list(&pernet_list, ops, &net_exit_list, ops_pre_exit_list);
+	ops_undo_list(&pernet_device_list, device_ops, &net_exit_list, ops_pre_exit_list);
+	ops_undo_list(&pernet_subsys_list, subsys_ops, &net_exit_list, ops_pre_exit_list);
 
 	synchronize_rcu();
 
 	rtnl_lock();
-	ops_exit_rtnl_list(&pernet_list, ops, &net_exit_list, &dev_kill_list);
+	ops_exit_rtnl_list(&pernet_device_list, device_ops, &net_exit_list, &dev_kill_list);
+	ops_exit_rtnl_list(&pernet_subsys_list, subsys_ops, &net_exit_list, &dev_kill_list);
 	unregister_netdevice_many(&dev_kill_list);
 	rtnl_unlock();
 
-	ops_undo_list(&pernet_list, ops, &net_exit_list, ops_exit_list);
+	ops_undo_list(&pernet_device_list, device_ops, &net_exit_list, ops_exit_list);
+	ops_undo_list(&pernet_subsys_list, subsys_ops, &net_exit_list, ops_exit_list);
 
 	rcu_barrier();
 	goto out;
@@ -641,7 +653,8 @@ static void cleanup_net(struct work_struct *work)
 	}
 
 	/* Run all of the network namespace pre_exit methods */
-	ops_undo_list(&pernet_list, NULL, &net_exit_list, ops_pre_exit_list);
+	ops_undo_list(&pernet_device_list, NULL, &net_exit_list, ops_pre_exit_list);
+	ops_undo_list(&pernet_subsys_list, NULL, &net_exit_list, ops_pre_exit_list);
 
 	/*
 	 * Another CPU might be rcu-iterating the list, wait for it.
@@ -652,14 +665,16 @@ static void cleanup_net(struct work_struct *work)
 	synchronize_rcu_expedited();
 
 	rtnl_lock();
-	ops_exit_rtnl_list(&pernet_list, NULL, &net_exit_list, &dev_kill_list);
+	ops_exit_rtnl_list(&pernet_device_list, NULL, &net_exit_list, &dev_kill_list);
+	ops_exit_rtnl_list(&pernet_subsys_list, NULL, &net_exit_list, &dev_kill_list);
 	unregister_netdevice_many(&dev_kill_list);
 	rtnl_unlock();
 
 	/* Run all of the network namespace exit methods and
 	 * free the net generic variables
 	 */
-	ops_undo_list(&pernet_list, NULL, &net_exit_list, ops_exit_list);
+	ops_undo_list(&pernet_device_list, NULL, &net_exit_list, ops_exit_list);
+	ops_undo_list(&pernet_subsys_list, NULL, &net_exit_list, ops_exit_list);
 
 	up_read(&pernet_ops_rwsem);
 
@@ -1397,9 +1412,11 @@ static void unregister_pernet_operations(struct pernet_operations *ops)
 int register_pernet_subsys(struct pernet_operations *ops)
 {
 	int error;
+
 	down_write(&pernet_ops_rwsem);
-	error =  register_pernet_operations(first_device, ops);
+	error = register_pernet_operations(&pernet_subsys_list, ops);
 	up_write(&pernet_ops_rwsem);
+
 	return error;
 }
 EXPORT_SYMBOL_GPL(register_pernet_subsys);
@@ -1443,11 +1460,11 @@ EXPORT_SYMBOL_GPL(unregister_pernet_subsys);
 int register_pernet_device(struct pernet_operations *ops)
 {
 	int error;
+
 	down_write(&pernet_ops_rwsem);
-	error = register_pernet_operations(&pernet_list, ops);
-	if (!error && (first_device == &pernet_list))
-		first_device = &ops->list;
+	error = register_pernet_operations(&pernet_device_list, ops);
 	up_write(&pernet_ops_rwsem);
+
 	return error;
 }
 EXPORT_SYMBOL_GPL(register_pernet_device);
@@ -1464,8 +1481,6 @@ EXPORT_SYMBOL_GPL(register_pernet_device);
 void unregister_pernet_device(struct pernet_operations *ops)
 {
 	down_write(&pernet_ops_rwsem);
-	if (&ops->list == first_device)
-		first_device = first_device->next;
 	unregister_pernet_operations(ops);
 	up_write(&pernet_ops_rwsem);
 }
