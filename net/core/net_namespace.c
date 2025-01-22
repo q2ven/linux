@@ -165,6 +165,22 @@ static void ops_pre_exit_list(const struct pernet_operations *ops,
 	}
 }
 
+static void ops_exit_pre_rtnl_list(const struct pernet_operations *ops,
+				   struct list_head *net_exit_list)
+{
+	struct net *net;
+
+	if (ops->exit_pre_rtnl) {
+		list_for_each_entry(net, net_exit_list, exit_list) {
+			ops->exit_pre_rtnl(net);
+			cond_resched();
+		}
+	}
+
+	if (ops->exit_batch_pre_rtnl)
+		ops->exit_batch_pre_rtnl(net_exit_list);
+}
+
 static void ops_exit_list(const struct pernet_operations *ops,
 			  struct list_head *net_exit_list)
 {
@@ -417,6 +433,9 @@ out_undo:
 
 	synchronize_rcu();
 
+	ops_undo_list(&pernet_device_list, device_ops, &net_exit_list, ops_exit_pre_rtnl_list);
+	ops_undo_list(&pernet_subsys_list, subsys_ops, &net_exit_list, ops_exit_pre_rtnl_list);
+
 	rtnl_lock();
 	ops_exit_rtnl_list(&pernet_device_list, device_ops, &net_exit_list, &dev_kill_list);
 	ops_exit_rtnl_list(&pernet_subsys_list, subsys_ops, &net_exit_list, &dev_kill_list);
@@ -667,6 +686,9 @@ static void cleanup_net(struct work_struct *work)
 	 * Also the pre_exit() and exit() methods need this barrier.
 	 */
 	synchronize_rcu_expedited();
+
+	ops_undo_list(&pernet_device_list, NULL, &net_exit_list, ops_exit_pre_rtnl_list);
+	ops_undo_list(&pernet_subsys_list, NULL, &net_exit_list, ops_exit_pre_rtnl_list);
 
 	rtnl_lock();
 	ops_exit_rtnl_list(&pernet_device_list, NULL, &net_exit_list, &dev_kill_list);
@@ -1267,6 +1289,8 @@ static void free_exit_list(struct pernet_operations *ops, struct list_head *net_
 {
 	ops_pre_exit_list(ops, net_exit_list);
 	synchronize_rcu();
+
+	ops_exit_pre_rtnl_list(ops, net_exit_list);
 
 	if (ops->exit_batch_rtnl) {
 		LIST_HEAD(dev_kill_list);
