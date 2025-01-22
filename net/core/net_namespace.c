@@ -220,8 +220,26 @@ static void ops_exit_rtnl_list(struct list_head *ops_list,
 			       struct list_head *net_exit_list,
 			       struct list_head *dev_kill_list)
 {
+	const struct pernet_operations *saved_ops;
+	struct net *net;
+
 	if (!ops)
 		ops = list_entry(ops_list, typeof(*ops), list);
+
+	saved_ops = ops;
+
+	list_for_each_entry(net, net_exit_list, exit_list) {
+		__rtnl_net_lock(net);
+
+		list_for_each_entry_continue_reverse(ops, ops_list, list) {
+			if (ops->exit_rtnl)
+				ops->exit_rtnl(net);
+		}
+
+		__rtnl_net_unlock(net);
+
+		ops = saved_ops;
+	}
 
 	list_for_each_entry_continue_reverse(ops, ops_list, list) {
 		if (ops->exit_batch_rtnl)
@@ -1298,7 +1316,7 @@ static void free_exit_list(struct pernet_operations *ops, struct list_head *net_
 
 	ops_exit_pre_rtnl_list(ops, net_exit_list);
 
-	if (ops->exit_batch_rtnl) {
+	if (ops->exit_batch_rtnl || ops->exit_rtnl) {
 		LIST_HEAD(dev_kill_list);
 		struct list_head tmp;
 		LIST_HEAD(ops_list);
