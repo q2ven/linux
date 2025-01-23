@@ -718,14 +718,14 @@ static __net_init int csum_init_net(struct net *net)
 	return tc_action_net_init(net, tn, &act_csum_ops);
 }
 
-static void __net_exit csum_exit_net(struct list_head *net_list)
+static void __net_exit csum_exit_rtnl_net(struct net *net)
 {
-	tc_action_net_exit(net_list, act_csum_ops.net_id);
+	tc_action_net_exit_rtnl(net, act_csum_ops.net_id);
 }
 
 static struct pernet_operations csum_net_ops = {
 	.init = csum_init_net,
-	.exit_batch = csum_exit_net,
+	.exit_rtnl = csum_exit_rtnl_net,
 	.id   = &act_csum_ops.net_id,
 	.size = sizeof(struct tc_action_net),
 };

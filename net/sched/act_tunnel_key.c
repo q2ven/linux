@@ -851,14 +851,14 @@ static __net_init int tunnel_key_init_net(struct net *net)
 	return tc_action_net_init(net, tn, &act_tunnel_key_ops);
 }
 
-static void __net_exit tunnel_key_exit_net(struct list_head *net_list)
+static void __net_exit tunnel_key_exit_rtnl_net(struct net *net)
 {
-	tc_action_net_exit(net_list, act_tunnel_key_ops.net_id);
+	tc_action_net_exit_rtnl(net, act_tunnel_key_ops.net_id);
 }
 
 static struct pernet_operations tunnel_key_net_ops = {
 	.init = tunnel_key_init_net,
-	.exit_batch = tunnel_key_exit_net,
+	.exit_rtnl = tunnel_key_exit_rtnl_net,
 	.id   = &act_tunnel_key_ops.net_id,
 	.size = sizeof(struct tc_action_net),
 };

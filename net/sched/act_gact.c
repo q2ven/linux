@@ -305,14 +305,14 @@ static __net_init int gact_init_net(struct net *net)
 	return tc_action_net_init(net, tn, &act_gact_ops);
 }
 
-static void __net_exit gact_exit_net(struct list_head *net_list)
+static void __net_exit gact_exit_rtnl_net(struct net *net)
 {
-	tc_action_net_exit(net_list, act_gact_ops.net_id);
+	tc_action_net_exit_rtnl(net, act_gact_ops.net_id);
 }
 
 static struct pernet_operations gact_net_ops = {
 	.init = gact_init_net,
-	.exit_batch = gact_exit_net,
+	.exit_rtnl = gact_exit_rtnl_net,
 	.id   = &act_gact_ops.net_id,
 	.size = sizeof(struct tc_action_net),
 };

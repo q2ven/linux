@@ -459,14 +459,14 @@ static __net_init int mpls_init_net(struct net *net)
 	return tc_action_net_init(net, tn, &act_mpls_ops);
 }
 
-static void __net_exit mpls_exit_net(struct list_head *net_list)
+static void __net_exit mpls_exit_rtnl_net(struct net *net)
 {
-	tc_action_net_exit(net_list, act_mpls_ops.net_id);
+	tc_action_net_exit_rtnl(net, act_mpls_ops.net_id);
 }
 
 static struct pernet_operations mpls_net_ops = {
 	.init = mpls_init_net,
-	.exit_batch = mpls_exit_net,
+	.exit_rtnl = mpls_exit_rtnl_net,
 	.id   = &act_mpls_ops.net_id,
 	.size = sizeof(struct tc_action_net),
 };
