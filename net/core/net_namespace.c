@@ -27,6 +27,8 @@
 #include <net/net_namespace.h>
 #include <net/netns/generic.h>
 
+#include "dev.h"
+
 /*
  *	Our network namespace constructor/destructor lists
  */
@@ -370,6 +372,7 @@ static __net_init void preinit_net(struct net *net, struct user_namespace *user_
 	net->dev_base_seq = 1;
 	net->user_ns = user_ns;
 
+	INIT_LIST_HEAD(&net->dev_base_head);
 	idr_init(&net->netns_ids);
 	spin_lock_init(&net->nsid_lock);
 	mutex_init(&net->ipv4.ra_mutex);
@@ -424,6 +427,8 @@ out_undo:
 	ops_exit_rtnl_list(&pernet_list, ops, &net_exit_list, &dev_kill_list);
 	unregister_netdevice_many(&dev_kill_list);
 	rtnl_unlock();
+
+	default_device_exit_batch(&net_exit_list);
 
 	ops_undo_list(&pernet_list, ops, &net_exit_list, ops_exit_list);
 
@@ -673,6 +678,8 @@ static void cleanup_net(struct work_struct *work)
 	ops_exit_rtnl_list(&pernet_list, NULL, &net_exit_list, &dev_kill_list);
 	unregister_netdevice_many(&dev_kill_list);
 	rtnl_unlock();
+
+	default_device_exit_batch(&net_exit_list);
 
 	/* Run all of the network namespace exit methods */
 	ops_undo_list(&pernet_list, NULL, &net_exit_list, ops_exit_list);
@@ -1461,11 +1468,23 @@ EXPORT_SYMBOL_GPL(unregister_pernet_subsys);
 int register_pernet_device(struct pernet_operations *ops)
 {
 	int error;
+
+	if ((ops->exit_pre_rtnl && ops->exit) ||
+	    (ops->exit_batch_pre_rtnl && ops->exit_batch))
+		return -EINVAL;
+
+	/* TODO: Remove this. */
+	ops->exit_pre_rtnl = ops->exit;
+	ops->exit = NULL;
+	ops->exit_batch_pre_rtnl = ops->exit_batch;
+	ops->exit_batch = NULL;
+
 	down_write(&pernet_ops_rwsem);
 	error = register_pernet_operations(&pernet_list, ops);
 	if (!error && (first_device == &pernet_list))
 		first_device = &ops->list;
 	up_write(&pernet_ops_rwsem);
+
 	return error;
 }
 EXPORT_SYMBOL_GPL(register_pernet_device);

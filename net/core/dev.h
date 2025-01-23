@@ -133,6 +133,8 @@ void __dev_notify_flags(struct net_device *dev, unsigned int old_flags,
 void unregister_netdevice_many_notify(struct list_head *head,
 				      u32 portid, const struct nlmsghdr *nlh);
 
+void default_device_exit_batch(struct list_head *net_list);
+
 static inline void netif_set_up(struct net_device *dev, bool value)
 {
 	if (value)
