@@ -1621,14 +1621,14 @@ out:
 	return err;
 }
 
-static __net_exit void pppol2tp_exit_net(struct net *net)
+static __net_exit void pppol2tp_exit_pre_rtnl_net(struct net *net)
 {
 	remove_proc_entry("pppol2tp", net->proc_net);
 }
 
 static struct pernet_operations pppol2tp_net_ops = {
 	.init = pppol2tp_init_net,
-	.exit = pppol2tp_exit_net,
+	.exit_pre_rtnl = pppol2tp_exit_pre_rtnl_net,
 };
 
 /*****************************************************************************

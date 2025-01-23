@@ -344,7 +344,7 @@ static struct notifier_block cfg802154_netdev_notifier = {
 	.notifier_call = cfg802154_netdev_notifier_call,
 };
 
-static void __net_exit cfg802154_pernet_exit(struct net *net)
+static void __net_exit cfg802154_pernet_exit_pre_rtnl(struct net *net)
 {
 	struct cfg802154_registered_device *rdev;
 
@@ -357,7 +357,7 @@ static void __net_exit cfg802154_pernet_exit(struct net *net)
 }
 
 static struct pernet_operations cfg802154_pernet_ops = {
-	.exit = cfg802154_pernet_exit,
+	.exit_pre_rtnl = cfg802154_pernet_exit_pre_rtnl,
 };
 
 static int __init wpan_phy_class_init(void)

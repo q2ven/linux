@@ -100,7 +100,7 @@ err_proc:
 /*
  * Clean up a per-network namespace record.
  */
-static __net_exit void rxrpc_exit_net(struct net *net)
+static __net_exit void rxrpc_exit_pre_rtnl_net(struct net *net)
 {
 	struct rxrpc_net *rxnet = rxrpc_net(net);
 
@@ -117,8 +117,8 @@ static __net_exit void rxrpc_exit_net(struct net *net)
 }
 
 struct pernet_operations rxrpc_net_ops = {
-	.init	= rxrpc_init_net,
-	.exit	= rxrpc_exit_net,
-	.id	= &rxrpc_net_id,
-	.size	= sizeof(struct rxrpc_net),
+	.init		= rxrpc_init_net,
+	.exit_pre_rtnl	= rxrpc_exit_pre_rtnl_net,
+	.id		= &rxrpc_net_id,
+	.size		= sizeof(struct rxrpc_net),
 };

@@ -627,7 +627,7 @@ static void rds_tcp_kill_sock(struct net *net)
 		rds_conn_destroy(tc->t_cpath->cp_conn);
 }
 
-static void __net_exit rds_tcp_exit_net(struct net *net)
+static void __net_exit rds_tcp_exit_pre_rtnl_net(struct net *net)
 {
 	struct rds_tcp_net *rtn = net_generic(net, rds_tcp_netid);
 
@@ -642,7 +642,7 @@ static void __net_exit rds_tcp_exit_net(struct net *net)
 
 static struct pernet_operations rds_tcp_net_ops = {
 	.init = rds_tcp_init_net,
-	.exit = rds_tcp_exit_net,
+	.exit_pre_rtnl = rds_tcp_exit_pre_rtnl_net,
 	.id = &rds_tcp_netid,
 	.size = sizeof(struct rds_tcp_net),
 };

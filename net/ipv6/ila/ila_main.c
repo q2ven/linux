@@ -76,16 +76,16 @@ static __net_exit void ila_pre_exit_net(struct net *net)
 	ila_xlat_pre_exit_net(net);
 }
 
-static __net_exit void ila_exit_net(struct net *net)
+static __net_exit void ila_exit_pre_rtnl_net(struct net *net)
 {
-	ila_xlat_exit_net(net);
+	ila_xlat_exit_pre_rtnl_net(net);
 }
 
 static struct pernet_operations ila_net_ops = {
 	.init = ila_init_net,
 	.pre_exit = ila_pre_exit_net,
-	.exit = ila_exit_net,
-	.id   = &ila_net_id,
+	.exit_pre_rtnl = ila_exit_pre_rtnl_net,
+	.id = &ila_net_id,
 	.size = sizeof(struct ila_net),
 };
 

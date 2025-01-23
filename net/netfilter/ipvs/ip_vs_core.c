@@ -2358,7 +2358,7 @@ static void __net_exit __ip_vs_cleanup_batch(struct list_head *net_list)
 	}
 }
 
-static void __net_exit __ip_vs_dev_cleanup_batch(struct list_head *net_list)
+static void __net_exit __ip_vs_dev_cleanup_exit_batch_pre_rtnl(struct list_head *net_list)
 {
 	struct netns_ipvs *ipvs;
 	struct net *net;
@@ -2381,7 +2381,7 @@ static struct pernet_operations ipvs_core_ops = {
 };
 
 static struct pernet_operations ipvs_core_dev_ops = {
-	.exit_batch = __ip_vs_dev_cleanup_batch,
+	.exit_batch_pre_rtnl = __ip_vs_dev_cleanup_exit_batch_pre_rtnl,
 };
 
 /*

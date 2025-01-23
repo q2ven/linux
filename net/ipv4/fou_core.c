@@ -1224,7 +1224,7 @@ static __net_init int fou_init_net(struct net *net)
 	return 0;
 }
 
-static __net_exit void fou_exit_net(struct net *net)
+static __net_exit void fou_exit_pre_rtnl_net(struct net *net)
 {
 	struct fou_net *fn = net_generic(net, fou_net_id);
 	struct fou *fou, *next;
@@ -1238,8 +1238,8 @@ static __net_exit void fou_exit_net(struct net *net)
 
 static struct pernet_operations fou_net_ops = {
 	.init = fou_init_net,
-	.exit = fou_exit_net,
-	.id   = &fou_net_id,
+	.exit_pre_rtnl = fou_exit_pre_rtnl_net,
+	.id = &fou_net_id,
 	.size = sizeof(struct fou_net),
 };
 

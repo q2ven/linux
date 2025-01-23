@@ -104,7 +104,7 @@ out_crypto:
 	return err;
 }
 
-static void __net_exit tipc_exit_net(struct net *net)
+static void __net_exit tipc_exit_pre_rtnl_net(struct net *net)
 {
 	struct tipc_net *tn = tipc_net(net);
 
@@ -133,14 +133,14 @@ static struct pernet_operations tipc_pernet_pre_exit_ops = {
 
 static struct pernet_operations tipc_net_ops = {
 	.init = tipc_init_net,
-	.exit = tipc_exit_net,
-	.id   = &tipc_net_id,
+	.exit_pre_rtnl = tipc_exit_pre_rtnl_net,
+	.id = &tipc_net_id,
 	.size = sizeof(struct tipc_net),
 };
 
 static struct pernet_operations tipc_topsrv_net_ops = {
 	.init = tipc_topsrv_init_net,
-	.exit = tipc_topsrv_exit_net,
+	.exit_pre_rtnl = tipc_topsrv_exit_pre_rtnl_net,
 };
 
 static int __init tipc_init(void)

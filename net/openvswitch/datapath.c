@@ -2670,7 +2670,7 @@ static void __net_exit list_vports_from_net(struct net *net, struct net *dnet,
 	}
 }
 
-static void __net_exit ovs_exit_net(struct net *dnet)
+static void __net_exit ovs_exit_pre_rtnl_net(struct net *dnet)
 {
 	struct datapath *dp, *dp_next;
 	struct ovs_net *ovs_net = net_generic(dnet, ovs_net_id);
@@ -2704,8 +2704,8 @@ static void __net_exit ovs_exit_net(struct net *dnet)
 
 static struct pernet_operations ovs_net_ops = {
 	.init = ovs_init_net,
-	.exit = ovs_exit_net,
-	.id   = &ovs_net_id,
+	.exit_pre_rtnl = ovs_exit_pre_rtnl_net,
+	.id = &ovs_net_id,
 	.size = sizeof(struct ovs_net),
 };
 

@@ -665,7 +665,7 @@ static __net_init int l2tp_ip_init_net(struct net *net)
 	return 0;
 }
 
-static __net_exit void l2tp_ip_exit_net(struct net *net)
+static __net_exit void l2tp_ip_exit_pre_rtnl_net(struct net *net)
 {
 	struct l2tp_ip_net *pn = l2tp_ip_pernet(net);
 
@@ -677,8 +677,8 @@ static __net_exit void l2tp_ip_exit_net(struct net *net)
 
 static struct pernet_operations l2tp_ip_net_ops = {
 	.init = l2tp_ip_init_net,
-	.exit = l2tp_ip_exit_net,
-	.id   = &l2tp_ip_net_id,
+	.exit_pre_rtnl = l2tp_ip_exit_pre_rtnl_net,
+	.id = &l2tp_ip_net_id,
 	.size = sizeof(struct l2tp_ip_net),
 };
 

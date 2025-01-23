@@ -1161,15 +1161,15 @@ static __net_init int pppoe_init_net(struct net *net)
 	return 0;
 }
 
-static __net_exit void pppoe_exit_net(struct net *net)
+static __net_exit void pppoe_exit_pre_rtnl_net(struct net *net)
 {
 	remove_proc_entry("pppoe", net->proc_net);
 }
 
 static struct pernet_operations pppoe_net_ops = {
 	.init = pppoe_init_net,
-	.exit = pppoe_exit_net,
-	.id   = &pppoe_net_id,
+	.exit_pre_rtnl = pppoe_exit_pre_rtnl_net,
+	.id = &pppoe_net_id,
 	.size = sizeof(struct pppoe_net),
 };
 

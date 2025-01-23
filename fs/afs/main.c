@@ -144,7 +144,7 @@ error_sysnames:
 /*
  * Clean up and destroy an AFS network namespace record.
  */
-static void __net_exit afs_net_exit(struct net *net_ns)
+static void __net_exit afs_net_exit_pre_rtnl(struct net *net_ns)
 {
 	struct afs_net *net = afs_net(net_ns);
 
@@ -159,10 +159,10 @@ static void __net_exit afs_net_exit(struct net *net_ns)
 }
 
 static struct pernet_operations afs_net_ops = {
-	.init	= afs_net_init,
-	.exit	= afs_net_exit,
-	.id	= &afs_net_id,
-	.size	= sizeof(struct afs_net),
+	.init		= afs_net_init,
+	.exit_pre_rtnl	= afs_net_exit_pre_rtnl,
+	.id		= &afs_net_id,
+	.size		= sizeof(struct afs_net),
 };
 
 /*

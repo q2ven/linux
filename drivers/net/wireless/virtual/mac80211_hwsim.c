@@ -6521,7 +6521,7 @@ static __net_init int hwsim_init_net(struct net *net)
 	return hwsim_net_set_netgroup(net);
 }
 
-static void __net_exit hwsim_exit_net(struct net *net)
+static void __net_exit hwsim_exit_pre_rtnl_net(struct net *net)
 {
 	struct mac80211_hwsim_data *data, *tmp;
 	LIST_HEAD(list);
@@ -6554,8 +6554,8 @@ static void __net_exit hwsim_exit_net(struct net *net)
 
 static struct pernet_operations hwsim_net_ops = {
 	.init = hwsim_init_net,
-	.exit = hwsim_exit_net,
-	.id   = &hwsim_net_id,
+	.exit_pre_rtnl = hwsim_exit_pre_rtnl_net,
+	.id = &hwsim_net_id,
 	.size = sizeof(struct hwsim_net),
 };
 

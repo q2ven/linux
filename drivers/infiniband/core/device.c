@@ -1103,7 +1103,7 @@ int rdma_compatdev_set(u8 enable)
 	return ret;
 }
 
-static void rdma_dev_exit_net(struct net *net)
+static void rdma_dev_exit_pre_rtnl_net(struct net *net)
 {
 	struct rdma_dev_net *rnet = rdma_net_to_dev_net(net);
 	struct ib_device *dev;
@@ -1749,7 +1749,7 @@ net_err:
 
 static struct pernet_operations rdma_dev_net_ops = {
 	.init = rdma_dev_init_net,
-	.exit = rdma_dev_exit_net,
+	.exit_pre_rtnl = rdma_dev_exit_pre_rtnl_net,
 	.id = &rdma_dev_net_id,
 	.size = sizeof(struct rdma_dev_net),
 };

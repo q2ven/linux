@@ -1879,7 +1879,7 @@ static int l2tp_idr_item_unexpected(int id, void *p, void *data)
 	return 1;
 }
 
-static __net_exit void l2tp_exit_net(struct net *net)
+static __net_exit void l2tp_exit_pre_rtnl_net(struct net *net)
 {
 	struct l2tp_net *pn = l2tp_pernet(net);
 
@@ -1900,8 +1900,8 @@ static __net_exit void l2tp_exit_net(struct net *net)
 
 static struct pernet_operations l2tp_net_ops = {
 	.init = l2tp_init_net,
-	.exit = l2tp_exit_net,
 	.pre_exit = l2tp_pre_exit_net,
+	.exit_pre_rtnl = l2tp_exit_pre_rtnl_net,
 	.id   = &l2tp_net_id,
 	.size = sizeof(struct l2tp_net),
 };

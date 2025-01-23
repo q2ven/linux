@@ -1642,7 +1642,7 @@ static struct notifier_block cfg80211_netdev_notifier = {
 	.notifier_call = cfg80211_netdev_notifier_call,
 };
 
-static void __net_exit cfg80211_pernet_exit(struct net *net)
+static void __net_exit cfg80211_pernet_exit_pre_rtnl(struct net *net)
 {
 	struct cfg80211_registered_device *rdev;
 
@@ -1655,7 +1655,7 @@ static void __net_exit cfg80211_pernet_exit(struct net *net)
 }
 
 static struct pernet_operations cfg80211_pernet_ops = {
-	.exit = cfg80211_pernet_exit,
+	.exit_pre_rtnl = cfg80211_pernet_exit_pre_rtnl,
 };
 
 void wiphy_work_queue(struct wiphy *wiphy, struct wiphy_work *work)

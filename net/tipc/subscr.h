@@ -82,7 +82,7 @@ void tipc_sub_report_overlap(struct tipc_subscription *sub,
 			     u32 event, bool must);
 
 int __net_init tipc_topsrv_init_net(struct net *net);
-void __net_exit tipc_topsrv_exit_net(struct net *net);
+void __net_exit tipc_topsrv_exit_pre_rtnl_net(struct net *net);
 
 void tipc_sub_put(struct tipc_subscription *subscription);
 void tipc_sub_get(struct tipc_subscription *subscription);

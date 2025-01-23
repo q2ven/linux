@@ -214,13 +214,13 @@ static void rds_loop_kill_conns(struct net *net)
 	}
 }
 
-static void __net_exit rds_loop_exit_net(struct net *net)
+static void __net_exit rds_loop_exit_pre_rtnl_net(struct net *net)
 {
 	rds_loop_kill_conns(net);
 }
 
 static struct pernet_operations rds_loop_net_ops = {
-	.exit = rds_loop_exit_net,
+	.exit_pre_rtnl = rds_loop_exit_pre_rtnl_net,
 };
 
 int rds_loop_net_init(void)

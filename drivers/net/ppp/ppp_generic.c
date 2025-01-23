@@ -1146,7 +1146,7 @@ static __net_init int ppp_init_net(struct net *net)
 	return 0;
 }
 
-static __net_exit void ppp_exit_net(struct net *net)
+static __net_exit void ppp_exit_pre_rtnl_net(struct net *net)
 {
 	struct ppp_net *pn = net_generic(net, ppp_net_id);
 	struct net_device *dev;
@@ -1177,8 +1177,8 @@ static __net_exit void ppp_exit_net(struct net *net)
 
 static struct pernet_operations ppp_net_ops = {
 	.init = ppp_init_net,
-	.exit = ppp_exit_net,
-	.id   = &ppp_net_id,
+	.exit_pre_rtnl = ppp_exit_pre_rtnl_net,
+	.id = &ppp_net_id,
 	.size = sizeof(struct ppp_net),
 };
 
