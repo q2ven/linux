@@ -7,6 +7,7 @@
 */
 
 #include <linux/refcount.h>
+#include <linux/rtnetlink.h>
 #include <net/flow_offload.h>
 #include <net/sch_generic.h>
 #include <net/pkt_sched.h>
@@ -14,9 +15,10 @@
 #include <net/netns/generic.h>
 
 struct tcf_idrinfo {
-	struct mutex	lock;
-	struct idr	action_idr;
-	struct net	*net;
+	struct mutex		lock;
+	struct idr		action_idr;
+	struct net		*net;
+	struct rtnl_head	rtnl_head;
 };
 
 struct tc_action_ops;
@@ -175,7 +177,7 @@ static inline void tc_action_net_exit(struct list_head *net_list,
 		struct tc_action_net *tn = net_generic(net, id);
 
 		tcf_idrinfo_destroy(tn->ops, tn->idrinfo);
-		kfree(tn->idrinfo);
+		kfree_rtnl(net, &tn->idrinfo->rtnl_head, tn->idrinfo);
 	}
 	rtnl_unlock();
 }
