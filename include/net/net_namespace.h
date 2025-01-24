@@ -118,6 +118,9 @@ struct net {
 	 */
 	u32			hash_mix;
 
+	struct list_head	rtnl_call_node;
+	struct list_head	rtnl_call_head;
+
 	struct net_device       *loopback_dev;          /* The loopback */
 
 	/* core fib_rules */

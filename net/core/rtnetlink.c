@@ -72,6 +72,49 @@ struct rtnl_link {
 	struct rcu_head		rcu;
 };
 
+static LIST_HEAD(rtnl_call_head);
+
+static void rtnl_call_enqueue(struct net *net, struct rtnl_head *node)
+{
+	ASSERT_RTNL();
+
+	list_add_tail(&node->list, &net->rtnl_call_head);
+
+	if (list_empty(&net->rtnl_call_node))
+		list_add_tail(&net->rtnl_call_node, &rtnl_call_head);
+}
+
+static void rtnl_call_dequeue(struct list_head *head)
+{
+	struct net *net, *next;
+
+	ASSERT_RTNL();
+
+	list_for_each_entry_safe(net, next, &rtnl_call_head, rtnl_call_node) {
+		list_del_init(&net->rtnl_call_node);
+		list_splice_init(&net->rtnl_call_head, head);
+	}
+}
+
+static void rtnl_call(struct list_head *head)
+{
+	struct rtnl_head *node, *next;
+
+	list_for_each_entry_safe(node, next, head, list) {
+		list_del(&node->list);
+		node->func(node);
+		cond_resched();
+	}
+}
+
+void call_rtnl(struct net *net, struct rtnl_head *node,
+	       void (*func)(struct rtnl_head *head))
+{
+	node->func = func;
+	rtnl_call_enqueue(net, node);
+}
+EXPORT_SYMBOL(call_rtnl);
+
 static DEFINE_MUTEX(rtnl_mutex);
 
 void rtnl_lock(void)
@@ -98,8 +141,11 @@ EXPORT_SYMBOL(rtnl_kfree_skbs);
 void __rtnl_unlock(void)
 {
 	struct sk_buff *head = defer_kfree_skb_list;
+	LIST_HEAD(rtnl_call_tmp_head);
 
 	defer_kfree_skb_list = NULL;
+
+	rtnl_call_dequeue(&rtnl_call_tmp_head);
 
 	/* Ensure that we didn't actually add any TODO item when __rtnl_unlock()
 	 * is used. In some places, e.g. in cfg80211, we have code that will do
@@ -143,6 +189,8 @@ void __rtnl_unlock(void)
 		cond_resched();
 		head = next;
 	}
+
+	rtnl_call(&rtnl_call_tmp_head);
 }
 
 void rtnl_unlock(void)

@@ -331,6 +331,8 @@ static __net_init void preinit_net(struct net *net, struct user_namespace *user_
 	net->dev_base_seq = 1;
 	net->user_ns = user_ns;
 
+	INIT_LIST_HEAD(&net->rtnl_call_node);
+	INIT_LIST_HEAD(&net->rtnl_call_head);
 	idr_init(&net->netns_ids);
 	spin_lock_init(&net->nsid_lock);
 	mutex_init(&net->ipv4.ra_mutex);
