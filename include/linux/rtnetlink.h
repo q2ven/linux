@@ -48,6 +48,7 @@ struct rtnl_head {
 void call_rtnl(struct net *net, struct rtnl_head *head,
 	       void (*func)(struct rtnl_head *head));
 void kfree_rtnl(struct net *net, struct rtnl_head *head, void *ptr);
+void kfree_skb_rtnl(struct net *net, struct sk_buff *skb);
 
 /* RTNL is used as a global lock for all changes to network configuration  */
 extern void rtnl_lock(void);

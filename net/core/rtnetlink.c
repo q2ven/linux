@@ -135,6 +135,23 @@ void call_rtnl(struct net *net, struct rtnl_head *node,
 }
 EXPORT_SYMBOL(call_rtnl);
 
+static void __kfree_skb_rtnl(struct rtnl_head *node)
+{
+	struct sk_buff *skb = container_of((void *)node, struct sk_buff, cb);
+
+	kfree_skb_list(skb);
+}
+
+void kfree_skb_rtnl(struct net *net, struct sk_buff *skb)
+{
+	struct rtnl_head *node = (struct rtnl_head *)skb->cb;
+
+	BUILD_BUG_ON(sizeof(*node) > sizeof(skb->cb));
+
+	call_rtnl(net, node, __kfree_skb_rtnl);
+}
+EXPORT_SYMBOL(kfree_skb_rtnl);
+
 static DEFINE_MUTEX(rtnl_mutex);
 
 void rtnl_lock(void)
