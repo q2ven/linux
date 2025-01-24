@@ -38,12 +38,16 @@ void rtmsg_ifinfo_send(struct sk_buff *skb, struct net_device *dev,
 		       gfp_t flags, u32 portid, const struct nlmsghdr *nlh);
 
 struct rtnl_head {
-	void (*func)(struct rtnl_head *head);
+	union {
+		void *ptr;
+		void (*func)(struct rtnl_head *head);
+	};
 	struct list_head list;
 };
 
 void call_rtnl(struct net *net, struct rtnl_head *head,
 	       void (*func)(struct rtnl_head *head));
+void kfree_rtnl(struct net *net, struct rtnl_head *head, void *ptr);
 
 /* RTNL is used as a global lock for all changes to network configuration  */
 extern void rtnl_lock(void);

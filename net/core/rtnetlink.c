@@ -72,11 +72,19 @@ struct rtnl_link {
 	struct rcu_head		rcu;
 };
 
+#define RTNL_CALL_KVFREE	1UL
+
 static LIST_HEAD(rtnl_call_head);
 
-static void rtnl_call_enqueue(struct net *net, struct rtnl_head *node)
+static void rtnl_call_enqueue(struct net *net, struct rtnl_head *node, bool free)
 {
 	ASSERT_RTNL();
+
+	if (WARN_ON_ONCE((long)node->ptr & RTNL_CALL_KVFREE))
+		return;
+
+	if (free)
+		node->ptr = (void *)((long)node->ptr | RTNL_CALL_KVFREE);
 
 	list_add_tail(&node->list, &net->rtnl_call_head);
 
@@ -102,16 +110,28 @@ static void rtnl_call(struct list_head *head)
 
 	list_for_each_entry_safe(node, next, head, list) {
 		list_del(&node->list);
-		node->func(node);
+
+		if ((long)node->ptr & RTNL_CALL_KVFREE)
+			kvfree((void *)((long)node->ptr & ~RTNL_CALL_KVFREE));
+		else
+			node->func(node);
+
 		cond_resched();
 	}
 }
+
+void kfree_rtnl(struct net *net, struct rtnl_head *node, void *ptr)
+{
+	node->ptr = ptr;
+	rtnl_call_enqueue(net, node, true);
+}
+EXPORT_SYMBOL(kfree_rtnl);
 
 void call_rtnl(struct net *net, struct rtnl_head *node,
 	       void (*func)(struct rtnl_head *head))
 {
 	node->func = func;
-	rtnl_call_enqueue(net, node);
+	rtnl_call_enqueue(net, node, false);
 }
 EXPORT_SYMBOL(call_rtnl);
 
