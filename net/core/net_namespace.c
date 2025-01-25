@@ -167,20 +167,16 @@ static void ops_exit_list(const struct pernet_operations *ops,
 			  struct list_head *net_exit_list)
 {
 	struct net *net;
+
 	if (ops->exit) {
 		list_for_each_entry(net, net_exit_list, exit_list) {
 			ops->exit(net);
 			cond_resched();
 		}
 	}
+
 	if (ops->exit_batch)
 		ops->exit_batch(net_exit_list);
-}
-
-static void ops_free_list(const struct pernet_operations *ops,
-			  struct list_head *net_exit_list)
-{
-	struct net *net;
 
 	if (ops->id) {
 		list_for_each_entry(net, net_exit_list, exit_list)
@@ -407,8 +403,6 @@ out_undo:
 	ops = saved_ops;
 
 	ops_undo_list(&pernet_list, ops, &net_exit_list, ops_exit_list);
-
-	ops_undo_list(&pernet_list, ops, &net_exit_list, ops_free_list);
 
 	rcu_barrier();
 	goto out;
@@ -659,11 +653,10 @@ static void cleanup_net(struct work_struct *work)
 	unregister_netdevice_many(&dev_kill_list);
 	rtnl_unlock();
 
-	/* Run all of the network namespace exit methods */
+	/* Run all of the network namespace exit methods and
+	 * free the net generic variables
+	 */
 	ops_undo_list(&pernet_list, NULL, &net_exit_list, ops_exit_list);
-
-	/* Free the net generic variables */
-	ops_undo_list(&pernet_list, NULL, &net_exit_list, ops_free_list);
 
 	up_read(&pernet_ops_rwsem);
 
@@ -1260,9 +1253,8 @@ static void free_exit_list(struct pernet_operations *ops, struct list_head *net_
 		unregister_netdevice_many(&dev_kill_list);
 		rtnl_unlock();
 	}
-	ops_exit_list(ops, net_exit_list);
 
-	ops_free_list(ops, net_exit_list);
+	ops_exit_list(ops, net_exit_list);
 }
 
 #ifdef CONFIG_NET_NS
