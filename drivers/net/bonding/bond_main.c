@@ -6618,7 +6618,7 @@ static int __init bonding_init(void)
 
 	bond_create_debugfs();
 
-	res = register_pernet_subsys(&bond_net_ops);
+	res = register_pernet_device(&bond_net_ops);
 	if (res)
 		goto err_net_ops;
 
@@ -6642,7 +6642,7 @@ out:
 err:
 	bond_netlink_fini();
 err_link:
-	unregister_pernet_subsys(&bond_net_ops);
+	unregister_pernet_device(&bond_net_ops);
 err_net_ops:
 	bond_destroy_debugfs();
 	goto out;
@@ -6654,7 +6654,7 @@ static void __exit bonding_exit(void)
 	unregister_netdevice_notifier(&bond_netdev_notifier);
 
 	bond_netlink_fini();
-	unregister_pernet_subsys(&bond_net_ops);
+	unregister_pernet_device(&bond_net_ops);
 
 	bond_destroy_debugfs();
 

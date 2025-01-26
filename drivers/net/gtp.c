@@ -2502,7 +2502,7 @@ static int __init gtp_init(void)
 
 	get_random_bytes(&gtp_h_initval, sizeof(gtp_h_initval));
 
-	err = register_pernet_subsys(&gtp_net_ops);
+	err = register_pernet_device(&gtp_net_ops);
 	if (err < 0)
 		goto error_out;
 
@@ -2521,7 +2521,7 @@ static int __init gtp_init(void)
 unreg_rtnl_link:
 	rtnl_link_unregister(&gtp_link_ops);
 unreg_pernet_subsys:
-	unregister_pernet_subsys(&gtp_net_ops);
+	unregister_pernet_device(&gtp_net_ops);
 error_out:
 	pr_err("error loading GTP module loaded\n");
 	return err;
@@ -2532,7 +2532,7 @@ static void __exit gtp_fini(void)
 {
 	genl_unregister_family(&gtp_genl_family);
 	rtnl_link_unregister(&gtp_link_ops);
-	unregister_pernet_subsys(&gtp_net_ops);
+	unregister_pernet_device(&gtp_net_ops);
 
 	pr_info("GTP module unloaded\n");
 }

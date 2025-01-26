@@ -1983,7 +1983,7 @@ static int __init geneve_init_module(void)
 {
 	int rc;
 
-	rc = register_pernet_subsys(&geneve_net_ops);
+	rc = register_pernet_device(&geneve_net_ops);
 	if (rc)
 		goto out1;
 
@@ -1999,7 +1999,7 @@ static int __init geneve_init_module(void)
 out3:
 	unregister_netdevice_notifier(&geneve_notifier_block);
 out2:
-	unregister_pernet_subsys(&geneve_net_ops);
+	unregister_pernet_device(&geneve_net_ops);
 out1:
 	return rc;
 }
@@ -2009,7 +2009,7 @@ static void __exit geneve_cleanup_module(void)
 {
 	rtnl_link_unregister(&geneve_link_ops);
 	unregister_netdevice_notifier(&geneve_notifier_block);
-	unregister_pernet_subsys(&geneve_net_ops);
+	unregister_pernet_device(&geneve_net_ops);
 }
 module_exit(geneve_cleanup_module);
 

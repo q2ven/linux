@@ -806,7 +806,7 @@ static int __init bareudp_init_module(void)
 {
 	int rc;
 
-	rc = register_pernet_subsys(&bareudp_net_ops);
+	rc = register_pernet_device(&bareudp_net_ops);
 	if (rc)
 		goto out1;
 
@@ -816,7 +816,7 @@ static int __init bareudp_init_module(void)
 
 	return 0;
 out2:
-	unregister_pernet_subsys(&bareudp_net_ops);
+	unregister_pernet_device(&bareudp_net_ops);
 out1:
 	return rc;
 }
@@ -825,7 +825,7 @@ late_initcall(bareudp_init_module);
 static void __exit bareudp_cleanup_module(void)
 {
 	rtnl_link_unregister(&bareudp_link_ops);
-	unregister_pernet_subsys(&bareudp_net_ops);
+	unregister_pernet_device(&bareudp_net_ops);
 }
 module_exit(bareudp_cleanup_module);
 

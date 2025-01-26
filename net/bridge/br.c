@@ -400,7 +400,7 @@ static int __init br_init(void)
 	if (err)
 		goto err_out;
 
-	err = register_pernet_subsys(&br_net_ops);
+	err = register_pernet_device(&br_net_ops);
 	if (err)
 		goto err_out1;
 
@@ -447,7 +447,7 @@ err_out4:
 err_out3:
 	br_nf_core_fini();
 err_out2:
-	unregister_pernet_subsys(&br_net_ops);
+	unregister_pernet_device(&br_net_ops);
 err_out1:
 	br_fdb_fini();
 err_out:
@@ -463,7 +463,7 @@ static void __exit br_deinit(void)
 	unregister_switchdev_notifier(&br_switchdev_notifier);
 	unregister_netdevice_notifier(&br_device_notifier);
 	brioctl_set(NULL);
-	unregister_pernet_subsys(&br_net_ops);
+	unregister_pernet_device(&br_net_ops);
 
 	rcu_barrier(); /* Wait for completion of call_rcu()'s */
 

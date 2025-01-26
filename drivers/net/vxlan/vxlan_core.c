@@ -5004,7 +5004,7 @@ static int __init vxlan_init_module(void)
 
 	get_random_bytes(&vxlan_salt, sizeof(vxlan_salt));
 
-	rc = register_pernet_subsys(&vxlan_net_ops);
+	rc = register_pernet_device(&vxlan_net_ops);
 	if (rc)
 		goto out1;
 
@@ -5032,7 +5032,7 @@ out4:
 out3:
 	unregister_netdevice_notifier(&vxlan_notifier_block);
 out2:
-	unregister_pernet_subsys(&vxlan_net_ops);
+	unregister_pernet_device(&vxlan_net_ops);
 out1:
 	return rc;
 }
@@ -5044,7 +5044,7 @@ static void __exit vxlan_cleanup_module(void)
 	rtnl_link_unregister(&vxlan_link_ops);
 	unregister_switchdev_notifier(&vxlan_switchdev_notifier_block);
 	unregister_netdevice_notifier(&vxlan_notifier_block);
-	unregister_pernet_subsys(&vxlan_net_ops);
+	unregister_pernet_device(&vxlan_net_ops);
 	/* rcu_barrier() is called by netns */
 }
 module_exit(vxlan_cleanup_module);
