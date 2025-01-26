@@ -1360,11 +1360,14 @@ static int register_pernet_operations(struct list_head *list,
 	if (WARN_ON(!!ops->id ^ !!ops->size))
 		return -EINVAL;
 
+	down_write(&pernet_ops_rwsem);
+
 	if (ops->id) {
 		error = ida_alloc_min(&net_generic_ids, MIN_PERNET_OPS_ID,
 				GFP_KERNEL);
 		if (error < 0)
-			return error;
+			goto unlock;
+
 		*ops->id = error;
 		/* This does not require READ_ONCE as writers already hold
 		 * pernet_ops_rwsem. But WRITE_ONCE is needed to protect
@@ -1379,15 +1382,23 @@ static int register_pernet_operations(struct list_head *list,
 			ida_free(&net_generic_ids, *ops->id);
 	}
 
+unlock:
+	up_write(&pernet_ops_rwsem);
+
 	return error;
 }
 
 static void unregister_pernet_operations(struct pernet_operations *ops)
 {
+	down_write(&pernet_ops_rwsem);
+
 	__unregister_pernet_operations(ops);
 	rcu_barrier();
+
 	if (ops->id)
 		ida_free(&net_generic_ids, *ops->id);
+
+	up_write(&pernet_ops_rwsem);
 }
 
 /**
@@ -1411,13 +1422,7 @@ static void unregister_pernet_operations(struct pernet_operations *ops)
  */
 int register_pernet_subsys(struct pernet_operations *ops)
 {
-	int error;
-
-	down_write(&pernet_ops_rwsem);
-	error = register_pernet_operations(&pernet_subsys_list, ops);
-	up_write(&pernet_ops_rwsem);
-
-	return error;
+	return register_pernet_operations(&pernet_subsys_list, ops);
 }
 EXPORT_SYMBOL_GPL(register_pernet_subsys);
 
@@ -1432,9 +1437,7 @@ EXPORT_SYMBOL_GPL(register_pernet_subsys);
  */
 void unregister_pernet_subsys(struct pernet_operations *ops)
 {
-	down_write(&pernet_ops_rwsem);
 	unregister_pernet_operations(ops);
-	up_write(&pernet_ops_rwsem);
 }
 EXPORT_SYMBOL_GPL(unregister_pernet_subsys);
 
@@ -1459,13 +1462,7 @@ EXPORT_SYMBOL_GPL(unregister_pernet_subsys);
  */
 int register_pernet_device(struct pernet_operations *ops)
 {
-	int error;
-
-	down_write(&pernet_ops_rwsem);
-	error = register_pernet_operations(&pernet_device_list, ops);
-	up_write(&pernet_ops_rwsem);
-
-	return error;
+	return register_pernet_operations(&pernet_device_list, ops);
 }
 EXPORT_SYMBOL_GPL(register_pernet_device);
 
@@ -1480,9 +1477,7 @@ EXPORT_SYMBOL_GPL(register_pernet_device);
  */
 void unregister_pernet_device(struct pernet_operations *ops)
 {
-	down_write(&pernet_ops_rwsem);
 	unregister_pernet_operations(ops);
-	up_write(&pernet_ops_rwsem);
 }
 EXPORT_SYMBOL_GPL(unregister_pernet_device);
 
