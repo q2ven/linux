@@ -438,9 +438,12 @@ out_undo:
 
 	rtnl_lock();
 	ops_exit_rtnl_list(&pernet_device_list, device_ops, &net_exit_list, &dev_kill_list);
-	ops_exit_rtnl_list(&pernet_subsys_list, subsys_ops, &net_exit_list, &dev_kill_list);
 	default_device_exit_batch(&net_exit_list, &dev_kill_list);
 	unregister_netdevice_many(&dev_kill_list);
+	rtnl_unlock();
+
+	rtnl_lock();
+	ops_exit_rtnl_list(&pernet_subsys_list, subsys_ops, &net_exit_list, NULL);
 	rtnl_unlock();
 
 	ops_undo_list(&pernet_device_list, device_ops, &net_exit_list, ops_exit_list);
@@ -692,9 +695,12 @@ static void cleanup_net(struct work_struct *work)
 
 	rtnl_lock();
 	ops_exit_rtnl_list(&pernet_device_list, NULL, &net_exit_list, &dev_kill_list);
-	ops_exit_rtnl_list(&pernet_subsys_list, NULL, &net_exit_list, &dev_kill_list);
 	default_device_exit_batch(&net_exit_list, &dev_kill_list);
 	unregister_netdevice_many(&dev_kill_list);
+	rtnl_unlock();
+
+	rtnl_lock();
+	ops_exit_rtnl_list(&pernet_subsys_list, NULL, &net_exit_list, NULL);
 	rtnl_unlock();
 
 	/* Run all of the network namespace exit methods and
@@ -1301,8 +1307,14 @@ static void free_exit_list(struct pernet_operations *ops, struct list_head *net_
 		list_swap(&ops->list, &tmp);
 
 		rtnl_lock();
-		ops_exit_rtnl_list(&ops_list, NULL, net_exit_list, &dev_kill_list);
-		unregister_netdevice_many(&dev_kill_list);
+
+		if (ops->device) {
+			ops_exit_rtnl_list(&ops_list, NULL, net_exit_list, &dev_kill_list);
+			unregister_netdevice_many(&dev_kill_list);
+		} else {
+			ops_exit_rtnl_list(&ops_list, NULL, net_exit_list, NULL);
+		}
+
 		rtnl_unlock();
 
 		list_replace(&tmp, &ops->list);
@@ -1388,6 +1400,12 @@ static int register_pernet_operations(struct list_head *list,
 
 	if (WARN_ON(!!ops->id ^ !!ops->size))
 		return -EINVAL;
+
+	if (WARN_ON(ops->device))
+		return -EINVAL;
+
+	if (list == &pernet_device_list)
+		ops->device = true;
 
 	down_write(&pernet_ops_rwsem);
 

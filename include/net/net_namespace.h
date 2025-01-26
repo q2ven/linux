@@ -481,6 +481,8 @@ struct pernet_operations {
 				struct list_head *dev_kill_list);
 	unsigned int * const id;
 	const size_t size;
+	/* Internal use only, leave this empty. */
+	bool device;
 };
 
 /*
