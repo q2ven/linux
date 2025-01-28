@@ -444,7 +444,9 @@ static int generic_hwtstamp_ioctl_lower(struct net_device *dev, int cmd,
 	int err;
 
 	strscpy_pad(ifrr.ifr_name, dev->name, IFNAMSIZ);
-	ifrr.ifr_ifru = kernel_cfg->ifr->ifr_ifru;
+
+	if (kernel_cfg->ifr)
+		ifrr.ifr_ifru = kernel_cfg->ifr->ifr_ifru;
 
 	err = dev_eth_ioctl(dev, &ifrr, cmd);
 	if (err)
