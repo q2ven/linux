@@ -192,6 +192,7 @@ struct net {
 #ifdef CONFIG_DEBUG_NET_SMALL_RTNL
 	/* Move to a better place when the config guard is removed. */
 	struct mutex		rtnl_mutex;
+	struct completion	dev_unreg_cross_net;
 #endif
 } __randomize_layout;
 

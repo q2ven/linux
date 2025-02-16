@@ -338,6 +338,9 @@ static __net_init void preinit_net(struct net *net, struct user_namespace *user_
 #ifdef CONFIG_DEBUG_NET_SMALL_RTNL
 	mutex_init(&net->rtnl_mutex);
 	lock_set_cmp_fn(&net->rtnl_mutex, rtnl_net_lock_cmp_fn, NULL);
+
+	init_completion(&net->dev_unreg_cross_net);
+	complete_all(&net->dev_unreg_cross_net);
 #endif
 
 	preinit_net_sysctl(net);

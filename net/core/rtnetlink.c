@@ -202,6 +202,8 @@ EXPORT_SYMBOL(__rtnl_net_unlock);
 
 void rtnl_net_lock(struct net *net)
 {
+	wait_for_completion(&net->dev_unreg_cross_net);
+
 	rtnl_lock();
 	__rtnl_net_lock(net);
 }
@@ -211,6 +213,8 @@ void rtnl_net_unlock(struct net *net)
 {
 	__rtnl_net_unlock(net);
 	rtnl_unlock();
+
+	wait_for_completion(&net->dev_unreg_cross_net);
 }
 EXPORT_SYMBOL(rtnl_net_unlock);
 
