@@ -645,6 +645,11 @@ static int sock_bindtoindex_locked(struct sock *sk, int ifindex)
 	if (ifindex < 0)
 		goto out;
 
+	if (sk_hashed(sk)) {
+		ret = -EBUSY;
+		goto out;
+	}
+
 	/* Paired with all READ_ONCE() done locklessly. */
 	WRITE_ONCE(sk->sk_bound_dev_if, ifindex);
 
