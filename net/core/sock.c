@@ -1320,8 +1320,10 @@ int sk_setsockopt(struct sock *sk, int level, int optname,
 		sk->sk_reuse = (valbool ? SK_CAN_REUSE : SK_NO_REUSE);
 		break;
 	case SO_REUSEPORT:
-		if (valbool && !sk_is_inet(sk))
+		if (!sk_is_inet(sk))
 			ret = -EOPNOTSUPP;
+		else if (!hlist_unhashed(&sk->sk_bind_node) || sk_hashed(sk))
+			ret = -EBUSY;
 		else
 			sk->sk_reuseport = valbool;
 		break;
