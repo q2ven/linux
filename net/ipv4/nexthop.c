@@ -1156,7 +1156,7 @@ static int nh_fill_res_bucket(struct sk_buff *skb, struct nexthop *nh,
 
 	nhm = nlmsg_data(nlh);
 	nhm->nh_family = AF_UNSPEC;
-	nhm->nh_flags = bucket->nh_flags;
+	nhm->nh_flags = READ_ONCE(bucket->nh_flags);
 	nhm->nh_protocol = nh->protocol;
 	nhm->nh_scope = 0;
 	nhm->resvd = 0;
@@ -1788,6 +1788,8 @@ static bool nh_res_bucket_migrate(struct nh_res_table *res_table,
 							old_nhge->nh,
 							new_nhge->nh, &extack);
 		if (err) {
+			u8 nh_flags;
+
 			pr_err_ratelimited("%s\n", extack._msg);
 			if (!force)
 				return false;
@@ -1796,7 +1798,9 @@ static bool nh_res_bucket_migrate(struct nh_res_table *res_table,
 			 * bucket to indicate to user space that this bucket is
 			 * not correctly populated in hardware.
 			 */
-			bucket->nh_flags &= ~(RTNH_F_OFFLOAD | RTNH_F_TRAP);
+			nh_flags = READ_ONCE(bucket->nh_flags);
+			nh_flags &= ~(RTNH_F_OFFLOAD | RTNH_F_TRAP);
+			WRITE_ONCE(bucket->nh_flags, nh_flags);
 		}
 	}
 
@@ -3964,6 +3968,7 @@ void nexthop_bucket_set_hw_flags(struct net *net, u32 id, u16 bucket_index,
 	struct nh_res_bucket *bucket;
 	struct nexthop *nexthop;
 	struct nh_group *nhg;
+	u8 nh_flags;
 
 	rcu_read_lock();
 
@@ -3980,11 +3985,13 @@ void nexthop_bucket_set_hw_flags(struct net *net, u32 id, u16 bucket_index,
 
 	res_table = rcu_dereference(nhg->res_table);
 	bucket = &res_table->nh_buckets[bucket_index];
-	bucket->nh_flags &= ~(RTNH_F_OFFLOAD | RTNH_F_TRAP);
+	nh_flags = READ_ONCE(bucket->nh_flags);
+	nh_flags &= ~(RTNH_F_OFFLOAD | RTNH_F_TRAP);
 	if (offload)
-		bucket->nh_flags |= RTNH_F_OFFLOAD;
+		nh_flags |= RTNH_F_OFFLOAD;
 	if (trap)
-		bucket->nh_flags |= RTNH_F_TRAP;
+		nh_flags |= RTNH_F_TRAP;
+	WRITE_ONCE(bucket->nh_flags, nh_flags);
 
 out:
 	rcu_read_unlock();
