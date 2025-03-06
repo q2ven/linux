@@ -3774,10 +3774,16 @@ static int rtm_get_nexthop_bucket(struct sk_buff *in_skb, struct nlmsghdr *nlh,
 	if (err)
 		goto errout;
 
+	skb = alloc_skb(NLMSG_GOODSIZE, GFP_KERNEL);
+	if (!skb) {
+		err = -ENOBUFS;
+		goto errout;
+	}
+
 	nh = nexthop_find_group_resilient(net, id, extack);
 	if (IS_ERR(nh)) {
 		err = PTR_ERR(nh);
-		goto errout;
+		goto errout_free;
 	}
 
 	nhg = rtnl_dereference(nh->nh_grp);
@@ -3785,13 +3791,7 @@ static int rtm_get_nexthop_bucket(struct sk_buff *in_skb, struct nlmsghdr *nlh,
 	if (bucket_index >= res_table->num_nh_buckets) {
 		NL_SET_ERR_MSG(extack, "Bucket index out of bounds");
 		err = -ENOENT;
-		goto errout;
-	}
-
-	skb = alloc_skb(NLMSG_GOODSIZE, GFP_KERNEL);
-	if (!skb) {
-		err = -ENOBUFS;
-		goto errout;
+		goto errout_free;
 	}
 
 	err = nh_fill_res_bucket(skb, nh, &res_table->nh_buckets[bucket_index],
