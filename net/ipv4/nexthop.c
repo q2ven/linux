@@ -1145,7 +1145,7 @@ static int nh_fill_res_bucket(struct sk_buff *skb, struct nexthop *nh,
 			      unsigned int nlflags,
 			      struct netlink_ext_ack *extack)
 {
-	struct nh_grp_entry *nhge = nh_res_dereference(bucket->nh_entry);
+	struct nh_grp_entry *nhge = rcu_dereference_rtnl(bucket->nh_entry);
 	struct nlmsghdr *nlh;
 	struct nlattr *nest;
 	struct nhmsg *nhm;
@@ -3529,7 +3529,7 @@ nexthop_find_group_resilient(struct net *net, u32 id,
 		return ERR_PTR(-EINVAL);
 	}
 
-	nhg = rtnl_dereference(nh->nh_grp);
+	nhg = rcu_dereference_rtnl(nh->nh_grp);
 	if (!nhg->resilient) {
 		NL_SET_ERR_MSG(extack, "Nexthop group not of type resilient");
 		return ERR_PTR(-EINVAL);
@@ -3780,24 +3780,29 @@ static int rtm_get_nexthop_bucket(struct sk_buff *in_skb, struct nlmsghdr *nlh,
 		goto errout;
 	}
 
+	rcu_read_lock();
+
 	nh = nexthop_find_group_resilient(net, id, extack);
 	if (IS_ERR(nh)) {
 		err = PTR_ERR(nh);
-		goto errout_free;
+		goto errout_unlock;
 	}
 
-	nhg = rtnl_dereference(nh->nh_grp);
-	res_table = rtnl_dereference(nhg->res_table);
+	nhg = rcu_dereference_rtnl(nh->nh_grp);
+	res_table = rcu_dereference_rtnl(nhg->res_table);
 	if (bucket_index >= res_table->num_nh_buckets) {
 		NL_SET_ERR_MSG(extack, "Bucket index out of bounds");
 		err = -ENOENT;
-		goto errout_free;
+		goto errout_unlock;
 	}
 
 	err = nh_fill_res_bucket(skb, nh, &res_table->nh_buckets[bucket_index],
 				 bucket_index, RTM_NEWNEXTHOPBUCKET,
 				 NETLINK_CB(in_skb).portid, nlh->nlmsg_seq,
 				 0, extack);
+
+	rcu_read_unlock();
+
 	if (err < 0) {
 		WARN_ON(err == -EMSGSIZE);
 		goto errout_free;
@@ -3805,6 +3810,8 @@ static int rtm_get_nexthop_bucket(struct sk_buff *in_skb, struct nlmsghdr *nlh,
 
 	return rtnl_unicast(skb, net, NETLINK_CB(in_skb).portid);
 
+errout_unlock:
+	rcu_read_unlock();
 errout_free:
 	kfree_skb(skb);
 errout:
@@ -4048,7 +4055,8 @@ static const struct rtnl_msg_handler nexthop_rtnl_msg_handlers[] __initconst = {
 	{.msgtype = RTM_GETNEXTHOP, .doit = rtm_get_nexthop,
 	 .dumpit = rtm_dump_nexthop},
 	{.msgtype = RTM_GETNEXTHOPBUCKET, .doit = rtm_get_nexthop_bucket,
-	 .dumpit = rtm_dump_nexthop_bucket},
+	 .dumpit = rtm_dump_nexthop_bucket,
+	 .flags = RTNL_FLAG_DOIT_UNLOCKED},
 	{.protocol = PF_INET, .msgtype = RTM_NEWNEXTHOP,
 	 .doit = rtm_new_nexthop},
 	{.protocol = PF_INET, .msgtype = RTM_GETNEXTHOP,
