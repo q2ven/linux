@@ -1145,7 +1145,7 @@ static int nh_fill_res_bucket(struct sk_buff *skb, struct nexthop *nh,
 			      unsigned int nlflags,
 			      struct netlink_ext_ack *extack)
 {
-	struct nh_grp_entry *nhge = rcu_dereference_rtnl(bucket->nh_entry);
+	struct nh_grp_entry *nhge = rcu_dereference(bucket->nh_entry);
 	struct nlmsghdr *nlh;
 	struct nlattr *nest;
 	struct nhmsg *nhm;
@@ -3360,12 +3360,13 @@ static bool nh_dump_filtered(struct nexthop *nh,
 	if (nh->is_group)
 		return true;
 
-	nhi = rtnl_dereference(nh->nh_info);
+	nhi = rcu_dereference(nh->nh_info);
 	if (family && nhi->family != family)
 		return true;
 
 	dev = nhi->fib_nhc.nhc_dev;
-	if (filter->dev_idx && (!dev || dev->ifindex != filter->dev_idx))
+	if (filter->dev_idx &&
+	    (!dev || READ_ONCE(dev->ifindex) != filter->dev_idx))
 		return true;
 
 	if (filter->master_idx) {
@@ -3374,9 +3375,13 @@ static bool nh_dump_filtered(struct nexthop *nh,
 		if (!dev)
 			return true;
 
-		master = netdev_master_upper_dev_get((struct net_device *)dev);
-		if (!master || master->ifindex != filter->master_idx)
+		rcu_read_lock();
+		master = netdev_master_upper_dev_get_rcu((struct net_device *)dev);
+		if (!master || READ_ONCE(master->ifindex) != filter->master_idx) {
+			rcu_read_unlock();
 			return true;
+		}
+		rcu_read_unlock();
 	}
 
 	return false;
@@ -3529,7 +3534,7 @@ nexthop_find_group_resilient(struct net *net, u32 id,
 		return ERR_PTR(-EINVAL);
 	}
 
-	nhg = rcu_dereference_rtnl(nh->nh_grp);
+	nhg = rcu_dereference(nh->nh_grp);
 	if (!nhg->resilient) {
 		NL_SET_ERR_MSG(extack, "Nexthop group not of type resilient");
 		return ERR_PTR(-EINVAL);
@@ -3626,8 +3631,8 @@ static int rtm_dump_nexthop_bucket_nh(struct sk_buff *skb,
 	u16 bucket_index;
 	int err;
 
-	nhg = rtnl_dereference(nh->nh_grp);
-	res_table = rtnl_dereference(nhg->res_table);
+	nhg = rcu_dereference(nh->nh_grp);
+	res_table = rcu_dereference(nhg->res_table);
 	for (bucket_index = dd->ctx->bucket_index;
 	     bucket_index < res_table->num_nh_buckets;
 	     bucket_index++) {
@@ -3635,7 +3640,7 @@ static int rtm_dump_nexthop_bucket_nh(struct sk_buff *skb,
 		struct nh_grp_entry *nhge;
 
 		bucket = &res_table->nh_buckets[bucket_index];
-		nhge = rtnl_dereference(bucket->nh_entry);
+		nhge = rcu_dereference(bucket->nh_entry);
 		if (nh_dump_filtered(nhge->nh, &dd->filter, nhm->nh_family))
 			continue;
 
@@ -3688,11 +3693,16 @@ static int rtm_dump_nexthop_bucket(struct sk_buff *skb,
 	if (err)
 		return err;
 
+	rcu_read_lock();
+
 	if (dd.filter.nh_id) {
 		nh = nexthop_find_group_resilient(net, dd.filter.nh_id,
 						  cb->extack);
-		if (IS_ERR(nh))
+		if (IS_ERR(nh)) {
+			rcu_read_unlock();
 			return PTR_ERR(nh);
+		}
+
 		err = rtm_dump_nexthop_bucket_nh(skb, cb, nh, &dd);
 	} else {
 		struct rb_root *root = &net->nexthop.rb_root;
@@ -3700,6 +3710,8 @@ static int rtm_dump_nexthop_bucket(struct sk_buff *skb,
 		err = rtm_dump_walk_nexthops(skb, cb, root, &ctx->nh,
 					     &rtm_dump_nexthop_bucket_cb, &dd);
 	}
+
+	rcu_read_unlock();
 
 	cb->seq = net->nexthop.seq;
 	nl_dump_check_consistent(cb, nlmsg_hdr(skb));
@@ -4056,7 +4068,7 @@ static const struct rtnl_msg_handler nexthop_rtnl_msg_handlers[] __initconst = {
 	 .dumpit = rtm_dump_nexthop},
 	{.msgtype = RTM_GETNEXTHOPBUCKET, .doit = rtm_get_nexthop_bucket,
 	 .dumpit = rtm_dump_nexthop_bucket,
-	 .flags = RTNL_FLAG_DOIT_UNLOCKED},
+	 .flags = RTNL_FLAG_DOIT_UNLOCKED | RTNL_FLAG_DUMPIT_UNLOCKED},
 	{.protocol = PF_INET, .msgtype = RTM_NEWNEXTHOP,
 	 .doit = rtm_new_nexthop},
 	{.protocol = PF_INET, .msgtype = RTM_GETNEXTHOP,
