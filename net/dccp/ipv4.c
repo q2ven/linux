@@ -950,7 +950,6 @@ static struct proto dccp_v4_prot = {
 	.sendmsg		= dccp_sendmsg,
 	.recvmsg		= dccp_recvmsg,
 	.backlog_rcv		= dccp_v4_do_rcv,
-	.accept			= inet_csk_accept,
 	.get_port		= inet_csk_get_port,
 	.shutdown		= dccp_shutdown,
 	.orphan_count		= &dccp_orphan_count,
