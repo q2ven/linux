@@ -20,11 +20,6 @@ menuconfig IP_DCCP
 
 if IP_DCCP
 
-config INET_DCCP_DIAG
-	depends on INET_DIAG
-	def_tristate y if (IP_DCCP = y && INET_DIAG = y)
-	def_tristate m
-
 source "net/dccp/ccids/Kconfig"
 
 menu "DCCP Kernel Hacking"
