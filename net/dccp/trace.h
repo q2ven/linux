@@ -7,7 +7,6 @@
 
 #include <net/sock.h>
 #include "dccp.h"
-#include "ccids/ccid3.h"
 #include <linux/tracepoint.h>
 #include <trace/events/net_probe_common.h>
 
@@ -35,10 +34,6 @@ TRACE_EVENT(dccp_probe,
 
 	TP_fast_assign(
 		const struct inet_sock *inet = inet_sk(sk);
-		struct ccid3_hc_tx_sock *hc = NULL;
-
-		if (ccid_get_current_tx_ccid(dccp_sk(sk)) == DCCPC_CCID3)
-			hc = ccid3_hc_tx_sk(sk);
 
 		memset(__entry->saddr, 0, sizeof(struct sockaddr_in6));
 		memset(__entry->daddr, 0, sizeof(struct sockaddr_in6));
@@ -50,18 +45,8 @@ TRACE_EVENT(dccp_probe,
 		__entry->dport = ntohs(inet->inet_dport);
 
 		__entry->size = size;
-		if (hc) {
-			__entry->tx_s = hc->tx_s;
-			__entry->tx_rtt = hc->tx_rtt;
-			__entry->tx_p = hc->tx_p;
-			__entry->tx_x_calc = hc->tx_x_calc;
-			__entry->tx_x_recv = hc->tx_x_recv >> 6;
-			__entry->tx_x = hc->tx_x >> 6;
-			__entry->tx_t_ipi = hc->tx_t_ipi;
-		} else {
-			__entry->tx_s = 0;
-			memset_startat(__entry, 0, tx_rtt);
-		}
+		__entry->tx_s = 0;
+		memset_startat(__entry, 0, tx_rtt);
 	),
 
 	TP_printk("src=%pISpc dest=%pISpc size=%d tx_s=%d tx_rtt=%d "
