@@ -12,7 +12,6 @@
 
 #include <net/sock.h>
 
-#include "ccid.h"
 #include "dccp.h"
 
 /* rate-limit for syncs in reply to sequence-invalid packets; RFC 4340, 7.5.4 */
@@ -153,21 +152,6 @@ static void dccp_rcv_reset(struct sock *sk, struct sk_buff *skb)
 	if (err && !sock_flag(sk, SOCK_DEAD))
 		sk_wake_async(sk, SOCK_WAKE_IO, POLL_ERR);
 	dccp_time_wait(sk, DCCP_TIME_WAIT, 0);
-}
-
-static void dccp_deliver_input_to_ccids(struct sock *sk, struct sk_buff *skb)
-{
-	const struct dccp_sock *dp = dccp_sk(sk);
-
-	/* Don't deliver to RX CCID when node has shut down read end. */
-	if (!(sk->sk_shutdown & RCV_SHUTDOWN))
-		ccid_hc_rx_packet_recv(dp->dccps_hc_rx_ccid, sk, skb);
-	/*
-	 * Until the TX queue has been drained, we can not honour SHUT_WR, since
-	 * we need received feedback as input to adjust congestion control.
-	 */
-	if (sk->sk_write_queue.qlen > 0 || !(sk->sk_shutdown & SEND_SHUTDOWN))
-		ccid_hc_tx_packet_recv(dp->dccps_hc_tx_ccid, sk, skb);
 }
 
 static int dccp_check_seqno(struct sock *sk, struct sk_buff *skb)
@@ -357,8 +341,6 @@ int dccp_rcv_established(struct sock *sk, struct sk_buff *skb,
 
 	if (dccp_parse_options(sk, NULL, skb))
 		return 1;
-
-	dccp_deliver_input_to_ccids(sk, skb);
 
 	return __dccp_rcv_established(sk, skb, dh, len);
 discard:
@@ -668,8 +650,6 @@ int dccp_rcv_state_process(struct sock *sk, struct sk_buff *skb,
 		return 0;
 
 	case DCCP_PARTOPEN:
-		dccp_deliver_input_to_ccids(sk, skb);
-		fallthrough;
 	case DCCP_RESPOND:
 		queued = dccp_rcv_respond_partopen_state_process(sk, skb,
 								 dh, len);

@@ -19,7 +19,7 @@
  */
 #include <linux/module.h>
 #include <linux/slab.h>
-#include "ccid.h"
+
 #include "feat.h"
 
 /* feature-specific sysctls - initialised to the defaults from RFC 4340, 6.4 */
@@ -33,23 +33,6 @@ int		sysctl_dccp_rx_ccid	    __read_mostly = 2,
  * These all use an u64 argument, to provide enough room for NN/SP features. At
  * this stage the negotiated values have been checked to be within their range.
  */
-static int dccp_hdlr_ccid(struct sock *sk, u64 ccid, bool rx)
-{
-	struct dccp_sock *dp = dccp_sk(sk);
-	struct ccid *new_ccid = ccid_new(ccid, sk, rx);
-
-	if (new_ccid == NULL)
-		return -ENOMEM;
-
-	if (rx) {
-		ccid_hc_rx_delete(dp->dccps_hc_rx_ccid, sk);
-		dp->dccps_hc_rx_ccid = new_ccid;
-	} else {
-		ccid_hc_tx_delete(dp->dccps_hc_tx_ccid, sk);
-		dp->dccps_hc_tx_ccid = new_ccid;
-	}
-	return 0;
-}
 
 static int dccp_hdlr_seq_win(struct sock *sk, u64 seq_win, bool rx)
 {
@@ -133,7 +116,7 @@ static const struct {
  *  +--------------------------+----+-----+----+----+---------+-----------+
  */
 } dccp_feat_table[] = {
-	{ DCCPF_CCID,		 FEAT_AT_TX, FEAT_SP, 2,   dccp_hdlr_ccid     },
+	{ DCCPF_CCID,		 FEAT_AT_TX, FEAT_SP, 2,   NULL },
 	{ DCCPF_SHORT_SEQNOS,	 FEAT_AT_TX, FEAT_SP, 0,   NULL },
 	{ DCCPF_SEQUENCE_WINDOW, FEAT_AT_TX, FEAT_NN, 100, dccp_hdlr_seq_win  },
 	{ DCCPF_ECN_INCAPABLE,	 FEAT_AT_RX, FEAT_SP, 0,   NULL },
@@ -711,10 +694,6 @@ static int __feat_register_sp(struct list_head *fn, u8 feat, u8 is_local,
 	    !dccp_feat_sp_list_ok(feat, sp_val, sp_len))
 		return -EINVAL;
 
-	/* Avoid negotiating alien CCIDs by only advertising supported ones */
-	if (feat == DCCPF_CCID && !ccid_support_check(sp_val, sp_len))
-		return -EOPNOTSUPP;
-
 	if (dccp_feat_clone_sp_val(&fval, sp_val, sp_len))
 		return -ENOMEM;
 
@@ -1050,12 +1029,6 @@ static u8 dccp_feat_change_recv(struct list_head *fn, u8 is_mandatory, u8 opt,
 			goto unknown_feature_or_value;
 		}
 
-		/* Treat unsupported CCIDs like invalid values */
-		if (feat == DCCPF_CCID && !ccid_support_check(fval.sp.vec, 1)) {
-			kfree(fval.sp.vec);
-			goto not_valid_or_not_known;
-		}
-
 		if (dccp_feat_push_confirm(fn, feat, local, &fval)) {
 			kfree(fval.sp.vec);
 			return DCCP_RESET_CODE_TOO_BUSY;
@@ -1094,7 +1067,6 @@ unknown_feature_or_value:
 	if (!is_mandatory)
 		return dccp_push_empty_confirm(fn, feat, local);
 
-not_valid_or_not_known:
 	return is_mandatory ? DCCP_RESET_CODE_MANDATORY_ERROR
 			    : DCCP_RESET_CODE_OPTION_ERROR;
 }
@@ -1349,10 +1321,6 @@ int dccp_feat_init(struct sock *sk)
 	struct list_head *fn = &dccp_sk(sk)->dccps_featneg;
 	u8 on = 1, off = 0;
 	int rc;
-	struct {
-		u8 *val;
-		u8 len;
-	} tx, rx;
 
 	/* Non-negotiable (NN) features */
 	rc = __feat_register_nn(fn, DCCPF_SEQUENCE_WINDOW, 0,
@@ -1368,42 +1336,11 @@ int dccp_feat_init(struct sock *sk)
 		return rc;
 
 	/* RFC 4340 12.1: "If a DCCP is not ECN capable, ..." */
-	rc = __feat_register_sp(fn, DCCPF_ECN_INCAPABLE, true, true, &on, 1);
-	if (rc)
-		return rc;
-
-	/*
-	 * We advertise the available list of CCIDs and reorder according to
-	 * preferences, to avoid failure resulting from negotiating different
-	 * singleton values (which always leads to failure).
-	 * These settings can still (later) be overridden via sockopts.
-	 */
-	if (ccid_get_builtin_ccids(&tx.val, &tx.len))
-		return -ENOBUFS;
-	if (ccid_get_builtin_ccids(&rx.val, &rx.len)) {
-		kfree(tx.val);
-		return -ENOBUFS;
-	}
-
-	if (!dccp_feat_prefer(sysctl_dccp_tx_ccid, tx.val, tx.len) ||
-	    !dccp_feat_prefer(sysctl_dccp_rx_ccid, rx.val, rx.len))
-		goto free_ccid_lists;
-
-	rc = __feat_register_sp(fn, DCCPF_CCID, true, false, tx.val, tx.len);
-	if (rc)
-		goto free_ccid_lists;
-
-	rc = __feat_register_sp(fn, DCCPF_CCID, false, false, rx.val, rx.len);
-
-free_ccid_lists:
-	kfree(tx.val);
-	kfree(rx.val);
-	return rc;
+	return __feat_register_sp(fn, DCCPF_ECN_INCAPABLE, true, true, &on, 1);
 }
 
 int dccp_feat_activate_values(struct sock *sk, struct list_head *fn_list)
 {
-	struct dccp_sock *dp = dccp_sk(sk);
 	struct dccp_feat_entry *cur, *next;
 	int idx;
 	dccp_feat_val *fvals[DCCP_FEAT_SUPPORTED_MAX][2] = {
@@ -1456,14 +1393,5 @@ int dccp_feat_activate_values(struct sock *sk, struct list_head *fn_list)
 	return 0;
 
 activation_failed:
-	/*
-	 * We clean up everything that may have been allocated, since
-	 * it is difficult to track at which stage negotiation failed.
-	 * This is ok, since all allocation functions below are robust
-	 * against NULL arguments.
-	 */
-	ccid_hc_rx_delete(dp->dccps_hc_rx_ccid, sk);
-	ccid_hc_tx_delete(dp->dccps_hc_tx_ccid, sk);
-	dp->dccps_hc_rx_ccid = dp->dccps_hc_tx_ccid = NULL;
 	return -1;
 }

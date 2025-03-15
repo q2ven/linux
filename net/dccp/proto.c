@@ -31,7 +31,6 @@
 #include <linux/delay.h>
 #include <linux/poll.h>
 
-#include "ccid.h"
 #include "dccp.h"
 #include "feat.h"
 
@@ -656,16 +655,10 @@ static int __init dccp_init(void)
 	if (rc)
 		goto out_free_dccp_bhash2;
 
-	rc = ccid_initialize_builtins();
-	if (rc)
-		goto out_free_dccp_mib;
-
 	dccp_timestamping_init();
 
 	return 0;
 
-out_free_dccp_mib:
-	dccp_mib_exit();
 out_free_dccp_bhash2:
 	free_pages((unsigned long)dccp_hashinfo.bhash2, bhash_order);
 out_free_dccp_bhash:
@@ -694,7 +687,6 @@ static void __exit dccp_fini(void)
 	int bhash_order = get_order(dccp_hashinfo.bhash_size *
 				    sizeof(struct inet_bind_hashbucket));
 
-	ccid_cleanup_builtins();
 	dccp_mib_exit();
 	free_pages((unsigned long)dccp_hashinfo.bhash, bhash_order);
 	free_pages((unsigned long)dccp_hashinfo.bhash2, bhash_order);

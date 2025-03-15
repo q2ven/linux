@@ -14,7 +14,6 @@
 #include <linux/kernel.h>
 #include <linux/skbuff.h>
 
-#include "ccid.h"
 #include "dccp.h"
 #include "feat.h"
 
@@ -210,11 +209,6 @@ int dccp_parse_options(struct sock *sk, struct dccp_request_sock *dreq,
 			dccp_pr_debug("%s rx opt: ELAPSED_TIME=%d\n",
 				      dccp_role(sk), elapsed_time);
 			break;
-		case DCCPO_MIN_RX_CCID_SPECIFIC ... DCCPO_MAX_RX_CCID_SPECIFIC:
-			if (ccid_hc_rx_parse_options(dp->dccps_hc_rx_ccid, sk,
-						     pkt_type, opt, value, len))
-				goto out_invalid_option;
-			break;
 		case DCCPO_ACK_VECTOR_0:
 		case DCCPO_ACK_VECTOR_1:
 			if (dccp_packet_without_ack(skb))   /* RFC 4340, 11.4 */
@@ -224,11 +218,6 @@ int dccp_parse_options(struct sock *sk, struct dccp_request_sock *dreq,
 			 * interested. The RX CCID need not parse Ack Vectors,
 			 * since it is only interested in clearing old state.
 			 */
-			fallthrough;
-		case DCCPO_MIN_TX_CCID_SPECIFIC ... DCCPO_MAX_TX_CCID_SPECIFIC:
-			if (ccid_hc_tx_parse_options(dp->dccps_hc_tx_ccid, sk,
-						     pkt_type, opt, value, len))
-				goto out_invalid_option;
 			break;
 		default:
 			DCCP_CRIT("DCCP(%p): option %d(len=%d) not "
@@ -493,11 +482,8 @@ int dccp_insert_options(struct sock *sk, struct sk_buff *skb)
 		}
 	}
 
-	if (dp->dccps_hc_rx_insert_options) {
-		if (ccid_hc_rx_insert_options(dp->dccps_hc_rx_ccid, sk, skb))
-			return -1;
+	if (dp->dccps_hc_rx_insert_options)
 		dp->dccps_hc_rx_insert_options = 0;
-	}
 
 	if (dp->dccps_timestamp_echo != 0 &&
 	    dccp_insert_option_timestamp_echo(dp, NULL, skb))
