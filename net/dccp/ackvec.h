@@ -131,6 +131,4 @@ struct dccp_ackvec_parsed {
 	struct list_head node;
 };
 
-int dccp_ackvec_parsed_add(struct list_head *head, u8 *vec, u8 len, u8 nonce);
-void dccp_ackvec_parsed_cleanup(struct list_head *parsed_chunks);
 #endif /* _ACKVEC_H */
