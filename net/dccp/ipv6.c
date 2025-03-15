@@ -1009,7 +1009,6 @@ static struct proto dccp_v6_prot = {
 	.owner		   = THIS_MODULE,
 	.close		   = dccp_close,
 	.connect	   = dccp_v6_connect,
-	.disconnect	   = dccp_disconnect,
 	.sendmsg	   = dccp_sendmsg,
 	.recvmsg	   = dccp_recvmsg,
 	.backlog_rcv	   = dccp_v6_do_rcv,
