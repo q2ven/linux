@@ -44,10 +44,6 @@ struct inet_connection_sock_af_ops {
 				      struct request_sock *req_unhash,
 				      bool *own_req);
 	u16	    net_header_len;
-	int	    (*setsockopt)(struct sock *sk, int level, int optname,
-				  sockptr_t optval, unsigned int optlen);
-	int	    (*getsockopt)(struct sock *sk, int level, int optname,
-				  char __user *optval, int __user *optlen);
 	void	    (*mtu_reduced)(struct sock *sk);
 };
 

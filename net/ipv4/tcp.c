@@ -4054,13 +4054,15 @@ ao_parse:
 int tcp_setsockopt(struct sock *sk, int level, int optname, sockptr_t optval,
 		   unsigned int optlen)
 {
-	const struct inet_connection_sock *icsk = inet_csk(sk);
+	if (level == SOL_TCP)
+		return do_tcp_setsockopt(sk, level, optname, optval, optlen);
 
-	if (level != SOL_TCP)
-		/* Paired with WRITE_ONCE() in do_ipv6_setsockopt() and tcp_v6_connect() */
-		return READ_ONCE(icsk->icsk_af_ops)->setsockopt(sk, level, optname,
-								optval, optlen);
-	return do_tcp_setsockopt(sk, level, optname, optval, optlen);
+#if IS_ENABLED(CONFIG_IPV6)
+	if (sk->sk_family == AF_INET6)
+		return ipv6_setsockopt(sk, level, optname, optval, optlen);
+#endif
+
+	return ip_setsockopt(sk, level, optname, optval, optlen);
 }
 EXPORT_IPV6_MOD(tcp_setsockopt);
 
@@ -4698,14 +4700,16 @@ EXPORT_IPV6_MOD(tcp_bpf_bypass_getsockopt);
 int tcp_getsockopt(struct sock *sk, int level, int optname, char __user *optval,
 		   int __user *optlen)
 {
-	struct inet_connection_sock *icsk = inet_csk(sk);
+	if (level == SOL_TCP)
+		return do_tcp_getsockopt(sk, level, optname, USER_SOCKPTR(optval),
+					 USER_SOCKPTR(optlen));
 
-	if (level != SOL_TCP)
-		/* Paired with WRITE_ONCE() in do_ipv6_setsockopt() and tcp_v6_connect() */
-		return READ_ONCE(icsk->icsk_af_ops)->getsockopt(sk, level, optname,
-								optval, optlen);
-	return do_tcp_getsockopt(sk, level, optname, USER_SOCKPTR(optval),
-				 USER_SOCKPTR(optlen));
+#if IS_ENABLED(CONFIG_IPV6)
+	if (sk->sk_family == AF_INET6)
+		return ipv6_getsockopt(sk, level, optname, optval, optlen);
+#endif
+
+	return ip_getsockopt(sk, level, optname, optval, optlen);
 }
 EXPORT_IPV6_MOD(tcp_getsockopt);
 

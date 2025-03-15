@@ -986,8 +986,6 @@ static const struct inet_connection_sock_af_ops dccp_ipv6_af_ops = {
 	.conn_request	   = dccp_v6_conn_request,
 	.syn_recv_sock	   = dccp_v6_request_recv_sock,
 	.net_header_len	   = sizeof(struct ipv6hdr),
-	.setsockopt	   = ipv6_setsockopt,
-	.getsockopt	   = ipv6_getsockopt,
 };
 
 /*
@@ -1000,8 +998,6 @@ static const struct inet_connection_sock_af_ops dccp_ipv6_mapped = {
 	.conn_request	   = dccp_v6_conn_request,
 	.syn_recv_sock	   = dccp_v6_request_recv_sock,
 	.net_header_len	   = sizeof(struct iphdr),
-	.setsockopt	   = ipv6_setsockopt,
-	.getsockopt	   = ipv6_getsockopt,
 };
 
 static void dccp_v6_sk_destruct(struct sock *sk)

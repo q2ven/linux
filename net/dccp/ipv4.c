@@ -932,8 +932,6 @@ static const struct inet_connection_sock_af_ops dccp_ipv4_af_ops = {
 	.conn_request	   = dccp_v4_conn_request,
 	.syn_recv_sock	   = dccp_v4_request_recv_sock,
 	.net_header_len	   = sizeof(struct iphdr),
-	.setsockopt	   = ip_setsockopt,
-	.getsockopt	   = ip_getsockopt,
 };
 
 static int dccp_v4_init_sock(struct sock *sk)

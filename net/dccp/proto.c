@@ -575,11 +575,15 @@ static int do_dccp_setsockopt(struct sock *sk, int level, int optname,
 int dccp_setsockopt(struct sock *sk, int level, int optname, sockptr_t optval,
 		    unsigned int optlen)
 {
-	if (level != SOL_DCCP)
-		return inet_csk(sk)->icsk_af_ops->setsockopt(sk, level,
-							     optname, optval,
-							     optlen);
-	return do_dccp_setsockopt(sk, level, optname, optval, optlen);
+	if (level == SOL_DCCP)
+		return do_dccp_setsockopt(sk, level, optname, optval, optlen);
+
+#if IS_ENABLED(CONFIG_IPV6)
+	if (sk->sk_family == AF_INET6)
+		return ipv6_setsockopt(sk, level, optname, optval, optlen);
+#endif
+
+	return ip_setsockopt(sk, level, optname, optval, optlen);
 }
 
 EXPORT_SYMBOL_GPL(dccp_setsockopt);
@@ -683,11 +687,15 @@ static int do_dccp_getsockopt(struct sock *sk, int level, int optname,
 int dccp_getsockopt(struct sock *sk, int level, int optname,
 		    char __user *optval, int __user *optlen)
 {
-	if (level != SOL_DCCP)
-		return inet_csk(sk)->icsk_af_ops->getsockopt(sk, level,
-							     optname, optval,
-							     optlen);
-	return do_dccp_getsockopt(sk, level, optname, optval, optlen);
+	if (level == SOL_DCCP)
+		return do_dccp_getsockopt(sk, level, optname, optval, optlen);
+
+#if IS_ENABLED(CONFIG_IPV6)
+	if (sk->sk_family == AF_INET6)
+		return ipv6_getsockopt(sk, level, optname, optval, optlen);
+#endif
+
+	return ip_getsockopt(sk, level, optname, optval, optlen);
 }
 
 EXPORT_SYMBOL_GPL(dccp_getsockopt);
