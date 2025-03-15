@@ -171,52 +171,6 @@ const char *dccp_packet_name(const int type)
 
 EXPORT_SYMBOL_GPL(dccp_packet_name);
 
-void dccp_destruct_common(struct sock *sk)
-{
-	struct dccp_sock *dp = dccp_sk(sk);
-
-	ccid_hc_tx_delete(dp->dccps_hc_tx_ccid, sk);
-	dp->dccps_hc_tx_ccid = NULL;
-}
-EXPORT_SYMBOL_GPL(dccp_destruct_common);
-
-static void dccp_sk_destruct(struct sock *sk)
-{
-	dccp_destruct_common(sk);
-	inet_sock_destruct(sk);
-}
-
-int dccp_init_sock(struct sock *sk, const __u8 ctl_sock_initialized)
-{
-	struct dccp_sock *dp = dccp_sk(sk);
-	struct inet_connection_sock *icsk = inet_csk(sk);
-
-	pr_warn_once("DCCP is deprecated and scheduled to be removed in 2025, "
-		     "please contact the netdev mailing list\n");
-
-	icsk->icsk_rto		= DCCP_TIMEOUT_INIT;
-	icsk->icsk_syn_retries	= sysctl_dccp_request_retries;
-	sk->sk_state		= DCCP_CLOSED;
-	sk->sk_write_space	= dccp_write_space;
-	sk->sk_destruct		= dccp_sk_destruct;
-	icsk->icsk_sync_mss	= dccp_sync_mss;
-	dp->dccps_mss_cache	= 536;
-	dp->dccps_rate_last	= jiffies;
-	dp->dccps_role		= DCCP_ROLE_UNDEFINED;
-	dp->dccps_service	= DCCP_SERVICE_CODE_IS_ABSENT;
-	dp->dccps_tx_qlen	= sysctl_dccp_tx_qlen;
-
-	dccp_init_xmit_timers(sk);
-
-	INIT_LIST_HEAD(&dp->dccps_featneg);
-	/* control socket doesn't need feat nego */
-	if (likely(ctl_sock_initialized))
-		return dccp_feat_init(sk);
-	return 0;
-}
-
-EXPORT_SYMBOL_GPL(dccp_init_sock);
-
 void dccp_destroy_sock(struct sock *sk)
 {
 	struct dccp_sock *dp = dccp_sk(sk);

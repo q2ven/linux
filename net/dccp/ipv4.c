@@ -934,20 +934,6 @@ static const struct inet_connection_sock_af_ops dccp_ipv4_af_ops = {
 	.net_header_len	   = sizeof(struct iphdr),
 };
 
-static int dccp_v4_init_sock(struct sock *sk)
-{
-	static __u8 dccp_v4_ctl_sock_initialized;
-	int err = dccp_init_sock(sk, dccp_v4_ctl_sock_initialized);
-
-	if (err == 0) {
-		if (unlikely(!dccp_v4_ctl_sock_initialized))
-			dccp_v4_ctl_sock_initialized = 1;
-		inet_csk(sk)->icsk_af_ops = &dccp_ipv4_af_ops;
-	}
-
-	return err;
-}
-
 static struct timewait_sock_ops dccp_timewait_sock_ops = {
 	.twsk_obj_size	= sizeof(struct inet_timewait_sock),
 };
@@ -959,7 +945,6 @@ static struct proto dccp_v4_prot = {
 	.connect		= dccp_v4_connect,
 	.disconnect		= dccp_disconnect,
 	.ioctl			= dccp_ioctl,
-	.init			= dccp_v4_init_sock,
 	.setsockopt		= dccp_setsockopt,
 	.getsockopt		= dccp_getsockopt,
 	.sendmsg		= dccp_sendmsg,

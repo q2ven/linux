@@ -1000,30 +1000,6 @@ static const struct inet_connection_sock_af_ops dccp_ipv6_mapped = {
 	.net_header_len	   = sizeof(struct iphdr),
 };
 
-static void dccp_v6_sk_destruct(struct sock *sk)
-{
-	dccp_destruct_common(sk);
-	inet6_sock_destruct(sk);
-}
-
-/* NOTE: A lot of things set to zero explicitly by call to
- *       sk_alloc() so need not be done here.
- */
-static int dccp_v6_init_sock(struct sock *sk)
-{
-	static __u8 dccp_v6_ctl_sock_initialized;
-	int err = dccp_init_sock(sk, dccp_v6_ctl_sock_initialized);
-
-	if (err == 0) {
-		if (unlikely(!dccp_v6_ctl_sock_initialized))
-			dccp_v6_ctl_sock_initialized = 1;
-		inet_csk(sk)->icsk_af_ops = &dccp_ipv6_af_ops;
-		sk->sk_destruct = dccp_v6_sk_destruct;
-	}
-
-	return err;
-}
-
 static struct timewait_sock_ops dccp6_timewait_sock_ops = {
 	.twsk_obj_size	= sizeof(struct dccp6_timewait_sock),
 };
@@ -1035,7 +1011,6 @@ static struct proto dccp_v6_prot = {
 	.connect	   = dccp_v6_connect,
 	.disconnect	   = dccp_disconnect,
 	.ioctl		   = dccp_ioctl,
-	.init		   = dccp_v6_init_sock,
 	.setsockopt	   = dccp_setsockopt,
 	.getsockopt	   = dccp_getsockopt,
 	.sendmsg	   = dccp_sendmsg,
