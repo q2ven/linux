@@ -1010,7 +1010,6 @@ static struct proto dccp_v6_prot = {
 	.close		   = dccp_close,
 	.connect	   = dccp_v6_connect,
 	.disconnect	   = dccp_disconnect,
-	.ioctl		   = dccp_ioctl,
 	.sendmsg	   = dccp_sendmsg,
 	.recvmsg	   = dccp_recvmsg,
 	.backlog_rcv	   = dccp_v6_do_rcv,

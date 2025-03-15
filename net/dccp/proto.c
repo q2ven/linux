@@ -290,51 +290,6 @@ __poll_t dccp_poll(struct file *file, struct socket *sock,
 }
 EXPORT_SYMBOL_GPL(dccp_poll);
 
-int dccp_ioctl(struct sock *sk, int cmd, int *karg)
-{
-	int rc = -ENOTCONN;
-
-	lock_sock(sk);
-
-	if (sk->sk_state == DCCP_LISTEN)
-		goto out;
-
-	switch (cmd) {
-	case SIOCOUTQ: {
-		*karg = sk_wmem_alloc_get(sk);
-		/* Using sk_wmem_alloc here because sk_wmem_queued is not used by DCCP and
-		 * always 0, comparably to UDP.
-		 */
-
-		rc = 0;
-	}
-		break;
-	case SIOCINQ: {
-		struct sk_buff *skb;
-		*karg = 0;
-
-		skb = skb_peek(&sk->sk_receive_queue);
-		if (skb != NULL) {
-			/*
-			 * We will only return the amount of this packet since
-			 * that is all that will be read.
-			 */
-			*karg = skb->len;
-		}
-		rc = 0;
-	}
-		break;
-	default:
-		rc = -ENOIOCTLCMD;
-		break;
-	}
-out:
-	release_sock(sk);
-	return rc;
-}
-
-EXPORT_SYMBOL_GPL(dccp_ioctl);
-
 static int dccp_msghdr_parse(struct msghdr *msg, struct sk_buff *skb)
 {
 	struct cmsghdr *cmsg;
