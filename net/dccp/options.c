@@ -15,27 +15,6 @@
 #include <linux/skbuff.h>
 
 #include "dccp.h"
-#include "feat.h"
-
-u64 dccp_decode_value_var(const u8 *bf, const u8 len)
-{
-	u64 value = 0;
-
-	if (len >= DCCP_OPTVAL_MAXLEN)
-		value += ((u64)*bf++) << 40;
-	if (len > 4)
-		value += ((u64)*bf++) << 32;
-	if (len > 3)
-		value += ((u64)*bf++) << 24;
-	if (len > 2)
-		value += ((u64)*bf++) << 16;
-	if (len > 1)
-		value += ((u64)*bf++) << 8;
-	if (len > 0)
-		value += *bf;
-
-	return value;
-}
 
 /**
  * dccp_parse_options  -  Parse DCCP options present in @skb
@@ -110,21 +89,13 @@ int dccp_parse_options(struct sock *sk, struct dccp_request_sock *dreq,
 		case DCCPO_NDP_COUNT:
 			if (len > 6)
 				goto out_invalid_option;
-
-			opt_recv->dccpor_ndp = dccp_decode_value_var(value, len);
-			dccp_pr_debug("%s opt: NDP count=%llu\n", dccp_role(sk),
-				      (unsigned long long)opt_recv->dccpor_ndp);
 			break;
 		case DCCPO_CHANGE_L ... DCCPO_CONFIRM_R:
 			if (pkt_type == DCCP_PKT_DATA)      /* RFC 4340, 6 */
 				break;
 			if (len == 0)
 				goto out_invalid_option;
-			rc = dccp_feat_parse_options(sk, dreq, mandatory, opt,
-						    *value, value + 1, len - 1);
-			if (rc)
-				goto out_featneg_failed;
-			break;
+			goto out_featneg_failed;
 		case DCCPO_TIMESTAMP:
 			if (len != 4)
 				goto out_invalid_option;
@@ -251,22 +222,6 @@ out_featneg_failed:
 
 EXPORT_SYMBOL_GPL(dccp_parse_options);
 
-void dccp_encode_value_var(const u64 value, u8 *to, const u8 len)
-{
-	if (len >= DCCP_OPTVAL_MAXLEN)
-		*to++ = (value & 0xFF0000000000ull) >> 40;
-	if (len > 4)
-		*to++ = (value & 0xFF00000000ull) >> 32;
-	if (len > 3)
-		*to++ = (value & 0xFF000000) >> 24;
-	if (len > 2)
-		*to++ = (value & 0xFF0000) >> 16;
-	if (len > 1)
-		*to++ = (value & 0xFF00) >> 8;
-	if (len > 0)
-		*to++ = (value & 0xFF);
-}
-
 static inline u8 dccp_ndp_len(const u64 ndp)
 {
 	if (likely(ndp <= 0xFF))
@@ -297,44 +252,18 @@ EXPORT_SYMBOL_GPL(dccp_insert_option);
 static int dccp_insert_option_ndp(struct sock *sk, struct sk_buff *skb)
 {
 	struct dccp_sock *dp = dccp_sk(sk);
-	u64 ndp = dp->dccps_ndp_count;
 
 	if (dccp_non_data_packet(skb))
 		++dp->dccps_ndp_count;
 	else
 		dp->dccps_ndp_count = 0;
 
-	if (ndp > 0) {
-		unsigned char *ptr;
-		const int ndp_len = dccp_ndp_len(ndp);
-		const int len = ndp_len + 2;
-
-		if (DCCP_SKB_CB(skb)->dccpd_opt_len + len > DCCP_MAX_OPT_LEN)
-			return -1;
-
-		DCCP_SKB_CB(skb)->dccpd_opt_len += len;
-
-		ptr = skb_push(skb, len);
-		*ptr++ = DCCPO_NDP_COUNT;
-		*ptr++ = len;
-		dccp_encode_value_var(ndp, ptr, ndp_len);
-	}
-
-	return 0;
+	return -1;
 }
 
 static inline int dccp_elapsed_time_len(const u32 elapsed_time)
 {
 	return elapsed_time == 0 ? 0 : elapsed_time <= 0xFFFF ? 2 : 4;
-}
-
-static int dccp_insert_option_timestamp(struct sk_buff *skb)
-{
-	__be32 now = htonl(dccp_timestamp());
-	/* yes this will overflow but that is the point as we want a
-	 * 10 usec 32 bit timer which mean it wraps every 11.9 hours */
-
-	return dccp_insert_option(skb, DCCPO_TIMESTAMP, &now, sizeof(now));
 }
 
 static int dccp_insert_option_timestamp_echo(struct dccp_sock *dp,
@@ -381,70 +310,6 @@ static int dccp_insert_option_timestamp_echo(struct dccp_sock *dp,
 	return 0;
 }
 
-/**
- * dccp_insert_option_mandatory  -  Mandatory option (5.8.2)
- * @skb: frame into which to insert option
- *
- * Note that since we are using skb_push, this function needs to be called
- * _after_ inserting the option it is supposed to influence (stack order).
- */
-int dccp_insert_option_mandatory(struct sk_buff *skb)
-{
-	if (DCCP_SKB_CB(skb)->dccpd_opt_len >= DCCP_MAX_OPT_LEN)
-		return -1;
-
-	DCCP_SKB_CB(skb)->dccpd_opt_len++;
-	*(u8 *)skb_push(skb, 1) = DCCPO_MANDATORY;
-	return 0;
-}
-
-/**
- * dccp_insert_fn_opt  -  Insert single Feature-Negotiation option into @skb
- * @skb: frame to insert feature negotiation option into
- * @type: %DCCPO_CHANGE_L, %DCCPO_CHANGE_R, %DCCPO_CONFIRM_L, %DCCPO_CONFIRM_R
- * @feat: one out of %dccp_feature_numbers
- * @val: NN value or SP array (preferred element first) to copy
- * @len: true length of @val in bytes (excluding first element repetition)
- * @repeat_first: whether to copy the first element of @val twice
- *
- * The last argument is used to construct Confirm options, where the preferred
- * value and the preference list appear separately (RFC 4340, 6.3.1). Preference
- * lists are kept such that the preferred entry is always first, so we only need
- * to copy twice, and avoid the overhead of cloning into a bigger array.
- */
-int dccp_insert_fn_opt(struct sk_buff *skb, u8 type, u8 feat,
-		       u8 *val, u8 len, bool repeat_first)
-{
-	u8 tot_len, *to;
-
-	/* take the `Feature' field and possible repetition into account */
-	if (len > (DCCP_SINGLE_OPT_MAXLEN - 2)) {
-		DCCP_WARN("length %u for feature %u too large\n", len, feat);
-		return -1;
-	}
-
-	if (unlikely(val == NULL || len == 0))
-		len = repeat_first = false;
-	tot_len = 3 + repeat_first + len;
-
-	if (DCCP_SKB_CB(skb)->dccpd_opt_len + tot_len > DCCP_MAX_OPT_LEN) {
-		DCCP_WARN("packet too small for feature %d option!\n", feat);
-		return -1;
-	}
-	DCCP_SKB_CB(skb)->dccpd_opt_len += tot_len;
-
-	to    = skb_push(skb, tot_len);
-	*to++ = type;
-	*to++ = tot_len;
-	*to++ = feat;
-
-	if (repeat_first)
-		*to++ = *val;
-	if (len)
-		memcpy(to, val, len);
-	return 0;
-}
-
 /* The length of all options needs to be a multiple of 4 (5.8) */
 static void dccp_insert_option_padding(struct sk_buff *skb)
 {
@@ -466,21 +331,8 @@ int dccp_insert_options(struct sock *sk, struct sk_buff *skb)
 	if (dp->dccps_send_ndp_count && dccp_insert_option_ndp(sk, skb))
 		return -1;
 
-	if (DCCP_SKB_CB(skb)->dccpd_type != DCCP_PKT_DATA) {
-
-		/* Feature Negotiation */
-		if (dccp_feat_insert_opts(dp, NULL, skb))
-			return -1;
-
-		if (DCCP_SKB_CB(skb)->dccpd_type == DCCP_PKT_REQUEST) {
-			/*
-			 * Obtain RTT sample from Request/Response exchange.
-			 * This is currently used for TFRC initialisation.
-			 */
-			if (dccp_insert_option_timestamp(skb))
-				return -1;
-		}
-	}
+	if (DCCP_SKB_CB(skb)->dccpd_type != DCCP_PKT_DATA)
+		return -1;
 
 	if (dp->dccps_hc_rx_insert_options)
 		dp->dccps_hc_rx_insert_options = 0;
@@ -495,19 +347,5 @@ int dccp_insert_options(struct sock *sk, struct sk_buff *skb)
 
 int dccp_insert_options_rsk(struct dccp_request_sock *dreq, struct sk_buff *skb)
 {
-	DCCP_SKB_CB(skb)->dccpd_opt_len = 0;
-
-	if (dccp_feat_insert_opts(NULL, dreq, skb))
-		return -1;
-
-	/* Obtain RTT sample from Response/Ack exchange (used by TFRC). */
-	if (dccp_insert_option_timestamp(skb))
-		return -1;
-
-	if (dreq->dreq_timestamp_echo != 0 &&
-	    dccp_insert_option_timestamp_echo(NULL, dreq, skb))
-		return -1;
-
-	dccp_insert_option_padding(skb);
-	return 0;
+	return -1;
 }

@@ -245,7 +245,6 @@ struct dccp_ackvec;
  * @dccps_ndp_count - number of Non Data Packets since last data packet
  * @dccps_mss_cache - current value of MSS (path MTU minus header sizes)
  * @dccps_rate_last - timestamp for rate-limiting DCCP-Sync (RFC 4340, 7.5.4)
- * @dccps_featneg - tracks feature-negotiation state (mostly during handshake)
  * @dccps_options_received - parsed set of retrieved options
  * @dccps_tx_qlen - maximum length of the TX queue
  * @dccps_role - role of this sock, one of %dccp_role
@@ -285,7 +284,6 @@ struct dccp_sock {
 	__u8				dccps_send_ndp_count:1;
 	__u64				dccps_ndp_count:48;
 	unsigned long			dccps_rate_last;
-	struct list_head		dccps_featneg;
 	struct dccp_options_received	dccps_options_received;
 	__u32				dccps_tx_qlen;
 	enum dccp_role			dccps_role:2;

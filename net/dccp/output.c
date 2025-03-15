@@ -240,60 +240,6 @@ int dccp_retransmit_skb(struct sock *sk)
 struct sk_buff *dccp_make_response(const struct sock *sk, struct dst_entry *dst,
 				   struct request_sock *req)
 {
-	struct dccp_hdr *dh;
-	struct dccp_request_sock *dreq;
-	const u32 dccp_header_size = sizeof(struct dccp_hdr) +
-				     sizeof(struct dccp_hdr_ext) +
-				     sizeof(struct dccp_hdr_response);
-	struct sk_buff *skb;
-
-	/* sk is marked const to clearly express we dont hold socket lock.
-	 * sock_wmalloc() will atomically change sk->sk_wmem_alloc,
-	 * it is safe to promote sk to non const.
-	 */
-	skb = sock_wmalloc((struct sock *)sk, MAX_DCCP_HEADER, 1,
-			   GFP_ATOMIC);
-	if (!skb)
-		return NULL;
-
-	skb_reserve(skb, MAX_DCCP_HEADER);
-
-	skb_dst_set(skb, dst_clone(dst));
-
-	dreq = dccp_rsk(req);
-	if (inet_rsk(req)->acked)	/* increase GSS upon retransmission */
-		dccp_inc_seqno(&dreq->dreq_gss);
-	DCCP_SKB_CB(skb)->dccpd_type = DCCP_PKT_RESPONSE;
-	DCCP_SKB_CB(skb)->dccpd_seq  = dreq->dreq_gss;
-
-	/* Resolve feature dependencies resulting from choice of CCID */
-	if (dccp_feat_server_ccid_dependencies(dreq))
-		goto response_failed;
-
-	if (dccp_insert_options_rsk(dreq, skb))
-		goto response_failed;
-
-	/* Build and checksum header */
-	dh = dccp_zeroed_hdr(skb, dccp_header_size);
-
-	dh->dccph_sport	= htons(inet_rsk(req)->ir_num);
-	dh->dccph_dport	= inet_rsk(req)->ir_rmt_port;
-	dh->dccph_doff	= (dccp_header_size +
-			   DCCP_SKB_CB(skb)->dccpd_opt_len) / 4;
-	dh->dccph_type	= DCCP_PKT_RESPONSE;
-	dh->dccph_x	= 1;
-	dccp_hdr_set_seq(dh, dreq->dreq_gss);
-	dccp_hdr_set_ack(dccp_hdr_ack_bits(skb), dreq->dreq_gsr);
-	dccp_hdr_response(skb)->dccph_resp_service = dreq->dreq_service;
-
-	dccp_csum_outgoing(skb);
-
-	/* We use `acked' to remember that a Response was already sent. */
-	inet_rsk(req)->acked = 1;
-	DCCP_INC_STATS(DCCP_MIB_OUTSEGS);
-	return skb;
-response_failed:
-	kfree_skb(skb);
 	return NULL;
 }
 
@@ -381,40 +327,7 @@ int dccp_send_reset(struct sock *sk, enum dccp_reset_codes code)
  */
 int dccp_connect(struct sock *sk)
 {
-	struct sk_buff *skb;
-	struct dccp_sock *dp = dccp_sk(sk);
-	struct dst_entry *dst = __sk_dst_get(sk);
-	struct inet_connection_sock *icsk = inet_csk(sk);
-
-	sk->sk_err = 0;
-	sock_reset_flag(sk, SOCK_DONE);
-
-	dccp_sync_mss(sk, dst_mtu(dst));
-
-	/* do not connect if feature negotiation setup fails */
-	if (dccp_feat_finalise_settings(dccp_sk(sk)))
-		return -EPROTO;
-
-	/* Initialise GAR as per 8.5; AWL/AWH are set in dccp_transmit_skb() */
-	dp->dccps_gar = dp->dccps_iss;
-
-	skb = alloc_skb(sk->sk_prot->max_header, sk->sk_allocation);
-	if (unlikely(skb == NULL))
-		return -ENOBUFS;
-
-	/* Reserve space for headers. */
-	skb_reserve(skb, sk->sk_prot->max_header);
-
-	DCCP_SKB_CB(skb)->dccpd_type = DCCP_PKT_REQUEST;
-
-	dccp_transmit_skb(sk, dccp_skb_entail(sk, skb));
-	DCCP_INC_STATS(DCCP_MIB_ACTIVEOPENS);
-
-	/* Timer for repeating the REQUEST until an answer. */
-	icsk->icsk_retransmits = 0;
-	inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS,
-				  icsk->icsk_rto, DCCP_RTO_MAX);
-	return 0;
+	return -EPROTO;
 }
 
 EXPORT_SYMBOL_GPL(dccp_connect);

@@ -428,43 +428,7 @@ static int dccp_rcv_request_sent_state_process(struct sock *sk,
 		 */
 		dccp_set_state(sk, DCCP_PARTOPEN);
 
-		/*
-		 * If feature negotiation was successful, activate features now;
-		 * an activation failure means that this host could not activate
-		 * one ore more features (e.g. insufficient memory), which would
-		 * leave at least one feature in an undefined state.
-		 */
-		if (dccp_feat_activate_values(sk, &dp->dccps_featneg))
-			goto unable_to_proceed;
-
-		/* Make sure socket is routed, for correct metrics. */
-		icsk->icsk_af_ops->rebuild_header(sk);
-
-		if (!sock_flag(sk, SOCK_DEAD)) {
-			sk->sk_state_change(sk);
-			sk_wake_async(sk, SOCK_WAKE_IO, POLL_OUT);
-		}
-
-		if (sk->sk_write_pending || inet_csk_in_pingpong_mode(sk) ||
-		    icsk->icsk_accept_queue.rskq_defer_accept) {
-			/* Save one ACK. Data will be ready after
-			 * several ticks, if write_pending is set.
-			 *
-			 * It may be deleted, but with this feature tcpdumps
-			 * look so _wonderfully_ clever, that I was not able
-			 * to stand against the temptation 8)     --ANK
-			 */
-			/*
-			 * OK, in DCCP we can as well do a similar trick, its
-			 * even in the draft, but there is no need for us to
-			 * schedule an ack here, as dccp_sendmsg does this for
-			 * us, also stated in the draft. -acme
-			 */
-			__kfree_skb(skb);
-			return 0;
-		}
-		dccp_send_ack(sk);
-		return -1;
+		goto unable_to_proceed;
 	}
 
 out_invalid_packet:

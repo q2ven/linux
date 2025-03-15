@@ -18,7 +18,6 @@
 #include <net/rstreason.h>
 
 #include "dccp.h"
-#include "feat.h"
 
 struct inet_timewait_death_row dccp_death_row = {
 	.tw_refcount = REFCOUNT_INIT(1),
@@ -71,56 +70,7 @@ struct sock *dccp_create_openreq_child(const struct sock *sk,
 				       const struct request_sock *req,
 				       const struct sk_buff *skb)
 {
-	/*
-	 * Step 3: Process LISTEN state
-	 *
-	 *   (* Generate a new socket and switch to that socket *)
-	 *   Set S := new socket for this port pair
-	 */
-	struct sock *newsk = inet_csk_clone_lock(sk, req, GFP_ATOMIC);
-
-	if (newsk != NULL) {
-		struct dccp_request_sock *dreq = dccp_rsk(req);
-		struct inet_connection_sock *newicsk = inet_csk(newsk);
-		struct dccp_sock *newdp = dccp_sk(newsk);
-
-		newdp->dccps_role	    = DCCP_ROLE_SERVER;
-		newdp->dccps_service_list   = NULL;
-		newdp->dccps_service	    = dreq->dreq_service;
-		newdp->dccps_timestamp_echo = dreq->dreq_timestamp_echo;
-		newdp->dccps_timestamp_time = dreq->dreq_timestamp_time;
-		newicsk->icsk_rto	    = DCCP_TIMEOUT_INIT;
-
-		INIT_LIST_HEAD(&newdp->dccps_featneg);
-		/*
-		 * Step 3: Process LISTEN state
-		 *
-		 *    Choose S.ISS (initial seqno) or set from Init Cookies
-		 *    Initialize S.GAR := S.ISS
-		 *    Set S.ISR, S.GSR from packet (or Init Cookies)
-		 *
-		 *    Setting AWL/AWH and SWL/SWH happens as part of the feature
-		 *    activation below, as these windows all depend on the local
-		 *    and remote Sequence Window feature values (7.5.2).
-		 */
-		newdp->dccps_iss = dreq->dreq_iss;
-		newdp->dccps_gss = dreq->dreq_gss;
-		newdp->dccps_gar = newdp->dccps_iss;
-		newdp->dccps_isr = dreq->dreq_isr;
-		newdp->dccps_gsr = dreq->dreq_gsr;
-
-		/*
-		 * Activate features: initialise CCIDs, sequence windows etc.
-		 */
-		if (dccp_feat_activate_values(newsk, &dreq->dreq_featneg)) {
-			sk_free_unlock_clone(newsk);
-			return NULL;
-		}
-		dccp_init_xmit_timers(newsk);
-
-		__DCCP_INC_STATS(DCCP_MIB_PASSIVEOPENS);
-	}
-	return newsk;
+	return NULL;
 }
 
 EXPORT_SYMBOL_GPL(dccp_create_openreq_child);
@@ -246,16 +196,7 @@ EXPORT_SYMBOL_GPL(dccp_reqsk_send_ack);
 int dccp_reqsk_init(struct request_sock *req,
 		    struct dccp_sock const *dp, struct sk_buff const *skb)
 {
-	struct dccp_request_sock *dreq = dccp_rsk(req);
-
-	spin_lock_init(&dreq->dreq_lock);
-	inet_rsk(req)->ir_rmt_port = dccp_hdr(skb)->dccph_sport;
-	inet_rsk(req)->ir_num	   = ntohs(dccp_hdr(skb)->dccph_dport);
-	inet_rsk(req)->acked	   = 0;
-	dreq->dreq_timestamp_echo  = 0;
-
-	/* inherit feature negotiation options from listening socket */
-	return dccp_feat_clone_list(&dp->dccps_featneg, &dreq->dreq_featneg);
+	return -ENOMEM;
 }
 
 EXPORT_SYMBOL_GPL(dccp_reqsk_init);

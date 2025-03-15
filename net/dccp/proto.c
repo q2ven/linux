@@ -32,7 +32,6 @@
 #include <linux/poll.h>
 
 #include "dccp.h"
-#include "feat.h"
 
 #define CREATE_TRACE_POINTS
 #include "trace.h"
@@ -86,9 +85,6 @@ void dccp_set_state(struct sock *sk, const int state)
 	case DCCP_OPEN:
 		if (oldstate != DCCP_OPEN)
 			DCCP_INC_STATS(DCCP_MIB_CURRESTAB);
-		/* Client retransmits all Confirm options until entering OPEN */
-		if (oldstate == DCCP_PARTOPEN)
-			dccp_feat_list_purge(&dccp_sk(sk)->dccps_featneg);
 		break;
 
 	case DCCP_CLOSED:

@@ -1290,7 +1290,6 @@ struct sock *inet_csk_clone_lock(const struct sock *sk,
 
 	return newsk;
 }
-EXPORT_SYMBOL_GPL(inet_csk_clone_lock);
 
 /*
  * At this point, there should be no process reference to this

@@ -429,14 +429,6 @@ static inline void dccp_update_gss(struct sock *sk, u64 seq)
 	dp->dccps_awh = dp->dccps_gss;
 }
 
-int dccp_feat_signal_nn_change(struct sock *sk, u8 feat, u64 nn_val);
-int dccp_feat_finalise_settings(struct dccp_sock *dp);
-int dccp_feat_server_ccid_dependencies(struct dccp_request_sock *dreq);
-int dccp_feat_insert_opts(struct dccp_sock*, struct dccp_request_sock*,
-			  struct sk_buff *skb);
-int dccp_feat_activate_values(struct sock *sk, struct list_head *fn);
-void dccp_feat_list_purge(struct list_head *fn_list);
-
 int dccp_insert_options(struct sock *sk, struct sk_buff *skb);
 int dccp_insert_options_rsk(struct dccp_request_sock *, struct sk_buff *);
 u32 dccp_timestamp(void);
