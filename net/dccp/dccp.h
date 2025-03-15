@@ -14,7 +14,6 @@
 #include <net/snmp.h>
 #include <net/sock.h>
 #include <net/tcp.h>
-#include "ackvec.h"
 
 /*
  * 	DCCP - specific warning and debugging macros.
@@ -440,15 +439,9 @@ static inline void dccp_update_gss(struct sock *sk, u64 seq)
 	dp->dccps_awh = dp->dccps_gss;
 }
 
-static inline int dccp_ackvec_pending(const struct sock *sk)
-{
-	return dccp_sk(sk)->dccps_hc_rx_ackvec != NULL &&
-	       !dccp_ackvec_is_empty(dccp_sk(sk)->dccps_hc_rx_ackvec);
-}
-
 static inline int dccp_ack_pending(const struct sock *sk)
 {
-	return dccp_ackvec_pending(sk) || inet_csk_ack_scheduled(sk);
+	return inet_csk_ack_scheduled(sk);
 }
 
 int dccp_feat_signal_nn_change(struct sock *sk, u8 feat, u64 nn_val);

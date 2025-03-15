@@ -15,7 +15,6 @@
 #include <net/inet_sock.h>
 #include <net/sock.h>
 
-#include "ackvec.h"
 #include "ccid.h"
 #include "dccp.h"
 
@@ -180,10 +179,8 @@ unsigned int dccp_sync_mss(struct sock *sk, u32 pmtu)
 	 *  - 10 bytes for Timestamp Echo (13.3)
 	 *  - 8 bytes for NDP count (7.7, when activated)
 	 *  - 6 bytes for Data Checksum (9.3)
-	 *  - %DCCPAV_MIN_OPTLEN bytes for Ack Vector size (11.4, when enabled)
 	 */
-	cur_mps -= roundup(1 + 6 + 10 + dp->dccps_send_ndp_count * 8 + 6 +
-			   (dp->dccps_hc_rx_ackvec ? DCCPAV_MIN_OPTLEN : 0), 4);
+	cur_mps -= roundup(1 + 6 + 10 + dp->dccps_send_ndp_count * 8 + 6, 4);
 
 	/* And store cached results */
 	icsk->icsk_pmtu_cookie = pmtu;

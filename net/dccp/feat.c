@@ -76,23 +76,6 @@ static int dccp_hdlr_ack_ratio(struct sock *sk, u64 ratio, bool rx)
 	return 0;
 }
 
-static int dccp_hdlr_ackvec(struct sock *sk, u64 enable, bool rx)
-{
-	struct dccp_sock *dp = dccp_sk(sk);
-
-	if (rx) {
-		if (enable && dp->dccps_hc_rx_ackvec == NULL) {
-			dp->dccps_hc_rx_ackvec = dccp_ackvec_alloc(gfp_any());
-			if (dp->dccps_hc_rx_ackvec == NULL)
-				return -ENOMEM;
-		} else if (!enable) {
-			dccp_ackvec_free(dp->dccps_hc_rx_ackvec);
-			dp->dccps_hc_rx_ackvec = NULL;
-		}
-	}
-	return 0;
-}
-
 static int dccp_hdlr_ndp(struct sock *sk, u64 enable, bool rx)
 {
 	if (!rx)
@@ -155,7 +138,7 @@ static const struct {
 	{ DCCPF_SEQUENCE_WINDOW, FEAT_AT_TX, FEAT_NN, 100, dccp_hdlr_seq_win  },
 	{ DCCPF_ECN_INCAPABLE,	 FEAT_AT_RX, FEAT_SP, 0,   NULL },
 	{ DCCPF_ACK_RATIO,	 FEAT_AT_TX, FEAT_NN, 2,   dccp_hdlr_ack_ratio},
-	{ DCCPF_SEND_ACK_VECTOR, FEAT_AT_RX, FEAT_SP, 0,   dccp_hdlr_ackvec   },
+	{ DCCPF_SEND_ACK_VECTOR, FEAT_AT_RX, FEAT_SP, 0,   NULL },
 	{ DCCPF_SEND_NDP_COUNT,  FEAT_AT_TX, FEAT_SP, 0,   dccp_hdlr_ndp      },
 	{ DCCPF_MIN_CSUM_COVER,  FEAT_AT_RX, FEAT_SP, 0,   dccp_hdlr_min_cscov},
 	{ DCCPF_DATA_CHECKSUM,	 FEAT_AT_RX, FEAT_SP, 0,   NULL },
@@ -1482,7 +1465,5 @@ activation_failed:
 	ccid_hc_rx_delete(dp->dccps_hc_rx_ccid, sk);
 	ccid_hc_tx_delete(dp->dccps_hc_tx_ccid, sk);
 	dp->dccps_hc_rx_ccid = dp->dccps_hc_tx_ccid = NULL;
-	dccp_ackvec_free(dp->dccps_hc_rx_ackvec);
-	dp->dccps_hc_rx_ackvec = NULL;
 	return -1;
 }
