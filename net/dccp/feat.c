@@ -598,8 +598,6 @@ static u8 dccp_feat_is_valid_nn_val(u8 feat_num, u64 val)
 static u8 dccp_feat_is_valid_sp_val(u8 feat_num, u8 val)
 {
 	switch (feat_num) {
-	case DCCPF_CCID:
-		return val == DCCPC_CCID2;
 	/* Type-check Boolean feature values: */
 	case DCCPF_SHORT_SEQNOS:
 	case DCCPF_ECN_INCAPABLE:
@@ -841,38 +839,7 @@ EXPORT_SYMBOL_GPL(dccp_feat_signal_nn_change);
  */
 static const struct ccid_dependency *dccp_feat_ccid_deps(u8 ccid, bool is_local)
 {
-	static const struct ccid_dependency ccid2_dependencies[2][2] = {
-		/*
-		 * CCID2 mandates Ack Vectors (RFC 4341, 4.): as CCID is a TX
-		 * feature and Send Ack Vector is an RX feature, `is_local'
-		 * needs to be reversed.
-		 */
-		{	/* Dependencies of the receiver-side (remote) CCID2 */
-			{
-				.dependent_feat	= DCCPF_SEND_ACK_VECTOR,
-				.is_local	= true,
-				.is_mandatory	= true,
-				.val		= 1
-			},
-			{ 0, 0, 0, 0 }
-		},
-		{	/* Dependencies of the sender-side (local) CCID2 */
-			{
-				.dependent_feat	= DCCPF_SEND_ACK_VECTOR,
-				.is_local	= false,
-				.is_mandatory	= true,
-				.val		= 1
-			},
-			{ 0, 0, 0, 0 }
-		}
-	};
-
-	switch (ccid) {
-	case DCCPC_CCID2:
-		return ccid2_dependencies[is_local];
-	default:
-		return NULL;
-	}
+	return NULL;
 }
 
 /**

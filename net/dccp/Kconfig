@@ -20,8 +20,6 @@ menuconfig IP_DCCP
 
 if IP_DCCP
 
-source "net/dccp/ccids/Kconfig"
-
 menu "DCCP Kernel Hacking"
 	depends on DEBUG_KERNEL=y
 

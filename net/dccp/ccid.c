@@ -13,7 +13,6 @@
 #include "ccid.h"
 
 static struct ccid_operations *ccids[] = {
-	&ccid2_ops,
 };
 
 static struct ccid_operations *ccid_by_number(const u8 id)
