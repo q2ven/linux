@@ -22,8 +22,6 @@ dccp_ipv6-y := ipv6.o
 
 obj-$(CONFIG_INET_DCCP_DIAG) += dccp_diag.o
 
-dccp-$(CONFIG_SYSCTL) += sysctl.o
-
 dccp_diag-y := diag.o
 
 # build with local directory for trace.h
