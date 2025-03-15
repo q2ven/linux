@@ -1052,14 +1052,9 @@ static int __init dccp_v4_init(void)
 	if (err)
 		goto out_destroy_ctl_sock;
 
-	err = inet_add_protocol(&dccp_v4_protocol, IPPROTO_DCCP);
-	if (err)
-		goto out_proto_unregister;
-
 out:
 	return err;
-out_proto_unregister:
-	unregister_pernet_subsys(&dccp_v4_ops);
+
 out_destroy_ctl_sock:
 	proto_unregister(&dccp_v4_prot);
 	goto out;
@@ -1067,7 +1062,6 @@ out_destroy_ctl_sock:
 
 static void __exit dccp_v4_exit(void)
 {
-	inet_del_protocol(&dccp_v4_protocol, IPPROTO_DCCP);
 	unregister_pernet_subsys(&dccp_v4_ops);
 	proto_unregister(&dccp_v4_prot);
 }
