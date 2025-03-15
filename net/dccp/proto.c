@@ -171,67 +171,6 @@ const char *dccp_packet_name(const int type)
 
 EXPORT_SYMBOL_GPL(dccp_packet_name);
 
-/*
- *	Wait for a DCCP event.
- *
- *	Note that we don't need to lock the socket, as the upper poll layers
- *	take care of normal races (between the test and the event) and we don't
- *	go look at any of the socket buffers directly.
- */
-__poll_t dccp_poll(struct file *file, struct socket *sock,
-		       poll_table *wait)
-{
-	struct sock *sk = sock->sk;
-	__poll_t mask;
-	u8 shutdown;
-	int state;
-
-	sock_poll_wait(file, sock, wait);
-
-	state = inet_sk_state_load(sk);
-	if (state == DCCP_LISTEN)
-		return inet_csk_listen_poll(sk);
-
-	/* Socket is not locked. We are protected from async events
-	   by poll logic and correct handling of state changes
-	   made by another threads is impossible in any case.
-	 */
-
-	mask = 0;
-	if (READ_ONCE(sk->sk_err))
-		mask = EPOLLERR;
-	shutdown = READ_ONCE(sk->sk_shutdown);
-
-	if (shutdown == SHUTDOWN_MASK || state == DCCP_CLOSED)
-		mask |= EPOLLHUP;
-	if (shutdown & RCV_SHUTDOWN)
-		mask |= EPOLLIN | EPOLLRDNORM | EPOLLRDHUP;
-
-	/* Connected? */
-	if ((1 << state) & ~(DCCPF_REQUESTING | DCCPF_RESPOND)) {
-		if (atomic_read(&sk->sk_rmem_alloc) > 0)
-			mask |= EPOLLIN | EPOLLRDNORM;
-
-		if (!(shutdown & SEND_SHUTDOWN)) {
-			if (sk_stream_is_writeable(sk)) {
-				mask |= EPOLLOUT | EPOLLWRNORM;
-			} else {  /* send SIGIO later */
-				sk_set_bit(SOCKWQ_ASYNC_NOSPACE, sk);
-				set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
-
-				/* Race breaker. If space is freed after
-				 * wspace test but before the flags are set,
-				 * IO signal will be lost.
-				 */
-				if (sk_stream_is_writeable(sk))
-					mask |= EPOLLOUT | EPOLLWRNORM;
-			}
-		}
-	}
-	return mask;
-}
-EXPORT_SYMBOL_GPL(dccp_poll);
-
 static int dccp_msghdr_parse(struct msghdr *msg, struct sk_buff *skb)
 {
 	struct cmsghdr *cmsg;
@@ -456,50 +395,6 @@ out:
 }
 
 EXPORT_SYMBOL_GPL(dccp_recvmsg);
-
-int inet_dccp_listen(struct socket *sock, int backlog)
-{
-	struct sock *sk = sock->sk;
-	unsigned char old_state;
-	int err;
-
-	lock_sock(sk);
-
-	err = -EINVAL;
-	if (sock->state != SS_UNCONNECTED || sock->type != SOCK_DCCP)
-		goto out;
-
-	old_state = sk->sk_state;
-	if (!((1 << old_state) & (DCCPF_CLOSED | DCCPF_LISTEN)))
-		goto out;
-
-	WRITE_ONCE(sk->sk_max_ack_backlog, backlog);
-	/* Really, if the socket is already in listen state
-	 * we can only allow the backlog to be adjusted.
-	 */
-	if (old_state != DCCP_LISTEN) {
-		struct dccp_sock *dp = dccp_sk(sk);
-
-		dp->dccps_role = DCCP_ROLE_LISTEN;
-
-		/* do not start to listen if feature negotiation setup fails */
-		if (dccp_feat_finalise_settings(dp)) {
-			err = -EPROTO;
-			goto out;
-		}
-
-		err = inet_csk_listen_start(sk);
-		if (err)
-			goto out;
-	}
-	err = 0;
-
-out:
-	release_sock(sk);
-	return err;
-}
-
-EXPORT_SYMBOL_GPL(inet_dccp_listen);
 
 static void dccp_terminate_connection(struct sock *sk)
 {

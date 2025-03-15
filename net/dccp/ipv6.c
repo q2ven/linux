@@ -1029,30 +1029,6 @@ static const struct inet6_protocol dccp_v6_protocol = {
 	.flags		= INET6_PROTO_NOPOLICY | INET6_PROTO_FINAL,
 };
 
-static const struct proto_ops inet6_dccp_ops = {
-	.family		   = PF_INET6,
-	.owner		   = THIS_MODULE,
-	.release	   = inet6_release,
-	.bind		   = inet6_bind,
-	.connect	   = inet_stream_connect,
-	.socketpair	   = sock_no_socketpair,
-	.accept		   = inet_accept,
-	.getname	   = inet6_getname,
-	.poll		   = dccp_poll,
-	.ioctl		   = inet6_ioctl,
-	.gettstamp	   = sock_gettstamp,
-	.listen		   = inet_dccp_listen,
-	.shutdown	   = inet_shutdown,
-	.setsockopt	   = sock_common_setsockopt,
-	.getsockopt	   = sock_common_getsockopt,
-	.sendmsg	   = inet_sendmsg,
-	.recvmsg	   = sock_common_recvmsg,
-	.mmap		   = sock_no_mmap,
-#ifdef CONFIG_COMPAT
-	.compat_ioctl	   = inet6_compat_ioctl,
-#endif
-};
-
 static int __net_init dccp_v6_init_net(struct net *net)
 {
 	struct dccp_v6_pernet *pn = net_generic(net, dccp_v6_pernet_id);

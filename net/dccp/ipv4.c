@@ -963,29 +963,6 @@ static const struct net_protocol dccp_v4_protocol = {
 	.icmp_strict_tag_validation = 1,
 };
 
-static const struct proto_ops inet_dccp_ops = {
-	.family		   = PF_INET,
-	.owner		   = THIS_MODULE,
-	.release	   = inet_release,
-	.bind		   = inet_bind,
-	.connect	   = inet_stream_connect,
-	.socketpair	   = sock_no_socketpair,
-	.accept		   = inet_accept,
-	.getname	   = inet_getname,
-	/* FIXME: work on tcp_poll to rename it to inet_csk_poll */
-	.poll		   = dccp_poll,
-	.ioctl		   = inet_ioctl,
-	.gettstamp	   = sock_gettstamp,
-	/* FIXME: work on inet_listen to rename it to sock_common_listen */
-	.listen		   = inet_dccp_listen,
-	.shutdown	   = inet_shutdown,
-	.setsockopt	   = sock_common_setsockopt,
-	.getsockopt	   = sock_common_getsockopt,
-	.sendmsg	   = inet_sendmsg,
-	.recvmsg	   = sock_common_recvmsg,
-	.mmap		   = sock_no_mmap,
-};
-
 static int __net_init dccp_v4_init_net(struct net *net)
 {
 	struct dccp_v4_pernet *pn = net_generic(net, dccp_v4_pernet_id);
