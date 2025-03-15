@@ -247,7 +247,6 @@ struct dccp_ackvec;
  * @dccps_rate_last - timestamp for rate-limiting DCCP-Sync (RFC 4340, 7.5.4)
  * @dccps_featneg - tracks feature-negotiation state (mostly during handshake)
  * @dccps_options_received - parsed set of retrieved options
- * @dccps_qpolicy - TX dequeueing policy, one of %dccp_packet_dequeueing_policy
  * @dccps_tx_qlen - maximum length of the TX queue
  * @dccps_role - role of this sock, one of %dccp_role
  * @dccps_hc_rx_insert_options - receiver wants to add options when acking
@@ -288,7 +287,6 @@ struct dccp_sock {
 	unsigned long			dccps_rate_last;
 	struct list_head		dccps_featneg;
 	struct dccp_options_received	dccps_options_received;
-	__u8				dccps_qpolicy;
 	__u32				dccps_tx_qlen;
 	enum dccp_role			dccps_role:2;
 	__u8				dccps_hc_rx_insert_options:1;

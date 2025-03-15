@@ -222,16 +222,6 @@ void dccp_send_sync(struct sock *sk, const u64 seq,
 		    const enum dccp_pkt_type pkt_type);
 
 /*
- * TX Packet Dequeueing Interface
- */
-void dccp_qpolicy_push(struct sock *sk, struct sk_buff *skb);
-bool dccp_qpolicy_full(struct sock *sk);
-void dccp_qpolicy_drop(struct sock *sk, struct sk_buff *skb);
-struct sk_buff *dccp_qpolicy_top(struct sock *sk);
-struct sk_buff *dccp_qpolicy_pop(struct sock *sk);
-bool dccp_qpolicy_param_ok(struct sock *sk, __be32 param);
-
-/*
  * TX Packet Output and TX Timers
  */
 void dccp_write_xmit(struct sock *sk);

@@ -193,19 +193,7 @@ static int dccp_msghdr_parse(struct msghdr *msg, struct sk_buff *skb)
 		if (cmsg->cmsg_level != SOL_DCCP)
 			continue;
 
-		if (cmsg->cmsg_type <= DCCP_SCM_QPOLICY_MAX &&
-		    !dccp_qpolicy_param_ok(skb->sk, cmsg->cmsg_type))
-			return -EINVAL;
-
-		switch (cmsg->cmsg_type) {
-		case DCCP_SCM_PRIORITY:
-			if (cmsg->cmsg_len != CMSG_LEN(sizeof(__u32)))
-				return -EINVAL;
-			skb->priority = *(__u32 *)CMSG_DATA(cmsg);
-			break;
-		default:
-			return -EINVAL;
-		}
+		return -EINVAL;
 	}
 	return 0;
 }
@@ -244,11 +232,6 @@ int dccp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 	if (skb == NULL)
 		goto out_release;
 
-	if (dccp_qpolicy_full(sk)) {
-		rc = -EAGAIN;
-		goto out_discard;
-	}
-
 	if (sk->sk_state == DCCP_CLOSED) {
 		rc = -ENOTCONN;
 		goto out_discard;
@@ -269,7 +252,8 @@ int dccp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 	if (rc != 0)
 		goto out_discard;
 
-	dccp_qpolicy_push(sk, skb);
+	skb_queue_tail(&sk->sk_write_queue, skb);
+
 	/*
 	 * The xmit_timer is set if the TX CCID is rate-based and will expire
 	 * when congestion control permits to release further packets into the

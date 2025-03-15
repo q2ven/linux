@@ -210,12 +210,7 @@ void dccp_flush_write_queue(struct sock *sk, long *time_budget)
 
 void dccp_write_xmit(struct sock *sk)
 {
-	struct sk_buff *skb;
-
-	while ((skb = dccp_qpolicy_top(sk))) {
-		dccp_qpolicy_drop(sk, skb);
-		dccp_pr_debug("packet discarded due to err=%d\n", -EINVAL);
-	}
+	skb_queue_purge(&sk->sk_write_queue);
 }
 
 /**
