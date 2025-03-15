@@ -379,4 +379,3 @@ int inet6_hash(struct sock *sk)
 
 	return err;
 }
-EXPORT_SYMBOL_GPL(inet6_hash);
