@@ -1087,14 +1087,6 @@ static const struct proto_ops inet6_dccp_ops = {
 #endif
 };
 
-static struct inet_protosw dccp_v6_protosw = {
-	.type		= SOCK_DCCP,
-	.protocol	= IPPROTO_DCCP,
-	.prot		= &dccp_v6_prot,
-	.ops		= &inet6_dccp_ops,
-	.flags		= INET_PROTOSW_ICSK,
-};
-
 static int __net_init dccp_v6_init_net(struct net *net)
 {
 	struct dccp_v6_pernet *pn = net_generic(net, dccp_v6_pernet_id);
@@ -1127,8 +1119,6 @@ static int __init dccp_v6_init(void)
 	if (err)
 		goto out;
 
-	inet6_register_protosw(&dccp_v6_protosw);
-
 	err = register_pernet_subsys(&dccp_v6_ops);
 	if (err)
 		goto out_destroy_ctl_sock;
@@ -1142,7 +1132,6 @@ out:
 out_unregister_proto:
 	unregister_pernet_subsys(&dccp_v6_ops);
 out_destroy_ctl_sock:
-	inet6_unregister_protosw(&dccp_v6_protosw);
 	proto_unregister(&dccp_v6_prot);
 	goto out;
 }
@@ -1151,7 +1140,6 @@ static void __exit dccp_v6_exit(void)
 {
 	inet6_del_protocol(&dccp_v6_protocol, IPPROTO_DCCP);
 	unregister_pernet_subsys(&dccp_v6_ops);
-	inet6_unregister_protosw(&dccp_v6_protosw);
 	proto_unregister(&dccp_v6_prot);
 }
 

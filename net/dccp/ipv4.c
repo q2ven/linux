@@ -1010,14 +1010,6 @@ static const struct proto_ops inet_dccp_ops = {
 	.mmap		   = sock_no_mmap,
 };
 
-static struct inet_protosw dccp_v4_protosw = {
-	.type		= SOCK_DCCP,
-	.protocol	= IPPROTO_DCCP,
-	.prot		= &dccp_v4_prot,
-	.ops		= &inet_dccp_ops,
-	.flags		= INET_PROTOSW_ICSK,
-};
-
 static int __net_init dccp_v4_init_net(struct net *net)
 {
 	struct dccp_v4_pernet *pn = net_generic(net, dccp_v4_pernet_id);
@@ -1056,8 +1048,6 @@ static int __init dccp_v4_init(void)
 	if (err)
 		goto out;
 
-	inet_register_protosw(&dccp_v4_protosw);
-
 	err = register_pernet_subsys(&dccp_v4_ops);
 	if (err)
 		goto out_destroy_ctl_sock;
@@ -1071,7 +1061,6 @@ out:
 out_proto_unregister:
 	unregister_pernet_subsys(&dccp_v4_ops);
 out_destroy_ctl_sock:
-	inet_unregister_protosw(&dccp_v4_protosw);
 	proto_unregister(&dccp_v4_prot);
 	goto out;
 }
@@ -1080,7 +1069,6 @@ static void __exit dccp_v4_exit(void)
 {
 	inet_del_protocol(&dccp_v4_protocol, IPPROTO_DCCP);
 	unregister_pernet_subsys(&dccp_v4_ops);
-	inet_unregister_protosw(&dccp_v4_protosw);
 	proto_unregister(&dccp_v4_prot);
 }
 
