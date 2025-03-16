@@ -449,20 +449,6 @@ static int do_dccp_setsockopt(struct sock *sk, int level, int optname,
 		else
 			dp->dccps_server_timewait = (val != 0);
 		break;
-	case DCCP_SOCKOPT_QPOLICY_ID:
-		if (sk->sk_state != DCCP_CLOSED)
-			err = -EISCONN;
-		else if (val < 0 || val >= DCCPQ_POLICY_MAX)
-			err = -EINVAL;
-		else
-			dp->dccps_qpolicy = val;
-		break;
-	case DCCP_SOCKOPT_QPOLICY_TXQLEN:
-		if (val < 0)
-			err = -EINVAL;
-		else
-			dp->dccps_tx_qlen = val;
-		break;
 	default:
 		err = -ENOPROTOOPT;
 		break;
@@ -545,12 +531,6 @@ static int do_dccp_getsockopt(struct sock *sk, int level, int optname,
 	case DCCP_SOCKOPT_RECV_CSCOV:
 		val = dp->dccps_pcrlen;
 		break;
-	case DCCP_SOCKOPT_QPOLICY_ID:
-		val = dp->dccps_qpolicy;
-		break;
-	case DCCP_SOCKOPT_QPOLICY_TXQLEN:
-		val = dp->dccps_tx_qlen;
-		break;
 	default:
 		return -ENOPROTOOPT;
 	}
@@ -573,46 +553,6 @@ int dccp_getsockopt(struct sock *sk, int level, int optname,
 }
 
 EXPORT_SYMBOL_GPL(dccp_getsockopt);
-
-static int dccp_msghdr_parse(struct msghdr *msg, struct sk_buff *skb)
-{
-	struct cmsghdr *cmsg;
-
-	/*
-	 * Assign an (opaque) qpolicy priority value to skb->priority.
-	 *
-	 * We are overloading this skb field for use with the qpolicy subystem.
-	 * The skb->priority is normally used for the SO_PRIORITY option, which
-	 * is initialised from sk_priority. Since the assignment of sk_priority
-	 * to skb->priority happens later (on layer 3), we overload this field
-	 * for use with queueing priorities as long as the skb is on layer 4.
-	 * The default priority value (if nothing is set) is 0.
-	 */
-	skb->priority = 0;
-
-	for_each_cmsghdr(cmsg, msg) {
-		if (!CMSG_OK(msg, cmsg))
-			return -EINVAL;
-
-		if (cmsg->cmsg_level != SOL_DCCP)
-			continue;
-
-		if (cmsg->cmsg_type <= DCCP_SCM_QPOLICY_MAX &&
-		    !dccp_qpolicy_param_ok(skb->sk, cmsg->cmsg_type))
-			return -EINVAL;
-
-		switch (cmsg->cmsg_type) {
-		case DCCP_SCM_PRIORITY:
-			if (cmsg->cmsg_len != CMSG_LEN(sizeof(__u32)))
-				return -EINVAL;
-			skb->priority = *(__u32 *)CMSG_DATA(cmsg);
-			break;
-		default:
-			return -EINVAL;
-		}
-	}
-	return 0;
-}
 
 int dccp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 {
@@ -646,7 +586,8 @@ int dccp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 	if (skb == NULL)
 		goto out_release;
 
-	if (dccp_qpolicy_full(sk)) {
+	if (dp->dccps_tx_qlen &&
+	    skb_queue_len(&sk->sk_write_queue) >= dp->dccps_tx_qlen) {
 		rc = -EAGAIN;
 		goto out_discard;
 	}
@@ -667,11 +608,7 @@ int dccp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 	if (rc != 0)
 		goto out_discard;
 
-	rc = dccp_msghdr_parse(msg, skb);
-	if (rc != 0)
-		goto out_discard;
-
-	dccp_qpolicy_push(sk, skb);
+	skb_queue_tail(&sk->sk_write_queue, skb);
 	/*
 	 * The xmit_timer is set if the TX CCID is rate-based and will expire
 	 * when congestion control permits to release further packets into the

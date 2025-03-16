@@ -195,10 +195,13 @@ void dccp_write_space(struct sock *sk)
 static void dccp_xmit_packet(struct sock *sk)
 {
 	int err, len;
-	struct sk_buff *skb = dccp_qpolicy_pop(sk);
+	struct sk_buff *skb = skb_peek(&sk->sk_write_queue);
 
 	if (unlikely(skb == NULL))
 		return;
+
+	skb_unlink(skb, &sk->sk_write_queue);
+
 	len = skb->len;
 
 	if (sk->sk_state == DCCP_PARTOPEN) {
@@ -240,7 +243,7 @@ void dccp_write_xmit(struct sock *sk)
 {
 	struct sk_buff *skb;
 
-	while ((skb = dccp_qpolicy_top(sk)))
+	while ((skb = skb_peek(&sk->sk_write_queue)))
 		dccp_xmit_packet(sk);
 }
 
