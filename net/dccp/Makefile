@@ -3,11 +3,6 @@ obj-$(CONFIG_IP_DCCP) += dccp.o dccp_ipv4.o
 
 dccp-y := ccid.o feat.o input.o minisocks.o options.o output.o proto.o timer.o \
 	  qpolicy.o
-#
-# CCID algorithms to be used by dccp.ko
-#
-# CCID-2 is default (RFC 4340, p. 77) and has Ack Vectors as dependency
-dccp-y += ackvec.o
 
 dccp_ipv4-y := ipv4.o
 

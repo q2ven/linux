@@ -231,10 +231,6 @@ void dccp_destroy_sock(struct sock *sk)
 	kfree(dp->dccps_service_list);
 	dp->dccps_service_list = NULL;
 
-	if (dp->dccps_hc_rx_ackvec != NULL) {
-		dccp_ackvec_free(dp->dccps_hc_rx_ackvec);
-		dp->dccps_hc_rx_ackvec = NULL;
-	}
 	ccid_hc_rx_delete(dp->dccps_hc_rx_ccid, sk);
 	dp->dccps_hc_rx_ccid = NULL;
 
@@ -1216,20 +1212,14 @@ static int __init dccp_init(void)
 	if (rc)
 		goto out_free_dccp_bhash2;
 
-	rc = dccp_ackvec_init();
-	if (rc)
-		goto out_free_dccp_mib;
-
 	rc = ccid_initialize_builtins();
 	if (rc)
-		goto out_ackvec_exit;
+		goto out_free_dccp_mib;
 
 	dccp_timestamping_init();
 
 	return 0;
 
-out_ackvec_exit:
-	dccp_ackvec_exit();
 out_free_dccp_mib:
 	dccp_mib_exit();
 out_free_dccp_bhash2:
@@ -1269,7 +1259,6 @@ static void __exit dccp_fini(void)
 			     sizeof(struct inet_ehash_bucket)));
 	inet_ehash_locks_free(&dccp_hashinfo);
 	kmem_cache_destroy(dccp_hashinfo.bind_bucket_cachep);
-	dccp_ackvec_exit();
 	inet_hashinfo2_free_mod(&dccp_hashinfo);
 }
 

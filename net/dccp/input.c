@@ -12,7 +12,6 @@
 
 #include <net/sock.h>
 
-#include "ackvec.h"
 #include "ccid.h"
 #include "dccp.h"
 
@@ -154,17 +153,6 @@ static void dccp_rcv_reset(struct sock *sk, struct sk_buff *skb)
 	if (err && !sock_flag(sk, SOCK_DEAD))
 		sk_wake_async(sk, SOCK_WAKE_IO, POLL_ERR);
 	dccp_time_wait(sk, DCCP_TIME_WAIT, 0);
-}
-
-static void dccp_handle_ackvec_processing(struct sock *sk, struct sk_buff *skb)
-{
-	struct dccp_ackvec *av = dccp_sk(sk)->dccps_hc_rx_ackvec;
-
-	if (av == NULL)
-		return;
-	if (DCCP_SKB_CB(skb)->dccpd_ack_seq != DCCP_PKT_WITHOUT_ACK_SEQ)
-		dccp_ackvec_clear_state(av, DCCP_SKB_CB(skb)->dccpd_ack_seq);
-	dccp_ackvec_input(av, skb);
 }
 
 static void dccp_deliver_input_to_ccids(struct sock *sk, struct sk_buff *skb)
@@ -370,7 +358,6 @@ int dccp_rcv_established(struct sock *sk, struct sk_buff *skb,
 	if (dccp_parse_options(sk, NULL, skb))
 		return 1;
 
-	dccp_handle_ackvec_processing(sk, skb);
 	dccp_deliver_input_to_ccids(sk, skb);
 
 	return __dccp_rcv_established(sk, skb, dh, len);
@@ -681,8 +668,6 @@ int dccp_rcv_state_process(struct sock *sk, struct sk_buff *skb,
 		return 0;
 
 	case DCCP_PARTOPEN:
-		/* Step 8: if using Ack Vectors, mark packet acknowledgeable */
-		dccp_handle_ackvec_processing(sk, skb);
 		dccp_deliver_input_to_ccids(sk, skb);
 		fallthrough;
 	case DCCP_RESPOND:

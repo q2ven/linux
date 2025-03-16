@@ -17,7 +17,6 @@
 #include <net/inet_timewait_sock.h>
 #include <net/rstreason.h>
 
-#include "ackvec.h"
 #include "ccid.h"
 #include "dccp.h"
 #include "feat.h"
@@ -87,7 +86,6 @@ struct sock *dccp_create_openreq_child(const struct sock *sk,
 		struct dccp_sock *newdp = dccp_sk(newsk);
 
 		newdp->dccps_role	    = DCCP_ROLE_SERVER;
-		newdp->dccps_hc_rx_ackvec   = NULL;
 		newdp->dccps_service_list   = NULL;
 		newdp->dccps_hc_rx_ccid     = NULL;
 		newdp->dccps_hc_tx_ccid     = NULL;

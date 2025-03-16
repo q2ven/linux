@@ -216,8 +216,6 @@ static inline bool dccp_list_has_service(const struct dccp_service_list *sl,
 	return false;
 }
 
-struct dccp_ackvec;
-
 /**
  * struct dccp_sock - DCCP socket state
  *
@@ -246,7 +244,6 @@ struct dccp_ackvec;
  * @dccps_mss_cache - current value of MSS (path MTU minus header sizes)
  * @dccps_rate_last - timestamp for rate-limiting DCCP-Sync (RFC 4340, 7.5.4)
  * @dccps_featneg - tracks feature-negotiation state (mostly during handshake)
- * @dccps_hc_rx_ackvec - rx half connection ack vector
  * @dccps_hc_rx_ccid - CCID used for the receiver (or receiving half-connection)
  * @dccps_hc_tx_ccid - CCID used for the sender (or sending half-connection)
  * @dccps_options_received - parsed set of retrieved options
@@ -256,7 +253,6 @@ struct dccp_ackvec;
  * @dccps_hc_rx_insert_options - receiver wants to add options when acking
  * @dccps_hc_tx_insert_options - sender wants to add options when sending
  * @dccps_server_timewait - server holds timewait state on close (RFC 4340, 8.3)
- * @dccps_sync_scheduled - flag which signals "send out-of-band message soon"
  * @dccps_xmitlet - tasklet scheduled by the TX CCID to dequeue data packets
  * @dccps_xmit_timer - used by the TX CCID to delay sending (rate-based pacing)
  * @dccps_syn_rtt - RTT sample from Request/Response exchange (in usecs)
@@ -290,7 +286,6 @@ struct dccp_sock {
 	__u64				dccps_ndp_count:48;
 	unsigned long			dccps_rate_last;
 	struct list_head		dccps_featneg;
-	struct dccp_ackvec		*dccps_hc_rx_ackvec;
 	struct ccid			*dccps_hc_rx_ccid;
 	struct ccid			*dccps_hc_tx_ccid;
 	struct dccp_options_received	dccps_options_received;
@@ -300,7 +295,6 @@ struct dccp_sock {
 	__u8				dccps_hc_rx_insert_options:1;
 	__u8				dccps_hc_tx_insert_options:1;
 	__u8				dccps_server_timewait:1;
-	__u8				dccps_sync_scheduled:1;
 	struct tasklet_struct		dccps_xmitlet;
 	struct timer_list		dccps_xmit_timer;
 };

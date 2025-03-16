@@ -14,7 +14,6 @@
 #include <linux/kernel.h>
 #include <linux/skbuff.h>
 
-#include "ackvec.h"
 #include "ccid.h"
 #include "dccp.h"
 #include "feat.h"
@@ -96,8 +95,7 @@ int dccp_parse_options(struct sock *sk, struct dccp_request_sock *dreq,
 		 * negotiation may still be in progress (see RFC 4340, 10.3).
 		 * The same applies to Ack Vectors, as these depend on the CCID.
 		 */
-		if (dreq != NULL && (opt >= DCCPO_MIN_RX_CCID_SPECIFIC ||
-		    opt == DCCPO_ACK_VECTOR_0 || opt == DCCPO_ACK_VECTOR_1))
+		if (dreq != NULL && opt >= DCCPO_MIN_RX_CCID_SPECIFIC)
 			goto ignore_option;
 
 		switch (opt) {
@@ -216,16 +214,6 @@ int dccp_parse_options(struct sock *sk, struct dccp_request_sock *dreq,
 						     pkt_type, opt, value, len))
 				goto out_invalid_option;
 			break;
-		case DCCPO_ACK_VECTOR_0:
-		case DCCPO_ACK_VECTOR_1:
-			if (dccp_packet_without_ack(skb))   /* RFC 4340, 11.4 */
-				break;
-			/*
-			 * Ack vectors are processed by the TX CCID if it is
-			 * interested. The RX CCID need not parse Ack Vectors,
-			 * since it is only interested in clearing old state.
-			 */
-			fallthrough;
 		case DCCPO_MIN_TX_CCID_SPECIFIC ... DCCPO_MAX_TX_CCID_SPECIFIC:
 			if (ccid_hc_tx_parse_options(dp->dccps_hc_tx_ccid, sk,
 						     pkt_type, opt, value, len))
@@ -393,83 +381,6 @@ static int dccp_insert_option_timestamp_echo(struct dccp_sock *dp,
 	return 0;
 }
 
-static int dccp_insert_option_ackvec(struct sock *sk, struct sk_buff *skb)
-{
-	struct dccp_sock *dp = dccp_sk(sk);
-	struct dccp_ackvec *av = dp->dccps_hc_rx_ackvec;
-	struct dccp_skb_cb *dcb = DCCP_SKB_CB(skb);
-	const u16 buflen = dccp_ackvec_buflen(av);
-	/* Figure out how many options do we need to represent the ackvec */
-	const u8 nr_opts = DIV_ROUND_UP(buflen, DCCP_SINGLE_OPT_MAXLEN);
-	u16 len = buflen + 2 * nr_opts;
-	u8 i, nonce = 0;
-	const unsigned char *tail, *from;
-	unsigned char *to;
-
-	if (dcb->dccpd_opt_len + len > DCCP_MAX_OPT_LEN) {
-		DCCP_WARN("Lacking space for %u bytes on %s packet\n", len,
-			  dccp_packet_name(dcb->dccpd_type));
-		return -1;
-	}
-	/*
-	 * Since Ack Vectors are variable-length, we can not always predict
-	 * their size. To catch exception cases where the space is running out
-	 * on the skb, a separate Sync is scheduled to carry the Ack Vector.
-	 */
-	if (len > DCCPAV_MIN_OPTLEN &&
-	    len + dcb->dccpd_opt_len + skb->len > dp->dccps_mss_cache) {
-		DCCP_WARN("No space left for Ack Vector (%u) on skb (%u+%u), "
-			  "MPS=%u ==> reduce payload size?\n", len, skb->len,
-			  dcb->dccpd_opt_len, dp->dccps_mss_cache);
-		dp->dccps_sync_scheduled = 1;
-		return 0;
-	}
-	dcb->dccpd_opt_len += len;
-
-	to   = skb_push(skb, len);
-	len  = buflen;
-	from = av->av_buf + av->av_buf_head;
-	tail = av->av_buf + DCCPAV_MAX_ACKVEC_LEN;
-
-	for (i = 0; i < nr_opts; ++i) {
-		int copylen = len;
-
-		if (len > DCCP_SINGLE_OPT_MAXLEN)
-			copylen = DCCP_SINGLE_OPT_MAXLEN;
-
-		/*
-		 * RFC 4340, 12.2: Encode the Nonce Echo for this Ack Vector via
-		 * its type; ack_nonce is the sum of all individual buf_nonce's.
-		 */
-		nonce ^= av->av_buf_nonce[i];
-
-		*to++ = DCCPO_ACK_VECTOR_0 + av->av_buf_nonce[i];
-		*to++ = copylen + 2;
-
-		/* Check if buf_head wraps */
-		if (from + copylen > tail) {
-			const u16 tailsize = tail - from;
-
-			memcpy(to, from, tailsize);
-			to	+= tailsize;
-			len	-= tailsize;
-			copylen	-= tailsize;
-			from	= av->av_buf;
-		}
-
-		memcpy(to, from, copylen);
-		from += copylen;
-		to   += copylen;
-		len  -= copylen;
-	}
-	/*
-	 * Each sent Ack Vector is recorded in the list, as per A.2 of RFC 4340.
-	 */
-	if (dccp_ackvec_update_records(av, dcb->dccpd_seq, nonce))
-		return -ENOBUFS;
-	return 0;
-}
-
 /**
  * dccp_insert_option_mandatory  -  Mandatory option (5.8.2)
  * @skb: frame into which to insert option
@@ -567,10 +478,6 @@ int dccp_insert_options(struct sock *sk, struct sk_buff *skb)
 			 * This is currently used for TFRC initialisation.
 			 */
 			if (dccp_insert_option_timestamp(skb))
-				return -1;
-
-		} else if (dccp_ackvec_pending(sk) &&
-			   dccp_insert_option_ackvec(sk, skb)) {
 				return -1;
 		}
 	}

@@ -27,7 +27,6 @@
 #include <net/netns/generic.h>
 #include <net/rstreason.h>
 
-#include "ackvec.h"
 #include "ccid.h"
 #include "dccp.h"
 #include "feat.h"
