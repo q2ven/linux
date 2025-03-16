@@ -7,7 +7,7 @@ dccp-y := ccid.o feat.o input.o minisocks.o options.o output.o proto.o timer.o \
 # CCID algorithms to be used by dccp.ko
 #
 # CCID-2 is default (RFC 4340, p. 77) and has Ack Vectors as dependency
-dccp-y += ccids/ccid2.o ackvec.o
+dccp-y += ackvec.o
 
 dccp_ipv4-y := ipv4.o
 

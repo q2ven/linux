@@ -85,8 +85,6 @@ struct ccid_operations {
 						 int __user *optlen);
 };
 
-extern struct ccid_operations ccid2_ops;
-
 int ccid_initialize_builtins(void);
 void ccid_cleanup_builtins(void);
 
