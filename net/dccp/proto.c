@@ -31,7 +31,6 @@
 #include <linux/delay.h>
 #include <linux/poll.h>
 
-#include "ccid.h"
 #include "dccp.h"
 #include "feat.h"
 
@@ -170,10 +169,6 @@ EXPORT_SYMBOL_GPL(dccp_packet_name);
 
 void dccp_destruct_common(struct sock *sk)
 {
-	struct dccp_sock *dp = dccp_sk(sk);
-
-	ccid_hc_tx_delete(dp->dccps_hc_tx_ccid, sk);
-	dp->dccps_hc_tx_ccid = NULL;
 }
 EXPORT_SYMBOL_GPL(dccp_destruct_common);
 
@@ -231,9 +226,6 @@ void dccp_destroy_sock(struct sock *sk)
 	kfree(dp->dccps_service_list);
 	dp->dccps_service_list = NULL;
 
-	ccid_hc_rx_delete(dp->dccps_hc_rx_ccid, sk);
-	dp->dccps_hc_rx_ccid = NULL;
-
 	/* clean up feature negotiation state */
 	dccp_feat_list_purge(&dp->dccps_featneg);
 }
@@ -250,7 +242,6 @@ int dccp_disconnect(struct sock *sk, int flags)
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	struct inet_sock *inet = inet_sk(sk);
-	struct dccp_sock *dp = dccp_sk(sk);
 	const int old_state = sk->sk_state;
 
 	if (old_state != DCCP_CLOSED)
@@ -269,8 +260,6 @@ int dccp_disconnect(struct sock *sk, int flags)
 		sk->sk_err = ECONNRESET;
 
 	dccp_clear_xmit_timers(sk);
-	ccid_hc_rx_delete(dp->dccps_hc_rx_ccid, sk);
-	dp->dccps_hc_rx_ccid = NULL;
 
 	__skb_queue_purge(&sk->sk_receive_queue);
 	__skb_queue_purge(&sk->sk_write_queue);
@@ -474,31 +463,6 @@ static int dccp_setsockopt_cscov(struct sock *sk, int cscov, bool rx)
 	return rc;
 }
 
-static int dccp_setsockopt_ccid(struct sock *sk, int type,
-				sockptr_t optval, unsigned int optlen)
-{
-	u8 *val;
-	int rc = 0;
-
-	if (optlen < 1 || optlen > DCCP_FEAT_MAX_SP_VALS)
-		return -EINVAL;
-
-	val = memdup_sockptr(optval, optlen);
-	if (IS_ERR(val))
-		return PTR_ERR(val);
-
-	lock_sock(sk);
-	if (type == DCCP_SOCKOPT_TX_CCID || type == DCCP_SOCKOPT_CCID)
-		rc = dccp_feat_register_sp(sk, DCCPF_CCID, 1, val, optlen);
-
-	if (!rc && (type == DCCP_SOCKOPT_RX_CCID || type == DCCP_SOCKOPT_CCID))
-		rc = dccp_feat_register_sp(sk, DCCPF_CCID, 0, val, optlen);
-	release_sock(sk);
-
-	kfree(val);
-	return rc;
-}
-
 static int do_dccp_setsockopt(struct sock *sk, int level, int optname,
 		sockptr_t optval, unsigned int optlen)
 {
@@ -513,10 +477,6 @@ static int do_dccp_setsockopt(struct sock *sk, int level, int optname,
 	case DCCP_SOCKOPT_CHANGE_R:
 		DCCP_WARN("sockopt(CHANGE_L/R) is deprecated: fix your app\n");
 		return 0;
-	case DCCP_SOCKOPT_CCID:
-	case DCCP_SOCKOPT_RX_CCID:
-	case DCCP_SOCKOPT_TX_CCID:
-		return dccp_setsockopt_ccid(sk, optname, optval, optlen);
 	}
 
 	if (optlen < (int)sizeof(int))
@@ -629,18 +589,6 @@ static int do_dccp_getsockopt(struct sock *sk, int level, int optname,
 	case DCCP_SOCKOPT_GET_CUR_MPS:
 		val = READ_ONCE(dp->dccps_mss_cache);
 		break;
-	case DCCP_SOCKOPT_AVAILABLE_CCIDS:
-		return ccid_getsockopt_builtin_ccids(sk, len, optval, optlen);
-	case DCCP_SOCKOPT_TX_CCID:
-		val = ccid_get_current_tx_ccid(dp);
-		if (val < 0)
-			return -ENOPROTOOPT;
-		break;
-	case DCCP_SOCKOPT_RX_CCID:
-		val = ccid_get_current_rx_ccid(dp);
-		if (val < 0)
-			return -ENOPROTOOPT;
-		break;
 	case DCCP_SOCKOPT_SERVER_TIMEWAIT:
 		val = dp->dccps_server_timewait;
 		break;
@@ -656,12 +604,6 @@ static int do_dccp_getsockopt(struct sock *sk, int level, int optname,
 	case DCCP_SOCKOPT_QPOLICY_TXQLEN:
 		val = dp->dccps_tx_qlen;
 		break;
-	case 128 ... 191:
-		return ccid_hc_rx_getsockopt(dp->dccps_hc_rx_ccid, sk, optname,
-					     len, (u32 __user *)optval, optlen);
-	case 192 ... 255:
-		return ccid_hc_tx_getsockopt(dp->dccps_hc_tx_ccid, sk, optname,
-					     len, (u32 __user *)optval, optlen);
 	default:
 		return -ENOPROTOOPT;
 	}
@@ -1212,16 +1154,10 @@ static int __init dccp_init(void)
 	if (rc)
 		goto out_free_dccp_bhash2;
 
-	rc = ccid_initialize_builtins();
-	if (rc)
-		goto out_free_dccp_mib;
-
 	dccp_timestamping_init();
 
 	return 0;
 
-out_free_dccp_mib:
-	dccp_mib_exit();
 out_free_dccp_bhash2:
 	free_pages((unsigned long)dccp_hashinfo.bhash2, bhash_order);
 out_free_dccp_bhash:
@@ -1250,7 +1186,6 @@ static void __exit dccp_fini(void)
 	int bhash_order = get_order(dccp_hashinfo.bhash_size *
 				    sizeof(struct inet_bind_hashbucket));
 
-	ccid_cleanup_builtins();
 	dccp_mib_exit();
 	free_pages((unsigned long)dccp_hashinfo.bhash, bhash_order);
 	free_pages((unsigned long)dccp_hashinfo.bhash2, bhash_order);

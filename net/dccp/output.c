@@ -15,7 +15,6 @@
 #include <net/inet_sock.h>
 #include <net/sock.h>
 
-#include "ccid.h"
 #include "dccp.h"
 
 static inline void dccp_event_ack_sent(struct sock *sk)
@@ -140,29 +139,11 @@ static int dccp_transmit_skb(struct sock *sk, struct sk_buff *skb)
 	return -ENOBUFS;
 }
 
-/**
- * dccp_determine_ccmps  -  Find out about CCID-specific packet-size limits
- * @dp: socket to find packet size limits of
- *
- * We only consider the HC-sender CCID for setting the CCMPS (RFC 4340, 14.),
- * since the RX CCID is restricted to feedback packets (Acks), which are small
- * in comparison with the data traffic. A value of 0 means "no current CCMPS".
- */
-static u32 dccp_determine_ccmps(const struct dccp_sock *dp)
-{
-	const struct ccid *tx_ccid = dp->dccps_hc_tx_ccid;
-
-	if (tx_ccid == NULL || tx_ccid->ccid_ops == NULL)
-		return 0;
-	return tx_ccid->ccid_ops->ccid_ccmps;
-}
-
 unsigned int dccp_sync_mss(struct sock *sk, u32 pmtu)
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	struct dccp_sock *dp = dccp_sk(sk);
-	u32 ccmps = dccp_determine_ccmps(dp);
-	u32 cur_mps = ccmps ? min(pmtu, ccmps) : pmtu;
+	u32 cur_mps = pmtu;
 
 	/* Account for header lengths and IPv4/v6 option overhead */
 	cur_mps -= (icsk->icsk_af_ops->net_header_len + icsk->icsk_ext_hdr_len +
@@ -204,33 +185,6 @@ void dccp_write_space(struct sock *sk)
 		sk_wake_async_rcu(sk, SOCK_WAKE_SPACE, POLL_OUT);
 
 	rcu_read_unlock();
-}
-
-/**
- * dccp_wait_for_ccid  -  Await CCID send permission
- * @sk:    socket to wait for
- * @delay: timeout in jiffies
- *
- * This is used by CCIDs which need to delay the send time in process context.
- */
-static int dccp_wait_for_ccid(struct sock *sk, unsigned long delay)
-{
-	DEFINE_WAIT(wait);
-	long remaining;
-
-	prepare_to_wait(sk_sleep(sk), &wait, TASK_INTERRUPTIBLE);
-	sk->sk_write_pending++;
-	release_sock(sk);
-
-	remaining = schedule_timeout(delay);
-
-	lock_sock(sk);
-	sk->sk_write_pending--;
-	finish_wait(sk_sleep(sk), &wait);
-
-	if (signal_pending(current) || sk->sk_err)
-		return -1;
-	return remaining;
 }
 
 /**
@@ -278,12 +232,6 @@ static void dccp_xmit_packet(struct sock *sk)
 	err = dccp_transmit_skb(sk, skb);
 	if (err)
 		dccp_pr_debug("transmit_skb() returned err=%d\n", err);
-	/*
-	 * Register this one as sent even if an error occurred. To the remote
-	 * end a local packet drop is indistinguishable from network loss, i.e.
-	 * any local drop will eventually be reported via receiver feedback.
-	 */
-	ccid_hc_tx_packet_sent(dp->dccps_hc_tx_ccid, sk, len);
 }
 
 /**
@@ -298,66 +246,18 @@ static void dccp_xmit_packet(struct sock *sk)
  */
 void dccp_flush_write_queue(struct sock *sk, long *time_budget)
 {
-	struct dccp_sock *dp = dccp_sk(sk);
 	struct sk_buff *skb;
-	long delay, rc;
 
-	while (*time_budget > 0 && (skb = skb_peek(&sk->sk_write_queue))) {
-		rc = ccid_hc_tx_send_packet(dp->dccps_hc_tx_ccid, sk, skb);
-
-		switch (ccid_packet_dequeue_eval(rc)) {
-		case CCID_PACKET_WILL_DEQUEUE_LATER:
-			/*
-			 * If the CCID determines when to send, the next sending
-			 * time is unknown or the CCID may not even send again
-			 * (e.g. remote host crashes or lost Ack packets).
-			 */
-			DCCP_WARN("CCID did not manage to send all packets\n");
-			return;
-		case CCID_PACKET_DELAY:
-			delay = msecs_to_jiffies(rc);
-			if (delay > *time_budget)
-				return;
-			rc = dccp_wait_for_ccid(sk, delay);
-			if (rc < 0)
-				return;
-			*time_budget -= (delay - rc);
-			/* check again if we can send now */
-			break;
-		case CCID_PACKET_SEND_AT_ONCE:
-			dccp_xmit_packet(sk);
-			break;
-		case CCID_PACKET_ERR:
-			skb_dequeue(&sk->sk_write_queue);
-			kfree_skb(skb);
-			dccp_pr_debug("packet discarded due to err=%ld\n", rc);
-		}
-	}
+	while (*time_budget > 0 && (skb = skb_peek(&sk->sk_write_queue)))
+		dccp_xmit_packet(sk);
 }
 
 void dccp_write_xmit(struct sock *sk)
 {
-	struct dccp_sock *dp = dccp_sk(sk);
 	struct sk_buff *skb;
 
-	while ((skb = dccp_qpolicy_top(sk))) {
-		int rc = ccid_hc_tx_send_packet(dp->dccps_hc_tx_ccid, sk, skb);
-
-		switch (ccid_packet_dequeue_eval(rc)) {
-		case CCID_PACKET_WILL_DEQUEUE_LATER:
-			return;
-		case CCID_PACKET_DELAY:
-			sk_reset_timer(sk, &dp->dccps_xmit_timer,
-				       jiffies + msecs_to_jiffies(rc));
-			return;
-		case CCID_PACKET_SEND_AT_ONCE:
-			dccp_xmit_packet(sk);
-			break;
-		case CCID_PACKET_ERR:
-			dccp_qpolicy_drop(sk, skb);
-			dccp_pr_debug("packet discarded due to err=%d\n", rc);
-		}
-	}
+	while ((skb = dccp_qpolicy_top(sk)))
+		dccp_xmit_packet(sk);
 }
 
 /**
@@ -412,10 +312,6 @@ struct sk_buff *dccp_make_response(const struct sock *sk, struct dst_entry *dst,
 		dccp_inc_seqno(&dreq->dreq_gss);
 	DCCP_SKB_CB(skb)->dccpd_type = DCCP_PKT_RESPONSE;
 	DCCP_SKB_CB(skb)->dccpd_seq  = dreq->dreq_gss;
-
-	/* Resolve feature dependencies resulting from choice of CCID */
-	if (dccp_feat_server_ccid_dependencies(dreq))
-		goto response_failed;
 
 	if (dccp_insert_options_rsk(dreq, skb))
 		goto response_failed;

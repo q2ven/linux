@@ -446,7 +446,6 @@ static inline int dccp_ack_pending(const struct sock *sk)
 
 int dccp_feat_signal_nn_change(struct sock *sk, u8 feat, u64 nn_val);
 int dccp_feat_finalise_settings(struct dccp_sock *dp);
-int dccp_feat_server_ccid_dependencies(struct dccp_request_sock *dreq);
 int dccp_feat_insert_opts(struct dccp_sock*, struct dccp_request_sock*,
 			  struct sk_buff *skb);
 int dccp_feat_activate_values(struct sock *sk, struct list_head *fn);

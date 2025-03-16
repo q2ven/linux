@@ -19,13 +19,10 @@
  */
 #include <linux/module.h>
 #include <linux/slab.h>
-#include "ccid.h"
 #include "feat.h"
 
 /* feature-specific sysctls - initialised to the defaults from RFC 4340, 6.4 */
 unsigned long	sysctl_dccp_sequence_window __read_mostly = 100;
-int		sysctl_dccp_rx_ccid	    __read_mostly = 2,
-		sysctl_dccp_tx_ccid	    __read_mostly = 2;
 
 /*
  * Feature activation handlers.
@@ -33,24 +30,6 @@ int		sysctl_dccp_rx_ccid	    __read_mostly = 2,
  * These all use an u64 argument, to provide enough room for NN/SP features. At
  * this stage the negotiated values have been checked to be within their range.
  */
-static int dccp_hdlr_ccid(struct sock *sk, u64 ccid, bool rx)
-{
-	struct dccp_sock *dp = dccp_sk(sk);
-	struct ccid *new_ccid = ccid_new(ccid, sk, rx);
-
-	if (new_ccid == NULL)
-		return -ENOMEM;
-
-	if (rx) {
-		ccid_hc_rx_delete(dp->dccps_hc_rx_ccid, sk);
-		dp->dccps_hc_rx_ccid = new_ccid;
-	} else {
-		ccid_hc_tx_delete(dp->dccps_hc_tx_ccid, sk);
-		dp->dccps_hc_tx_ccid = new_ccid;
-	}
-	return 0;
-}
-
 static int dccp_hdlr_seq_win(struct sock *sk, u64 seq_win, bool rx)
 {
 	struct dccp_sock *dp = dccp_sk(sk);
@@ -133,7 +112,7 @@ static const struct {
  *  +--------------------------+----+-----+----+----+---------+-----------+
  */
 } dccp_feat_table[] = {
-	{ DCCPF_CCID,		 FEAT_AT_TX, FEAT_SP, 2,   dccp_hdlr_ccid     },
+	{ DCCPF_CCID,		 FEAT_AT_TX, FEAT_SP, 2,   NULL },
 	{ DCCPF_SHORT_SEQNOS,	 FEAT_AT_TX, FEAT_SP, 0,   NULL },
 	{ DCCPF_SEQUENCE_WINDOW, FEAT_AT_TX, FEAT_NN, 100, dccp_hdlr_seq_win  },
 	{ DCCPF_ECN_INCAPABLE,	 FEAT_AT_RX, FEAT_SP, 0,   NULL },
@@ -581,8 +560,6 @@ static u8 dccp_feat_is_valid_nn_val(u8 feat_num, u64 val)
 static u8 dccp_feat_is_valid_sp_val(u8 feat_num, u8 val)
 {
 	switch (feat_num) {
-	case DCCPF_CCID:
-		break;
 	/* Type-check Boolean feature values: */
 	case DCCPF_SHORT_SEQNOS:
 	case DCCPF_ECN_INCAPABLE:
@@ -712,10 +689,6 @@ static int __feat_register_sp(struct list_head *fn, u8 feat, u8 is_local,
 	    !dccp_feat_sp_list_ok(feat, sp_val, sp_len))
 		return -EINVAL;
 
-	/* Avoid negotiating alien CCIDs by only advertising supported ones */
-	if (feat == DCCPF_CCID && !ccid_support_check(sp_val, sp_len))
-		return -EOPNOTSUPP;
-
 	if (dccp_feat_clone_sp_val(&fval, sp_val, sp_len))
 		return -ENOMEM;
 
@@ -813,48 +786,6 @@ int dccp_feat_signal_nn_change(struct sock *sk, u8 feat, u64 nn_val)
 }
 EXPORT_SYMBOL_GPL(dccp_feat_signal_nn_change);
 
-/*
- *	Tracking features whose value depend on the choice of CCID
- *
- * This is designed with an extension in mind so that a list walk could be done
- * before activating any features. However, the existing framework was found to
- * work satisfactorily up until now, the automatic verification is left open.
- * When adding new CCIDs, add a corresponding dependency table here.
- */
-static const struct ccid_dependency *dccp_feat_ccid_deps(u8 ccid, bool is_local)
-{
-	switch (ccid) {
-	default:
-		return NULL;
-	}
-}
-
-/**
- * dccp_feat_propagate_ccid - Resolve dependencies of features on choice of CCID
- * @fn: feature-negotiation list to update
- * @id: CCID number to track
- * @is_local: whether TX CCID (1) or RX CCID (0) is meant
- *
- * This function needs to be called after registering all other features.
- */
-static int dccp_feat_propagate_ccid(struct list_head *fn, u8 id, bool is_local)
-{
-	const struct ccid_dependency *table = dccp_feat_ccid_deps(id, is_local);
-	int i, rc = (table == NULL);
-
-	for (i = 0; rc == 0 && table[i].dependent_feat != DCCPF_RESERVED; i++)
-		if (dccp_feat_type(table[i].dependent_feat) == FEAT_SP)
-			rc = __feat_register_sp(fn, table[i].dependent_feat,
-						    table[i].is_local,
-						    table[i].is_mandatory,
-						    &table[i].val, 1);
-		else
-			rc = __feat_register_nn(fn, table[i].dependent_feat,
-						    table[i].is_mandatory,
-						    table[i].val);
-	return rc;
-}
-
 /**
  * dccp_feat_finalise_settings  -  Finalise settings before starting negotiation
  * @dp: client or listening socket (settings will be inherited)
@@ -866,52 +797,8 @@ static int dccp_feat_propagate_ccid(struct list_head *fn, u8 id, bool is_local)
 int dccp_feat_finalise_settings(struct dccp_sock *dp)
 {
 	struct list_head *fn = &dp->dccps_featneg;
-	struct dccp_feat_entry *entry;
-	int i = 2, ccids[2] = { -1, -1 };
 
-	/*
-	 * Propagating CCIDs:
-	 * 1) not useful to propagate CCID settings if this host advertises more
-	 *    than one CCID: the choice of CCID  may still change - if this is
-	 *    the client, or if this is the server and the client sends
-	 *    singleton CCID values.
-	 * 2) since is that propagate_ccid changes the list, we defer changing
-	 *    the sorted list until after the traversal.
-	 */
-	list_for_each_entry(entry, fn, node)
-		if (entry->feat_num == DCCPF_CCID && entry->val.sp.len == 1)
-			ccids[entry->is_local] = entry->val.sp.vec[0];
-	while (i--)
-		if (ccids[i] > 0 && dccp_feat_propagate_ccid(fn, ccids[i], i))
-			return -1;
 	dccp_feat_print_fnlist(fn);
-	return 0;
-}
-
-/**
- * dccp_feat_server_ccid_dependencies  -  Resolve CCID-dependent features
- * @dreq: server socket to resolve
- *
- * It is the server which resolves the dependencies once the CCID has been
- * fully negotiated. If no CCID has been negotiated, it uses the default CCID.
- */
-int dccp_feat_server_ccid_dependencies(struct dccp_request_sock *dreq)
-{
-	struct list_head *fn = &dreq->dreq_featneg;
-	struct dccp_feat_entry *entry;
-	u8 is_local, ccid;
-
-	for (is_local = 0; is_local <= 1; is_local++) {
-		entry = dccp_feat_list_lookup(fn, DCCPF_CCID, is_local);
-
-		if (entry != NULL && !entry->empty_confirm)
-			ccid = entry->val.sp.vec[0];
-		else
-			ccid = dccp_feat_default_value(DCCPF_CCID);
-
-		if (dccp_feat_propagate_ccid(fn, ccid, is_local))
-			return -1;
-	}
 	return 0;
 }
 
@@ -1055,7 +942,7 @@ static u8 dccp_feat_change_recv(struct list_head *fn, u8 is_mandatory, u8 opt,
 		}
 
 		/* Treat unsupported CCIDs like invalid values */
-		if (feat == DCCPF_CCID && !ccid_support_check(fval.sp.vec, 1)) {
+		if (feat == DCCPF_CCID) {
 			kfree(fval.sp.vec);
 			goto not_valid_or_not_known;
 		}
@@ -1353,10 +1240,6 @@ int dccp_feat_init(struct sock *sk)
 	struct list_head *fn = &dccp_sk(sk)->dccps_featneg;
 	u8 on = 1, off = 0;
 	int rc;
-	struct {
-		u8 *val;
-		u8 len;
-	} tx, rx;
 
 	/* Non-negotiable (NN) features */
 	rc = __feat_register_nn(fn, DCCPF_SEQUENCE_WINDOW, 0,
@@ -1372,42 +1255,11 @@ int dccp_feat_init(struct sock *sk)
 		return rc;
 
 	/* RFC 4340 12.1: "If a DCCP is not ECN capable, ..." */
-	rc = __feat_register_sp(fn, DCCPF_ECN_INCAPABLE, true, true, &on, 1);
-	if (rc)
-		return rc;
-
-	/*
-	 * We advertise the available list of CCIDs and reorder according to
-	 * preferences, to avoid failure resulting from negotiating different
-	 * singleton values (which always leads to failure).
-	 * These settings can still (later) be overridden via sockopts.
-	 */
-	if (ccid_get_builtin_ccids(&tx.val, &tx.len))
-		return -ENOBUFS;
-	if (ccid_get_builtin_ccids(&rx.val, &rx.len)) {
-		kfree(tx.val);
-		return -ENOBUFS;
-	}
-
-	if (!dccp_feat_prefer(sysctl_dccp_tx_ccid, tx.val, tx.len) ||
-	    !dccp_feat_prefer(sysctl_dccp_rx_ccid, rx.val, rx.len))
-		goto free_ccid_lists;
-
-	rc = __feat_register_sp(fn, DCCPF_CCID, true, false, tx.val, tx.len);
-	if (rc)
-		goto free_ccid_lists;
-
-	rc = __feat_register_sp(fn, DCCPF_CCID, false, false, rx.val, rx.len);
-
-free_ccid_lists:
-	kfree(tx.val);
-	kfree(rx.val);
-	return rc;
+	return __feat_register_sp(fn, DCCPF_ECN_INCAPABLE, true, true, &on, 1);
 }
 
 int dccp_feat_activate_values(struct sock *sk, struct list_head *fn_list)
 {
-	struct dccp_sock *dp = dccp_sk(sk);
 	struct dccp_feat_entry *cur, *next;
 	int idx;
 	dccp_feat_val *fvals[DCCP_FEAT_SUPPORTED_MAX][2] = {
@@ -1460,14 +1312,5 @@ int dccp_feat_activate_values(struct sock *sk, struct list_head *fn_list)
 	return 0;
 
 activation_failed:
-	/*
-	 * We clean up everything that may have been allocated, since
-	 * it is difficult to track at which stage negotiation failed.
-	 * This is ok, since all allocation functions below are robust
-	 * against NULL arguments.
-	 */
-	ccid_hc_rx_delete(dp->dccps_hc_rx_ccid, sk);
-	ccid_hc_tx_delete(dp->dccps_hc_tx_ccid, sk);
-	dp->dccps_hc_rx_ccid = dp->dccps_hc_tx_ccid = NULL;
 	return -1;
 }

@@ -83,26 +83,10 @@ static inline u8 dccp_feat_genopt(struct dccp_feat_entry *entry)
 	return entry->is_local ? DCCPO_CHANGE_L : DCCPO_CHANGE_R;
 }
 
-/**
- * struct ccid_dependency  -  Track changes resulting from choosing a CCID
- * @dependent_feat: one of %dccp_feature_numbers
- * @is_local: local (1) or remote (0) @dependent_feat
- * @is_mandatory: whether presence of @dependent_feat is mission-critical or not
- * @val: corresponding default value for @dependent_feat (u8 is sufficient here)
- */
-struct ccid_dependency {
-	u8	dependent_feat;
-	bool	is_local:1,
-		is_mandatory:1;
-	u8	val;
-};
-
 /*
  * Sysctls to seed defaults for feature negotiation
  */
 extern unsigned long sysctl_dccp_sequence_window;
-extern int	     sysctl_dccp_rx_ccid;
-extern int	     sysctl_dccp_tx_ccid;
 
 int dccp_feat_init(struct sock *sk);
 int dccp_feat_register_sp(struct sock *sk, u8 feat, u8 is_local,
