@@ -18,7 +18,6 @@
 #include <net/rstreason.h>
 
 #include "dccp.h"
-#include "feat.h"
 
 struct inet_timewait_death_row dccp_death_row = {
 	.tw_refcount = REFCOUNT_INIT(1),
@@ -91,7 +90,6 @@ struct sock *dccp_create_openreq_child(const struct sock *sk,
 		newdp->dccps_timestamp_time = dreq->dreq_timestamp_time;
 		newicsk->icsk_rto	    = DCCP_TIMEOUT_INIT;
 
-		INIT_LIST_HEAD(&newdp->dccps_featneg);
 		/*
 		 * Step 3: Process LISTEN state
 		 *
@@ -112,7 +110,7 @@ struct sock *dccp_create_openreq_child(const struct sock *sk,
 		/*
 		 * Activate features: initialise CCIDs, sequence windows etc.
 		 */
-		if (dccp_feat_activate_values(newsk, &dreq->dreq_featneg)) {
+		if (0) {
 			sk_free_unlock_clone(newsk);
 			return NULL;
 		}
@@ -254,8 +252,7 @@ int dccp_reqsk_init(struct request_sock *req,
 	inet_rsk(req)->acked	   = 0;
 	dreq->dreq_timestamp_echo  = 0;
 
-	/* inherit feature negotiation options from listening socket */
-	return dccp_feat_clone_list(&dp->dccps_featneg, &dreq->dreq_featneg);
+	return 0;
 }
 
 EXPORT_SYMBOL_GPL(dccp_reqsk_init);

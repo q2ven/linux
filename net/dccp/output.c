@@ -158,10 +158,9 @@ unsigned int dccp_sync_mss(struct sock *sk, u32 pmtu)
 	 *  - 1 byte for Slow Receiver (11.6)
 	 *  - 6 bytes for Timestamp (13.1)
 	 *  - 10 bytes for Timestamp Echo (13.3)
-	 *  - 8 bytes for NDP count (7.7, when activated)
 	 *  - 6 bytes for Data Checksum (9.3)
 	 */
-	cur_mps -= roundup(1 + 6 + 10 + dp->dccps_send_ndp_count * 8 + 6, 4);
+	cur_mps -= roundup(1 + 6 + 10 + 6, 4);
 
 	/* And store cached results */
 	icsk->icsk_pmtu_cookie = pmtu;
@@ -196,7 +195,6 @@ void dccp_write_space(struct sock *sk)
 static void dccp_xmit_packet(struct sock *sk)
 {
 	int err, len;
-	struct dccp_sock *dp = dccp_sk(sk);
 	struct sk_buff *skb = dccp_qpolicy_pop(sk);
 
 	if (unlikely(skb == NULL))
@@ -204,20 +202,6 @@ static void dccp_xmit_packet(struct sock *sk)
 	len = skb->len;
 
 	if (sk->sk_state == DCCP_PARTOPEN) {
-		const u32 cur_mps = dp->dccps_mss_cache - DCCP_FEATNEG_OVERHEAD;
-		/*
-		 * See 8.1.5 - Handshake Completion.
-		 *
-		 * For robustness we resend Confirm options until the client has
-		 * entered OPEN. During the initial feature negotiation, the MPS
-		 * is smaller than usual, reduced by the Change/Confirm options.
-		 */
-		if (!list_empty(&dp->dccps_featneg) && len > cur_mps) {
-			DCCP_WARN("Payload too large (%d) for featneg.\n", len);
-			dccp_send_ack(sk);
-			dccp_feat_list_purge(&dp->dccps_featneg);
-		}
-
 		inet_csk_schedule_ack(sk);
 		inet_csk_reset_xmit_timer(sk, ICSK_TIME_DACK,
 					      inet_csk(sk)->icsk_rto,
@@ -433,10 +417,6 @@ int dccp_connect(struct sock *sk)
 	sock_reset_flag(sk, SOCK_DONE);
 
 	dccp_sync_mss(sk, dst_mtu(dst));
-
-	/* do not connect if feature negotiation setup fails */
-	if (dccp_feat_finalise_settings(dccp_sk(sk)))
-		return -EPROTO;
 
 	/* Initialise GAR as per 8.5; AWL/AWH are set in dccp_transmit_skb() */
 	dp->dccps_gar = dp->dccps_iss;

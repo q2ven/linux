@@ -428,15 +428,6 @@ static int dccp_rcv_request_sent_state_process(struct sock *sk,
 		 */
 		dccp_set_state(sk, DCCP_PARTOPEN);
 
-		/*
-		 * If feature negotiation was successful, activate features now;
-		 * an activation failure means that this host could not activate
-		 * one ore more features (e.g. insufficient memory), which would
-		 * leave at least one feature in an undefined state.
-		 */
-		if (dccp_feat_activate_values(sk, &dp->dccps_featneg))
-			goto unable_to_proceed;
-
 		/* Make sure socket is routed, for correct metrics. */
 		icsk->icsk_af_ops->rebuild_header(sk);
 
@@ -470,16 +461,6 @@ static int dccp_rcv_request_sent_state_process(struct sock *sk,
 out_invalid_packet:
 	/* dccp_v4_do_rcv will send a reset */
 	DCCP_SKB_CB(skb)->dccpd_reset_code = DCCP_RESET_CODE_PACKET_ERROR;
-	return 1;
-
-unable_to_proceed:
-	DCCP_SKB_CB(skb)->dccpd_reset_code = DCCP_RESET_CODE_ABORTED;
-	/*
-	 * We mark this socket as no longer usable, so that the loop in
-	 * dccp_sendmsg() terminates and the application gets notified.
-	 */
-	dccp_set_state(sk, DCCP_CLOSED);
-	sk->sk_err = ECOMM;
 	return 1;
 }
 

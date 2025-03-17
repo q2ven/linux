@@ -32,7 +32,6 @@
 #include <linux/poll.h>
 
 #include "dccp.h"
-#include "feat.h"
 
 DEFINE_SNMP_STAT(struct dccp_mib, dccp_statistics) __read_mostly;
 
@@ -83,9 +82,6 @@ void dccp_set_state(struct sock *sk, const int state)
 	case DCCP_OPEN:
 		if (oldstate != DCCP_OPEN)
 			DCCP_INC_STATS(DCCP_MIB_CURRESTAB);
-		/* Client retransmits all Confirm options until entering OPEN */
-		if (oldstate == DCCP_PARTOPEN)
-			dccp_feat_list_purge(&dccp_sk(sk)->dccps_featneg);
 		break;
 
 	case DCCP_CLOSED:
@@ -200,10 +196,6 @@ int dccp_init_sock(struct sock *sk, const __u8 ctl_sock_initialized)
 
 	dccp_init_xmit_timers(sk);
 
-	INIT_LIST_HEAD(&dp->dccps_featneg);
-	/* control socket doesn't need feat nego */
-	if (likely(ctl_sock_initialized))
-		return dccp_feat_init(sk);
 	return 0;
 }
 
@@ -225,9 +217,6 @@ void dccp_destroy_sock(struct sock *sk)
 
 	kfree(dp->dccps_service_list);
 	dp->dccps_service_list = NULL;
-
-	/* clean up feature negotiation state */
-	dccp_feat_list_purge(&dp->dccps_featneg);
 }
 
 EXPORT_SYMBOL_GPL(dccp_destroy_sock);
@@ -427,42 +416,6 @@ static int dccp_setsockopt_service(struct sock *sk, const __be32 service,
 	return 0;
 }
 
-static int dccp_setsockopt_cscov(struct sock *sk, int cscov, bool rx)
-{
-	u8 *list, len;
-	int i, rc;
-
-	if (cscov < 0 || cscov > 15)
-		return -EINVAL;
-	/*
-	 * Populate a list of permissible values, in the range cscov...15. This
-	 * is necessary since feature negotiation of single values only works if
-	 * both sides incidentally choose the same value. Since the list starts
-	 * lowest-value first, negotiation will pick the smallest shared value.
-	 */
-	if (cscov == 0)
-		return 0;
-	len = 16 - cscov;
-
-	list = kmalloc(len, GFP_KERNEL);
-	if (list == NULL)
-		return -ENOBUFS;
-
-	for (i = 0; i < len; i++)
-		list[i] = cscov++;
-
-	rc = dccp_feat_register_sp(sk, DCCPF_MIN_CSUM_COVER, rx, list, len);
-
-	if (rc == 0) {
-		if (rx)
-			dccp_sk(sk)->dccps_pcrlen = cscov;
-		else
-			dccp_sk(sk)->dccps_pcslen = cscov;
-	}
-	kfree(list);
-	return rc;
-}
-
 static int do_dccp_setsockopt(struct sock *sk, int level, int optname,
 		sockptr_t optval, unsigned int optlen)
 {
@@ -495,12 +448,6 @@ static int do_dccp_setsockopt(struct sock *sk, int level, int optname,
 			err = -EOPNOTSUPP;
 		else
 			dp->dccps_server_timewait = (val != 0);
-		break;
-	case DCCP_SOCKOPT_SEND_CSCOV:
-		err = dccp_setsockopt_cscov(sk, val, false);
-		break;
-	case DCCP_SOCKOPT_RECV_CSCOV:
-		err = dccp_setsockopt_cscov(sk, val, true);
 		break;
 	case DCCP_SOCKOPT_QPOLICY_ID:
 		if (sk->sk_state != DCCP_CLOSED)
@@ -874,12 +821,6 @@ int inet_dccp_listen(struct socket *sock, int backlog)
 		struct dccp_sock *dp = dccp_sk(sk);
 
 		dp->dccps_role = DCCP_ROLE_LISTEN;
-
-		/* do not start to listen if feature negotiation setup fails */
-		if (dccp_feat_finalise_settings(dp)) {
-			err = -EPROTO;
-			goto out;
-		}
 
 		err = inet_csk_listen_start(sk);
 		if (err)

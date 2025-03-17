@@ -152,7 +152,6 @@ static inline unsigned int dccp_hdr_len(const struct sk_buff *skb)
  * @dreq_isr: initial sequence number received in the first Request
  * @dreq_gsr: greatest sequence number received (for retransmitted Request(s))
  * @dreq_service: service code present on the Request (there is just one)
- * @dreq_featneg: feature negotiation options for this connection
  * The following two fields are analogous to the ones in dccp_sock:
  * @dreq_timestamp_echo: last received timestamp to echo (13.1)
  * @dreq_timestamp_echo: the time of receiving the last @dreq_timestamp_echo
@@ -165,7 +164,6 @@ struct dccp_request_sock {
 	__u64			 dreq_gsr;
 	__be32			 dreq_service;
 	spinlock_t		 dreq_lock;
-	struct list_head	 dreq_featneg;
 	__u32			 dreq_timestamp_echo;
 	__u32			 dreq_timestamp_time;
 };
@@ -239,11 +237,9 @@ static inline bool dccp_list_has_service(const struct dccp_service_list *sl,
  * @dccps_r_seq_win - remote Sequence Window (influences seq number validity)
  * @dccps_pcslen - sender   partial checksum coverage (via sockopt)
  * @dccps_pcrlen - receiver partial checksum coverage (via sockopt)
- * @dccps_send_ndp_count - local Send NDP Count feature (7.7.2)
  * @dccps_ndp_count - number of Non Data Packets since last data packet
  * @dccps_mss_cache - current value of MSS (path MTU minus header sizes)
  * @dccps_rate_last - timestamp for rate-limiting DCCP-Sync (RFC 4340, 7.5.4)
- * @dccps_featneg - tracks feature-negotiation state (mostly during handshake)
  * @dccps_options_received - parsed set of retrieved options
  * @dccps_qpolicy - TX dequeueing policy, one of %dccp_packet_dequeueing_policy
  * @dccps_tx_qlen - maximum length of the TX queue
@@ -274,16 +270,12 @@ struct dccp_sock {
 	struct dccp_service_list	*dccps_service_list;
 	__u32				dccps_timestamp_echo;
 	__u32				dccps_timestamp_time;
-	__u16				dccps_l_ack_ratio;
-	__u16				dccps_r_ack_ratio;
 	__u64				dccps_l_seq_win:48;
 	__u64				dccps_r_seq_win:48;
 	__u8				dccps_pcslen:4;
 	__u8				dccps_pcrlen:4;
-	__u8				dccps_send_ndp_count:1;
 	__u64				dccps_ndp_count:48;
 	unsigned long			dccps_rate_last;
-	struct list_head		dccps_featneg;
 	struct dccp_options_received	dccps_options_received;
 	__u8				dccps_qpolicy;
 	__u32				dccps_tx_qlen;

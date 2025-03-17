@@ -28,7 +28,6 @@
 #include <net/rstreason.h>
 
 #include "dccp.h"
-#include "feat.h"
 
 struct dccp_v4_pernet {
 	struct sock *v4_ctl_sk;
@@ -569,7 +568,6 @@ out:
 
 static void dccp_v4_reqsk_destructor(struct request_sock *req)
 {
-	dccp_feat_list_purge(&dccp_rsk(req)->dreq_featneg);
 	kfree(rcu_dereference_protected(inet_rsk(req)->ireq_opt, 1));
 }
 
