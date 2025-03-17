@@ -90,9 +90,6 @@ void dccp_time_wait(struct sock *sk, int state, int timeo);
 #define DCCP_SANE_RTT_MAX	(3 * USEC_PER_SEC)
 
 /* sysctl variables for DCCP */
-extern int  sysctl_dccp_request_retries;
-extern int  sysctl_dccp_retries1;
-extern int  sysctl_dccp_retries2;
 extern int  sysctl_dccp_tx_qlen;
 extern int  sysctl_dccp_sync_ratelimit;
 
@@ -224,15 +221,8 @@ void dccp_send_sync(struct sock *sk, const u64 seq,
 /*
  * TX Packet Output and TX Timers
  */
-void dccp_write_xmit(struct sock *sk);
 void dccp_write_space(struct sock *sk);
 void dccp_flush_write_queue(struct sock *sk, long *time_budget);
-
-void dccp_init_xmit_timers(struct sock *sk);
-static inline void dccp_clear_xmit_timers(struct sock *sk)
-{
-	inet_csk_clear_xmit_timers(sk);
-}
 
 unsigned int dccp_sync_mss(struct sock *sk, u32 pmtu);
 
@@ -436,8 +426,6 @@ static inline int dccp_ack_pending(const struct sock *sk)
 
 int dccp_insert_options(struct sock *sk, struct sk_buff *skb);
 int dccp_insert_options_rsk(struct dccp_request_sock *, struct sk_buff *);
-u32 dccp_timestamp(void);
-void dccp_timestamping_init(void);
 int dccp_insert_option(struct sk_buff *skb, unsigned char option,
 		       const void *value, unsigned char len);
 

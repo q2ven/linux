@@ -114,7 +114,6 @@ struct sock *dccp_create_openreq_child(const struct sock *sk,
 			sk_free_unlock_clone(newsk);
 			return NULL;
 		}
-		dccp_init_xmit_timers(newsk);
 
 		__DCCP_INC_STATS(DCCP_MIB_PASSIVEOPENS);
 	}

@@ -17,11 +17,6 @@
 
 #include "dccp.h"
 
-static inline void dccp_event_ack_sent(struct sock *sk)
-{
-	inet_csk_clear_xmit_timer(sk, ICSK_TIME_DACK);
-}
-
 /* enqueue @skb on sk_send_head for retransmission, return clone to send now */
 static struct sk_buff *dccp_skb_entail(struct sock *sk, struct sk_buff *skb)
 {
@@ -128,9 +123,6 @@ static int dccp_transmit_skb(struct sock *sk, struct sk_buff *skb)
 
 		icsk->icsk_af_ops->send_check(sk, skb);
 
-		if (set_ack)
-			dccp_event_ack_sent(sk);
-
 		DCCP_INC_STATS(DCCP_MIB_OUTSEGS);
 
 		err = icsk->icsk_af_ops->queue_xmit(sk, skb, &inet->cork.fl);
@@ -206,9 +198,6 @@ static void dccp_xmit_packet(struct sock *sk)
 
 	if (sk->sk_state == DCCP_PARTOPEN) {
 		inet_csk_schedule_ack(sk);
-		inet_csk_reset_xmit_timer(sk, ICSK_TIME_DACK,
-					      inet_csk(sk)->icsk_rto,
-					      DCCP_RTO_MAX);
 		DCCP_SKB_CB(skb)->dccpd_type = DCCP_PKT_DATAACK;
 	} else if (dccp_ack_pending(sk)) {
 		DCCP_SKB_CB(skb)->dccpd_type = DCCP_PKT_DATAACK;
@@ -237,38 +226,6 @@ void dccp_flush_write_queue(struct sock *sk, long *time_budget)
 
 	while (*time_budget > 0 && (skb = skb_peek(&sk->sk_write_queue)))
 		dccp_xmit_packet(sk);
-}
-
-void dccp_write_xmit(struct sock *sk)
-{
-	struct sk_buff *skb;
-
-	while ((skb = skb_peek(&sk->sk_write_queue)))
-		dccp_xmit_packet(sk);
-}
-
-/**
- * dccp_retransmit_skb  -  Retransmit Request, Close, or CloseReq packets
- * @sk: socket to perform retransmit on
- *
- * There are only four retransmittable packet types in DCCP:
- * - Request  in client-REQUEST  state (sec. 8.1.1),
- * - CloseReq in server-CLOSEREQ state (sec. 8.3),
- * - Close    in   node-CLOSING  state (sec. 8.3),
- * - Acks in client-PARTOPEN state (sec. 8.1.5, handled by dccp_delack_timer()).
- * This function expects sk->sk_send_head to contain the original skb.
- */
-int dccp_retransmit_skb(struct sock *sk)
-{
-	WARN_ON(sk->sk_send_head == NULL);
-
-	if (inet_csk(sk)->icsk_af_ops->rebuild_header(sk) != 0)
-		return -EHOSTUNREACH; /* Routing failure or similar. */
-
-	/* this count is used to distinguish original and retransmitted skb */
-	inet_csk(sk)->icsk_retransmits++;
-
-	return dccp_transmit_skb(sk, skb_clone(sk->sk_send_head, GFP_ATOMIC));
 }
 
 struct sk_buff *dccp_make_response(const struct sock *sk, struct dst_entry *dst,
@@ -438,8 +395,6 @@ int dccp_connect(struct sock *sk)
 
 	/* Timer for repeating the REQUEST until an answer. */
 	icsk->icsk_retransmits = 0;
-	inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS,
-				  icsk->icsk_rto, DCCP_RTO_MAX);
 	return 0;
 }
 
@@ -455,9 +410,6 @@ void dccp_send_ack(struct sock *sk)
 		if (skb == NULL) {
 			inet_csk_schedule_ack(sk);
 			inet_csk(sk)->icsk_ack.ato = TCP_ATO_MIN;
-			inet_csk_reset_xmit_timer(sk, ICSK_TIME_DACK,
-						  TCP_DELACK_MAX,
-						  DCCP_RTO_MAX);
 			return;
 		}
 
@@ -499,7 +451,6 @@ void dccp_send_delayed_ack(struct sock *sk)
 	}
 	icsk->icsk_ack.pending |= ICSK_ACK_SCHED | ICSK_ACK_TIMER;
 	icsk->icsk_ack.timeout = timeout;
-	sk_reset_timer(sk, &icsk->icsk_delack_timer, timeout);
 }
 #endif
 
@@ -551,20 +502,8 @@ void dccp_send_close(struct sock *sk, const int active)
 	else
 		DCCP_SKB_CB(skb)->dccpd_type = DCCP_PKT_CLOSE;
 
-	if (active) {
+	if (active)
 		skb = dccp_skb_entail(sk, skb);
-		/*
-		 * Retransmission timer for active-close: RFC 4340, 8.3 requires
-		 * to retransmit the Close/CloseReq until the CLOSING/CLOSEREQ
-		 * state can be left. The initial timeout is 2 RTTs.
-		 * Since RTT measurement is done by the CCIDs, there is no easy
-		 * way to get an RTT sample. The fallback RTT from RFC 4340, 3.4
-		 * is too low (200ms); we use a high value to avoid unnecessary
-		 * retransmissions when the link RTT is > 0.2 seconds.
-		 * FIXME: Let main module sample RTTs and use that instead.
-		 */
-		inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS,
-					  DCCP_TIMEOUT_INIT, DCCP_RTO_MAX);
-	}
+
 	dccp_transmit_skb(sk, skb);
 }

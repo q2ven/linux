@@ -128,7 +128,6 @@ static void dccp_finish_passive_close(struct sock *sk)
 void dccp_done(struct sock *sk)
 {
 	dccp_set_state(sk, DCCP_CLOSED);
-	dccp_clear_xmit_timers(sk);
 
 	sk->sk_shutdown = SHUTDOWN_MASK;
 
@@ -183,7 +182,7 @@ int dccp_init_sock(struct sock *sk, const __u8 ctl_sock_initialized)
 		     "please contact the netdev mailing list\n");
 
 	icsk->icsk_rto		= DCCP_TIMEOUT_INIT;
-	icsk->icsk_syn_retries	= sysctl_dccp_request_retries;
+	icsk->icsk_syn_retries	= TCP_SYN_RETRIES;
 	sk->sk_state		= DCCP_CLOSED;
 	sk->sk_write_space	= dccp_write_space;
 	sk->sk_destruct		= dccp_sk_destruct;
@@ -193,8 +192,6 @@ int dccp_init_sock(struct sock *sk, const __u8 ctl_sock_initialized)
 	dp->dccps_role		= DCCP_ROLE_UNDEFINED;
 	dp->dccps_service	= DCCP_SERVICE_CODE_IS_ABSENT;
 	dp->dccps_tx_qlen	= sysctl_dccp_tx_qlen;
-
-	dccp_init_xmit_timers(sk);
 
 	return 0;
 }
@@ -247,8 +244,6 @@ int dccp_disconnect(struct sock *sk, int flags)
 		sk->sk_err = ECONNRESET;
 	} else if (old_state == DCCP_REQUESTING)
 		sk->sk_err = ECONNRESET;
-
-	dccp_clear_xmit_timers(sk);
 
 	__skb_queue_purge(&sk->sk_receive_queue);
 	__skb_queue_purge(&sk->sk_write_queue);
@@ -609,13 +604,6 @@ int dccp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 		goto out_discard;
 
 	skb_queue_tail(&sk->sk_write_queue, skb);
-	/*
-	 * The xmit_timer is set if the TX CCID is rate-based and will expire
-	 * when congestion control permits to release further packets into the
-	 * network. Window-based CCIDs do not use this timer.
-	 */
-	if (!timer_pending(&dp->dccps_xmit_timer))
-		dccp_write_xmit(sk);
 out_release:
 	release_sock(sk);
 	return rc ? : len;
@@ -782,9 +770,6 @@ static void dccp_terminate_connection(struct sock *sk)
 		dccp_finish_passive_close(sk);
 		break;
 	case DCCP_PARTOPEN:
-		dccp_pr_debug("Stop PARTOPEN timer (%p)\n", sk);
-		inet_csk_clear_xmit_timer(sk, ICSK_TIME_DACK);
-		fallthrough;
 	case DCCP_OPEN:
 		dccp_send_close(sk, 1);
 
@@ -801,7 +786,6 @@ static void dccp_terminate_connection(struct sock *sk)
 
 void dccp_close(struct sock *sk, long timeout)
 {
-	struct dccp_sock *dp = dccp_sk(sk);
 	struct sk_buff *skb;
 	u32 data_was_unread = 0;
 	int state;
@@ -818,8 +802,6 @@ void dccp_close(struct sock *sk, long timeout)
 
 		goto adjudge_to_death;
 	}
-
-	sk_stop_timer(sk, &dp->dccps_xmit_timer);
 
 	/*
 	 * We need to flush the recv. buffs.  We do this only on the
@@ -1031,8 +1013,6 @@ static int __init dccp_init(void)
 	rc = dccp_mib_init();
 	if (rc)
 		goto out_free_dccp_bhash2;
-
-	dccp_timestamping_init();
 
 	return 0;
 

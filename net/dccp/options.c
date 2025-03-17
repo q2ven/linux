@@ -101,11 +101,11 @@ int dccp_parse_options(struct sock *sk, struct dccp_request_sock *dreq,
 
 			if (dreq != NULL) {
 				dreq->dreq_timestamp_echo = ntohl(opt_val);
-				dreq->dreq_timestamp_time = dccp_timestamp();
+				dreq->dreq_timestamp_time = ktime_get_real();
 			} else {
 				opt_recv->dccpor_timestamp =
 					dp->dccps_timestamp_echo = ntohl(opt_val);
-				dp->dccps_timestamp_time = dccp_timestamp();
+				dp->dccps_timestamp_time = ktime_get_real();
 			}
 			dccp_pr_debug("%s rx opt: TIMESTAMP=%u, ackno=%llu\n",
 				      dccp_role(sk), ntohl(opt_val),
@@ -234,7 +234,7 @@ static inline int dccp_elapsed_time_len(const u32 elapsed_time)
 
 static int dccp_insert_option_timestamp(struct sk_buff *skb)
 {
-	__be32 now = htonl(dccp_timestamp());
+	__be32 now = htonl(ktime_get_real());
 	/* yes this will overflow but that is the point as we want a
 	 * 10 usec 32 bit timer which mean it wraps every 11.9 hours */
 
@@ -250,11 +250,11 @@ static int dccp_insert_option_timestamp_echo(struct dccp_sock *dp,
 	u32 elapsed_time, elapsed_time_len, len;
 
 	if (dreq != NULL) {
-		elapsed_time = dccp_timestamp() - dreq->dreq_timestamp_time;
+		elapsed_time = ktime_get_real() - dreq->dreq_timestamp_time;
 		tstamp_echo  = htonl(dreq->dreq_timestamp_echo);
 		dreq->dreq_timestamp_echo = 0;
 	} else {
-		elapsed_time = dccp_timestamp() - dp->dccps_timestamp_time;
+		elapsed_time = ktime_get_real() - dp->dccps_timestamp_time;
 		tstamp_echo  = htonl(dp->dccps_timestamp_echo);
 		dp->dccps_timestamp_echo = 0;
 	}
