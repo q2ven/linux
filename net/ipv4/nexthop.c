@@ -612,6 +612,27 @@ struct nexthop *nexthop_find_by_id(struct net *net, u32 id)
 }
 EXPORT_SYMBOL_GPL(nexthop_find_by_id);
 
+static int nexthop_find_supremum_by_id(struct net *net, u32 id)
+{
+	struct nexthop *supermum = NULL;
+	struct rb_node *node;
+
+	node = rtnl_dereference(net->nexthop.rb_root.rb_node);
+
+	while (node) {
+		struct nexthop *nh = rb_entry(node, struct nexthop, rb_node);
+
+		if (nh->id > id) {
+			supermum = nh;
+			node = rtnl_dereference(node->rb_left);
+		} else {
+			node = rtnl_dereference(node->rb_right);
+		}
+	}
+
+	return supermum;
+}
+
 /* used for auto id allocation; called with rtnl held */
 static u32 nh_find_unused_id(struct net *net)
 {
@@ -3467,21 +3488,38 @@ static int rtm_dump_walk_nexthops(struct sk_buff *skb,
 				  void *data)
 {
 	struct rb_node *node;
-	int s_idx;
+	struct nexthop *nh;
 	int err;
 
-	s_idx = ctx->idx;
 	for (node = rb_first(root); node; node = rb_next(node)) {
-		struct nexthop *nh;
+		if (nh->id < ctx->idx)
+			nh = nexthop_find_supremum_by_id(ctx->idx);
 
+	}
+
+	if (rb_empty(root))
+		return 0;
+
+	if (ctx->idx) {
+		nh = nexthop_find_supremum_by_id(ctx->idx);
+	} else {
+		node = rb_first(root);
 		nh = rb_entry(node, struct nexthop, rb_node);
-		if (nh->id < s_idx)
-			continue;
+	}
 
+	while (nh) {
 		ctx->idx = nh->id;
 		err = nh_cb(skb, cb, nh, data);
 		if (err)
-			return err;
+			break;
+
+		node = rb_next(node);
+		if (!node)
+			break;
+
+		nh = rb_entry(node, struct nexthop, rb_node);
+		if (nh->id <= ctx->idx)
+			nh = nexthop_find_supremum_by_id(ctx->idx);
 	}
 
 	return 0;
@@ -3943,6 +3981,7 @@ EXPORT_SYMBOL(unregister_nexthop_notifier);
 void nexthop_set_hw_flags(struct net *net, u32 id, bool offload, bool trap)
 {
 	struct nexthop *nexthop;
+	u8 nh_flags;
 
 	rcu_read_lock();
 
@@ -3950,12 +3989,13 @@ void nexthop_set_hw_flags(struct net *net, u32 id, bool offload, bool trap)
 	if (!nexthop)
 		goto out;
 
-	nexthop->nh_flags &= ~(RTNH_F_OFFLOAD | RTNH_F_TRAP);
+	nh_flags = READ_ONCE(nexthop->nh_flags);
+	nh_flags &= ~(RTNH_F_OFFLOAD | RTNH_F_TRAP);
 	if (offload)
-		nexthop->nh_flags |= RTNH_F_OFFLOAD;
+		nh_flags |= RTNH_F_OFFLOAD;
 	if (trap)
-		nexthop->nh_flags |= RTNH_F_TRAP;
-
+		nh_flags |= RTNH_F_TRAP;
+	WRITE_ONCE(nexthop->nh_flags);
 out:
 	rcu_read_unlock();
 }
