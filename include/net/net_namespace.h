@@ -443,6 +443,25 @@ int peernet2id(const struct net *net, struct net *peer);
 bool peernet_has_id(const struct net *net, struct net *peer);
 struct net *get_net_ns_by_id(const struct net *net, int id);
 
+enum pernet_ops_type {
+	PERNET_OPS_INIT,
+	PERNET_OPS_PRE_EXIT,
+	PERNET_OPS_EXIT_BATCH_RTNL,
+	PERNET_OPS_EXIT,
+	PERNET_OPS_EXIT_BATCH,
+	PERNET_OPS_MAX,
+};
+
+struct pernet_ops_config {
+	bool synchronize_rcu;
+	bool hold_rtnl;
+};
+
+struct pernet_ops_arg {
+	struct list_head net_exit_list;
+	struct list_head dev_kill_list;
+};
+
 struct pernet_operations {
 	struct list_head list;
 	/*
@@ -467,6 +486,9 @@ struct pernet_operations {
 	 * be used, since a synchronize_rcu() is guaranteed between
 	 * the calls.
 	 */
+	int (*hook[PERNET_OPS_MAX])(struct pernet_ops_arg *pernet_ops_arg);
+
+	/* Legacy pointers, use hook[] instead. */
 	int (*init)(struct net *net);
 	void (*pre_exit)(struct net *net);
 	void (*exit)(struct net *net);

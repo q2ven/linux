@@ -57,6 +57,13 @@ static bool init_net_initialized;
  */
 DECLARE_RWSEM(pernet_ops_rwsem);
 
+static struct pernet_ops_config {
+	bool sync_rcu;
+	bool hold_rtnl;
+} ops_config[PERNET_OPS_MAX] = {
+	[PERNET_OPS_EXIT_BATCH_RTNL] = {.sync_rcu = true, .hold_rtnl = true},
+};
+
 #define MIN_PERNET_OPS_ID	\
 	((sizeof(struct net_generic) + sizeof(void *) - 1) / sizeof(void *))
 
@@ -115,6 +122,17 @@ static int net_assign_generic(struct net *net, unsigned int id, void *data)
 
 	rcu_assign_pointer(net->gen, ng);
 	kfree_rcu(old_ng, s.rcu);
+	return 0;
+}
+
+static int ops_setup(struct pernet_operations *ops)
+{
+	if ((ops->init && ops->hook[PERNET_OPS_INIT]) ||
+	    (ops->pre_exit && ops->hook[PERNET_OPS_PRE_EXIT]) ||
+	    (ops->exit_batch_rtnl && ops->hook[PERNET_OPS_EXIT_BATCH_RTNL]) ||
+	    (ops->exit && ops->hook[PERNET_OPS_EXIT]) ||
+	    (ops->exit_batch && ops->hook[PERNET_OPS_EXIT_BATCH]))
+		return -EINVAL;
 	return 0;
 }
 
@@ -1263,6 +1281,10 @@ static int __register_pernet_operations(struct list_head *list,
 	int error;
 	LIST_HEAD(net_exit_list);
 
+	error = ops_setup(ops);
+	if (error)
+		return error;
+
 	list_add_tail(&ops->list, list);
 	if (ops->init || ops->id) {
 		/* We held write locked pernet_ops_rwsem, and parallel
@@ -1302,6 +1324,12 @@ static void __unregister_pernet_operations(struct pernet_operations *ops)
 static int __register_pernet_operations(struct list_head *list,
 					struct pernet_operations *ops)
 {
+	int err;
+
+	err = ops_setup(ops);
+	if (err)
+		return err;
+
 	if (!init_net_initialized) {
 		list_add_tail(&ops->list, list);
 		return 0;
