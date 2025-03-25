@@ -644,8 +644,10 @@ static clock_t nh_res_table_unbalanced_time(struct nh_res_table *res_table)
 
 static int nla_put_nh_group_res(struct sk_buff *skb, struct nh_group *nhg)
 {
-	struct nh_res_table *res_table = rtnl_dereference(nhg->res_table);
+	struct nh_res_table *res_table;
 	struct nlattr *nest;
+
+	res_table = rtnl_net_dereference(sock_net(skb->sk), nhg->res_table);
 
 	nest = nla_nest_start(skb, NHA_RES_GROUP);
 	if (!nest)
@@ -709,8 +711,7 @@ static int nh_notifier_grp_hw_stats_init(struct nh_notifier_info *info,
 	struct nh_group *nhg;
 	int i;
 
-	ASSERT_RTNL();
-	nhg = rtnl_dereference(nh->nh_grp);
+	nhg = rtnl_net_dereference(nh->net, nh->nh_grp);
 
 	info->id = nh->id;
 	info->type = NH_NOTIFIER_INFO_TYPE_GRP_HW_STATS;
@@ -750,8 +751,7 @@ static void nh_grp_hw_stats_apply_update(struct nexthop *nh,
 	struct nh_group *nhg;
 	int i;
 
-	ASSERT_RTNL();
-	nhg = rtnl_dereference(nh->nh_grp);
+	nhg = rtnl_net_dereference(nh->net, nh->nh_grp);
 
 	for (i = 0; i < nhg->num_nh; i++) {
 		struct nh_grp_entry *nhge = &nhg->nh_entries[i];
@@ -825,7 +825,7 @@ nla_put_failure:
 static int nla_put_nh_group_stats(struct sk_buff *skb, struct nexthop *nh,
 				  u32 op_flags)
 {
-	struct nh_group *nhg = rtnl_dereference(nh->nh_grp);
+	struct nh_group *nhg = rtnl_net_dereference(nh->net, nh->nh_grp);
 	struct nlattr *nest;
 	bool hw_stats_used;
 	int err;
@@ -867,7 +867,7 @@ out:
 static int nla_put_nh_group(struct sk_buff *skb, struct nexthop *nh,
 			    u32 op_flags, u32 *resp_op_flags)
 {
-	struct nh_group *nhg = rtnl_dereference(nh->nh_grp);
+	struct nh_group *nhg = rtnl_net_dereference(nh->net, nh->nh_grp);
 	struct nexthop_grp *p;
 	size_t len = nhg->num_nh * sizeof(*p);
 	struct nlattr *nla;
@@ -918,6 +918,7 @@ static int nh_fill_node(struct sk_buff *skb, struct nexthop *nh,
 			int event, u32 portid, u32 seq, unsigned int nlflags,
 			u32 op_flags)
 {
+	struct net *net = nh->net;
 	struct fib6_nh *fib6_nh;
 	struct fib_nh *fib_nh;
 	struct nlmsghdr *nlh;
@@ -939,7 +940,7 @@ static int nh_fill_node(struct sk_buff *skb, struct nexthop *nh,
 		goto nla_put_failure;
 
 	if (nh->is_group) {
-		struct nh_group *nhg = rtnl_dereference(nh->nh_grp);
+		struct nh_group *nhg = rtnl_net_dereference(net, nh->nh_grp);
 		u32 resp_op_flags = 0;
 
 		if (nhg->fdb_nh && nla_put_flag(skb, NHA_FDB))
@@ -950,7 +951,7 @@ static int nh_fill_node(struct sk_buff *skb, struct nexthop *nh,
 		goto out;
 	}
 
-	nhi = rtnl_dereference(nh->nh_info);
+	nhi = rtnl_net_dereference(net, nh->nh_info);
 	nhm->nh_family = nhi->family;
 	if (nhi->reject_nh) {
 		if (nla_put_flag(skb, NHA_BLACKHOLE))
@@ -3359,15 +3360,19 @@ static int rtm_get_nexthop(struct sk_buff *in_skb, struct nlmsghdr *nlh,
 	if (err)
 		return err;
 
-	err = -ENOBUFS;
 	skb = alloc_skb(NLMSG_GOODSIZE, GFP_KERNEL);
-	if (!skb)
+	if (!skb) {
+		err = -ENOBUFS;
 		goto out;
+	}
 
-	err = -ENOENT;
+	rtnl_net_lock(net);
+
 	nh = nexthop_find_by_id(net, id);
-	if (!nh)
+	if (!nh) {
+		err = -ENOENT;
 		goto errout_free;
+	}
 
 	err = nh_fill_node(skb, nh, RTM_NEWNEXTHOP, NETLINK_CB(in_skb).portid,
 			   nlh->nlmsg_seq, 0, op_flags);
@@ -3377,9 +3382,12 @@ static int rtm_get_nexthop(struct sk_buff *in_skb, struct nlmsghdr *nlh,
 	}
 
 	err = rtnl_unicast(skb, net, NETLINK_CB(in_skb).portid);
+
+	rtnl_net_unlock(net);
 out:
 	return err;
 errout_free:
+	rtnl_net_unlock(net);
 	kfree_skb(skb);
 	goto out;
 }
@@ -3554,10 +3562,12 @@ static int rtm_dump_nexthop(struct sk_buff *skb, struct netlink_callback *cb)
 	if (err < 0)
 		return err;
 
+	rtnl_net_lock(net);
 	err = rtm_dump_walk_nexthops(skb, cb, root, ctx,
 				     &rtm_dump_nexthop_cb, &filter);
-
 	cb->seq = net->nexthop.seq;
+	rtnl_net_unlock(net);
+
 	nl_dump_check_consistent(cb, nlmsg_hdr(skb));
 	return err;
 }
@@ -4091,17 +4101,18 @@ static const struct rtnl_msg_handler nexthop_rtnl_msg_handlers[] __initconst = {
 	{.msgtype = RTM_DELNEXTHOP, .doit = rtm_del_nexthop,
 	 .flags = RTNL_FLAG_DOIT_PERNET},
 	{.msgtype = RTM_GETNEXTHOP, .doit = rtm_get_nexthop,
-	 .dumpit = rtm_dump_nexthop},
+	 .dumpit = rtm_dump_nexthop,
+	 .flags = RTNL_FLAG_DOIT_PERNET | RTNL_FLAG_DUMP_PERNET},
 	{.msgtype = RTM_GETNEXTHOPBUCKET, .doit = rtm_get_nexthop_bucket,
 	 .dumpit = rtm_dump_nexthop_bucket},
 	{.protocol = PF_INET, .msgtype = RTM_NEWNEXTHOP,
 	 .doit = rtm_new_nexthop, .flags = RTNL_FLAG_DOIT_PERNET},
 	{.protocol = PF_INET, .msgtype = RTM_GETNEXTHOP,
-	 .dumpit = rtm_dump_nexthop},
+	 .dumpit = rtm_dump_nexthop, .flags = RTNL_FLAG_DUMP_PERNET},
 	{.protocol = PF_INET6, .msgtype = RTM_NEWNEXTHOP,
 	 .doit = rtm_new_nexthop, .flags = RTNL_FLAG_DOIT_PERNET},
 	{.protocol = PF_INET6, .msgtype = RTM_GETNEXTHOP,
-	 .dumpit = rtm_dump_nexthop},
+	 .dumpit = rtm_dump_nexthop, .flags = RTNL_FLAG_DUMP_PERNET},
 };
 
 static int __init nexthop_init(void)
