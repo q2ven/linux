@@ -73,10 +73,8 @@ static void inet_twsk_kill(struct inet_timewait_sock *tw)
 
 void inet_twsk_free(struct inet_timewait_sock *tw)
 {
-	struct module *owner = tw->tw_prot->owner;
 	twsk_destructor((struct sock *)tw);
 	kmem_cache_free(tw->tw_prot->twsk_prot->twsk_slab, tw);
-	module_put(owner);
 }
 
 void inet_twsk_put(struct inet_timewait_sock *tw)
@@ -216,8 +214,6 @@ struct inet_timewait_sock *inet_twsk_alloc(const struct sock *sk,
 		 * timewait socket.
 		 */
 		refcount_set(&tw->tw_refcnt, 0);
-
-		__module_get(tw->tw_prot->owner);
 	}
 
 	return tw;
