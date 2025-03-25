@@ -1009,7 +1009,7 @@ static size_t nh_nlmsg_size_grp_res(struct nh_group *nhg)
 
 static size_t nh_nlmsg_size_grp(struct nexthop *nh)
 {
-	struct nh_group *nhg = rtnl_dereference(nh->nh_grp);
+	struct nh_group *nhg = rtnl_net_dereference(nh->net, nh->nh_grp);
 	size_t sz = sizeof(struct nexthop_grp) * nhg->num_nh;
 	size_t tot = nla_total_size(sz) +
 		nla_total_size(2); /* NHA_GROUP_TYPE */
@@ -1022,7 +1022,7 @@ static size_t nh_nlmsg_size_grp(struct nexthop *nh)
 
 static size_t nh_nlmsg_size_single(struct nexthop *nh)
 {
-	struct nh_info *nhi = rtnl_dereference(nh->nh_info);
+	struct nh_info *nhi = rtnl_net_dereference(nh->net, nh->nh_info);
 	size_t sz;
 
 	/* covers NHA_BLACKHOLE since NHA_OIF and BLACKHOLE
@@ -1217,7 +1217,7 @@ static bool valid_group_nh(struct nexthop *nh, unsigned int npaths,
 			   bool *is_fdb, struct netlink_ext_ack *extack)
 {
 	if (nh->is_group) {
-		struct nh_group *nhg = rtnl_dereference(nh->nh_grp);
+		struct nh_group *nhg = rtnl_net_dereference(nh->net, nh->nh_grp);
 
 		/* Nesting groups within groups is not supported. */
 		if (nhg->hash_threshold) {
@@ -1232,7 +1232,7 @@ static bool valid_group_nh(struct nexthop *nh, unsigned int npaths,
 		}
 		*is_fdb = nhg->fdb_nh;
 	} else {
-		struct nh_info *nhi = rtnl_dereference(nh->nh_info);
+		struct nh_info *nhi = rtnl_net_dereference(nh->net, nh->nh_info);
 
 		if (nhi->reject_nh && npaths > 1) {
 			NL_SET_ERR_MSG(extack,
@@ -1250,7 +1250,7 @@ static int nh_check_attr_fdb_group(struct nexthop *nh, u8 *nh_family,
 {
 	struct nh_info *nhi;
 
-	nhi = rtnl_dereference(nh->nh_info);
+	nhi = rtnl_net_dereference(nh->net, nh->nh_info);
 
 	if (!nhi->fdb_nh) {
 		NL_SET_ERR_MSG(extack, "FDB nexthop group can only have fdb nexthops");
@@ -1938,16 +1938,19 @@ static void nh_res_group_rebalance(struct nh_group *nhg,
  * the right NH ID. Set those buckets that do not have a corresponding NHGE
  * entry in NHG as not occupied.
  */
-static void nh_res_table_migrate_buckets(struct nh_res_table *res_table,
+static void nh_res_table_migrate_buckets(struct net *net,
+					 struct nh_res_table *res_table,
 					 struct nh_group *nhg)
 {
 	u16 i;
 
 	for (i = 0; i < res_table->num_nh_buckets; i++) {
 		struct nh_res_bucket *bucket = &res_table->nh_buckets[i];
-		u32 id = rtnl_dereference(bucket->nh_entry)->nh->id;
 		bool found = false;
+		u32 id;
 		int j;
+
+		id = rtnl_net_dereference(net, bucket->nh_entry)->nh->id;
 
 		for (j = 0; j < nhg->num_nh; j++) {
 			struct nh_grp_entry *nhge = &nhg->nh_entries[j];
@@ -1964,7 +1967,8 @@ static void nh_res_table_migrate_buckets(struct nh_res_table *res_table,
 	}
 }
 
-static void replace_nexthop_grp_res(struct nh_group *oldg,
+static void replace_nexthop_grp_res(struct net *net,
+				    struct nh_group *oldg,
 				    struct nh_group *newg)
 {
 	/* For NH group replacement, the new NHG might only have a stub
@@ -1973,12 +1977,12 @@ static void replace_nexthop_grp_res(struct nh_group *oldg,
 	 * res_table. So in any case, in the following, we want to work
 	 * with oldg->res_table.
 	 */
-	struct nh_res_table *old_res_table = rtnl_dereference(oldg->res_table);
+	struct nh_res_table *old_res_table = rtnl_net_dereference(net, oldg->res_table);
 	unsigned long prev_unbalanced_since = old_res_table->unbalanced_since;
 	bool prev_has_uw = !list_empty(&old_res_table->uw_nh_entries);
 
 	nh_res_table_cancel_upkeep(old_res_table);
-	nh_res_table_migrate_buckets(old_res_table, newg);
+	nh_res_table_migrate_buckets(net, old_res_table, newg);
 	nh_res_group_rebalance(newg, old_res_table);
 	if (prev_has_uw && !list_empty(&old_res_table->uw_nh_entries))
 		old_res_table->unbalanced_since = prev_unbalanced_since;
@@ -2016,7 +2020,7 @@ static void remove_nh_grp_entry(struct net *net, struct nh_grp_entry *nhge,
 
 	WARN_ON(!nh);
 
-	nhg = rtnl_dereference(nhp->nh_grp);
+	nhg = rtnl_net_dereference(net, nhp->nh_grp);
 	newg = nhg->spare;
 
 	/* last entry, keep it visible and remove the parent */
@@ -2044,7 +2048,7 @@ static void remove_nh_grp_entry(struct net *net, struct nh_grp_entry *nhge,
 			continue;
 		}
 
-		nhi = rtnl_dereference(nhges[i].nh->nh_info);
+		nhi = rtnl_net_dereference(net, nhges[i].nh->nh_info);
 		if (nhi->family == AF_INET)
 			newg->has_v4 = true;
 
@@ -2060,7 +2064,7 @@ static void remove_nh_grp_entry(struct net *net, struct nh_grp_entry *nhge,
 	if (newg->hash_threshold)
 		nh_hthr_group_rebalance(newg);
 	else if (newg->resilient)
-		replace_nexthop_grp_res(nhg, newg);
+		replace_nexthop_grp_res(net, nhg, newg);
 
 	rcu_assign_pointer(nhp->nh_grp, newg);
 
@@ -2096,9 +2100,13 @@ static void remove_nexthop_from_groups(struct net *net, struct nexthop *nh,
 
 static void remove_nexthop_group(struct nexthop *nh, struct nl_info *nlinfo)
 {
-	struct nh_group *nhg = rcu_dereference_rtnl(nh->nh_grp);
 	struct nh_res_table *res_table;
-	int i, num_nh = nhg->num_nh;
+	struct net *net = nh->net;
+	struct nh_group *nhg;
+	int i, num_nh;
+
+	nhg = rtnl_net_dereference(net, nh->nh_grp);
+	num_nh = nhg->num_nh;
 
 	for (i = 0; i < num_nh; ++i) {
 		struct nh_grp_entry *nhge = &nhg->nh_entries[i];
@@ -2110,7 +2118,7 @@ static void remove_nexthop_group(struct nexthop *nh, struct nl_info *nlinfo)
 	}
 
 	if (nhg->resilient) {
-		res_table = rtnl_dereference(nhg->res_table);
+		res_table = rtnl_net_dereference(net, nhg->res_table);
 		nh_res_table_cancel_upkeep(res_table);
 	}
 }
@@ -2148,7 +2156,7 @@ static void __remove_nexthop(struct net *net, struct nexthop *nh,
 	} else {
 		struct nh_info *nhi;
 
-		nhi = rtnl_dereference(nh->nh_info);
+		nhi = rtnl_net_dereference(net, nh->nh_info);
 		if (nhi->fib_nhc.nhc_dev)
 			hlist_del(&nhi->dev_hash);
 
@@ -2195,10 +2203,12 @@ static void nh_rt_cache_flush(struct net *net, struct nexthop *nh,
 	if (!replaced_nh->is_group)
 		return;
 
-	nhg = rtnl_dereference(replaced_nh->nh_grp);
+	nhg = rtnl_net_dereference(net, replaced_nh->nh_grp);
 	for (i = 0; i < nhg->num_nh; i++) {
 		struct nh_grp_entry *nhge = &nhg->nh_entries[i];
-		struct nh_info *nhi = rtnl_dereference(nhge->nh->nh_info);
+		struct nh_info *nhi;
+
+		nhi = rtnl_net_dereference(net, nhge->nh->nh_info);
 
 		if (nhi->family == AF_INET6)
 			ipv6_stub->fib6_nh_release_dsts(&nhi->fib6_nh);
@@ -2220,8 +2230,8 @@ static int replace_nexthop_grp(struct net *net, struct nexthop *old,
 		return -EINVAL;
 	}
 
-	oldg = rtnl_dereference(old->nh_grp);
-	newg = rtnl_dereference(new->nh_grp);
+	oldg = rtnl_net_dereference(net, old->nh_grp);
+	newg = rtnl_net_dereference(net, new->nh_grp);
 
 	if (newg->hash_threshold != oldg->hash_threshold) {
 		NL_SET_ERR_MSG(extack, "Can not replace a nexthop group with one of a different type.");
@@ -2234,8 +2244,8 @@ static int replace_nexthop_grp(struct net *net, struct nexthop *old,
 		if (err)
 			return err;
 	} else if (newg->resilient) {
-		new_res_table = rtnl_dereference(newg->res_table);
-		old_res_table = rtnl_dereference(oldg->res_table);
+		new_res_table = rtnl_net_dereference(net, newg->res_table);
+		old_res_table = rtnl_net_dereference(net, oldg->res_table);
 
 		/* Accept if num_nh_buckets was not given, but if it was
 		 * given, demand that the value be correct.
@@ -2263,7 +2273,7 @@ static int replace_nexthop_grp(struct net *net, struct nexthop *old,
 			old_res_table->unbalanced_timer =
 				cfg->nh_grp_res_unbalanced_timer;
 
-		replace_nexthop_grp_res(oldg, newg);
+		replace_nexthop_grp_res(net, oldg, newg);
 
 		tmp_table = new_res_table;
 		rcu_assign_pointer(newg->res_table, old_res_table);
@@ -2292,7 +2302,7 @@ static int replace_nexthop_grp(struct net *net, struct nexthop *old,
 	return 0;
 }
 
-static void nh_group_v4_update(struct nh_group *nhg)
+static void nh_group_v4_update(struct net *net, struct nh_group *nhg)
 {
 	struct nh_grp_entry *nhges;
 	bool has_v4 = false;
@@ -2302,7 +2312,7 @@ static void nh_group_v4_update(struct nh_group *nhg)
 	for (i = 0; i < nhg->num_nh; i++) {
 		struct nh_info *nhi;
 
-		nhi = rtnl_dereference(nhges[i].nh->nh_info);
+		nhi = rtnl_net_dereference(net, nhges[i].nh->nh_info);
 		if (nhi->family == AF_INET)
 			has_v4 = true;
 	}
@@ -2324,7 +2334,7 @@ static int replace_nexthop_single_notify_res(struct net *net,
 		struct nh_res_bucket *bucket = &res_table->nh_buckets[i];
 		struct nh_grp_entry *nhge;
 
-		nhge = rtnl_dereference(bucket->nh_entry);
+		nhge = rtnl_net_dereference(net, bucket->nh_entry);
 		if (nhge->nh == old) {
 			err = __call_nexthop_res_bucket_notifiers(net, nhg_id,
 								  i, true,
@@ -2342,7 +2352,7 @@ err_notify:
 		struct nh_res_bucket *bucket = &res_table->nh_buckets[i];
 		struct nh_grp_entry *nhge;
 
-		nhge = rtnl_dereference(bucket->nh_entry);
+		nhge = rtnl_net_dereference(net, bucket->nh_entry);
 		if (nhge->nh == old)
 			__call_nexthop_res_bucket_notifiers(net, nhg_id, i,
 							    true, newi, oldi,
@@ -2358,14 +2368,14 @@ static int replace_nexthop_single_notify(struct net *net,
 					 struct nh_info *newi,
 					 struct netlink_ext_ack *extack)
 {
-	struct nh_group *nhg = rtnl_dereference(group_nh->nh_grp);
+	struct nh_group *nhg = rtnl_net_dereference(net, group_nh->nh_grp);
 	struct nh_res_table *res_table;
 
 	if (nhg->hash_threshold) {
 		return call_nexthop_notifiers(net, NEXTHOP_EVENT_REPLACE,
 					      group_nh, extack);
 	} else if (nhg->resilient) {
-		res_table = rtnl_dereference(nhg->res_table);
+		res_table = rtnl_net_dereference(net, nhg->res_table);
 		return replace_nexthop_single_notify_res(net, res_table,
 							 old, oldi, newi,
 							 extack);
@@ -2397,8 +2407,8 @@ static int replace_nexthop_single(struct net *net, struct nexthop *old,
 	 */
 	new->nh_flags |= old->nh_flags & (RTNH_F_OFFLOAD | RTNH_F_TRAP);
 
-	oldi = rtnl_dereference(old->nh_info);
-	newi = rtnl_dereference(new->nh_info);
+	oldi = rtnl_net_dereference(net, old->nh_info);
+	newi = rtnl_net_dereference(net, new->nh_info);
 
 	newi->nh_parent = old;
 	oldi->nh_parent = new;
@@ -2430,8 +2440,8 @@ static int replace_nexthop_single(struct net *net, struct nexthop *old,
 			struct nexthop *nhp = nhge->nh_parent;
 			struct nh_group *nhg;
 
-			nhg = rtnl_dereference(nhp->nh_grp);
-			nh_group_v4_update(nhg);
+			nhg = rtnl_net_dereference(net, nhp->nh_grp);
+			nh_group_v4_update(net, nhg);
 		}
 	}
 
@@ -2513,7 +2523,7 @@ static int replace_nexthop(struct net *net, struct nexthop *old,
 		return err;
 
 	if (!new->is_group) {
-		struct nh_info *nhi = rtnl_dereference(new->nh_info);
+		struct nh_info *nhi = rtnl_net_dereference(net, new->nh_info);
 
 		new_is_reject = nhi->reject_nh;
 	}
@@ -2599,11 +2609,11 @@ static int insert_nexthop(struct net *net, struct nexthop *new_nh,
 	}
 
 	if (new_nh->is_group) {
-		struct nh_group *nhg = rtnl_dereference(new_nh->nh_grp);
+		struct nh_group *nhg = rtnl_net_dereference(net, new_nh->nh_grp);
 		struct nh_res_table *res_table;
 
 		if (nhg->resilient) {
-			res_table = rtnl_dereference(nhg->res_table);
+			res_table = rtnl_net_dereference(net, nhg->res_table);
 
 			/* Not passing the number of buckets is OK when
 			 * replacing, but not when creating a new group.
@@ -2723,7 +2733,7 @@ static struct nexthop *nexthop_create_group(struct net *net,
 			goto out_no_nh;
 		}
 
-		nhi = rtnl_dereference(nhe->nh_info);
+		nhi = rtnl_net_dereference(net, nhe->nh_info);
 		if (nhi->family == AF_INET)
 			nhg->has_v4 = true;
 
