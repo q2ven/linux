@@ -3417,7 +3417,7 @@ static bool nh_dump_filtered(struct nexthop *nh,
 	if (nh->is_group)
 		return true;
 
-	nhi = rtnl_dereference(nh->nh_info);
+	nhi = rtnl_net_dereference(nh->net, nh->nh_info);
 	if (family && nhi->family != family)
 		return true;
 
@@ -3588,7 +3588,7 @@ nexthop_find_group_resilient(struct net *net, u32 id,
 		return ERR_PTR(-EINVAL);
 	}
 
-	nhg = rtnl_dereference(nh->nh_grp);
+	nhg = rtnl_net_dereference(net, nh->nh_grp);
 	if (!nhg->resilient) {
 		NL_SET_ERR_MSG(extack, "Nexthop group not of type resilient");
 		return ERR_PTR(-EINVAL);
@@ -3681,12 +3681,13 @@ static int rtm_dump_nexthop_bucket_nh(struct sk_buff *skb,
 	u32 portid = NETLINK_CB(cb->skb).portid;
 	struct nhmsg *nhm = nlmsg_data(cb->nlh);
 	struct nh_res_table *res_table;
+	struct net *net = nh->net;
 	struct nh_group *nhg;
 	u16 bucket_index;
 	int err;
 
-	nhg = rtnl_dereference(nh->nh_grp);
-	res_table = rtnl_dereference(nhg->res_table);
+	nhg = rtnl_net_dereference(net, nh->nh_grp);
+	res_table = rtnl_net_dereference(net, nhg->res_table);
 	for (bucket_index = dd->ctx->bucket_index;
 	     bucket_index < res_table->num_nh_buckets;
 	     bucket_index++) {
@@ -3694,7 +3695,7 @@ static int rtm_dump_nexthop_bucket_nh(struct sk_buff *skb,
 		struct nh_grp_entry *nhge;
 
 		bucket = &res_table->nh_buckets[bucket_index];
-		nhge = rtnl_dereference(bucket->nh_entry);
+		nhge = rtnl_net_dereference(net, bucket->nh_entry);
 		if (nh_dump_filtered(nhge->nh, &dd->filter, nhm->nh_family))
 			continue;
 
@@ -3726,7 +3727,7 @@ static int rtm_dump_nexthop_bucket_cb(struct sk_buff *skb,
 	if (!nh->is_group)
 		return 0;
 
-	nhg = rtnl_dereference(nh->nh_grp);
+	nhg = rtnl_net_dereference(nh->net, nh->nh_grp);
 	if (!nhg->resilient)
 		return 0;
 
@@ -3747,11 +3748,16 @@ static int rtm_dump_nexthop_bucket(struct sk_buff *skb,
 	if (err)
 		return err;
 
+	rtnl_net_lock(net);
+
 	if (dd.filter.nh_id) {
 		nh = nexthop_find_group_resilient(net, dd.filter.nh_id,
 						  cb->extack);
-		if (IS_ERR(nh))
+		if (IS_ERR(nh)) {
+			rtnl_net_unlock(net);
 			return PTR_ERR(nh);
+		}
+
 		err = rtm_dump_nexthop_bucket_nh(skb, cb, nh, &dd);
 	} else {
 		struct rb_root *root = &net->nexthop.rb_root;
@@ -3761,6 +3767,9 @@ static int rtm_dump_nexthop_bucket(struct sk_buff *skb,
 	}
 
 	cb->seq = net->nexthop.seq;
+
+	rtnl_net_unlock(net);
+
 	nl_dump_check_consistent(cb, nlmsg_hdr(skb));
 	return err;
 }
@@ -3837,14 +3846,16 @@ static int rtm_get_nexthop_bucket(struct sk_buff *in_skb, struct nlmsghdr *nlh,
 	if (!skb)
 		return -ENOBUFS;
 
+	rtnl_net_lock(net);
+
 	nh = nexthop_find_group_resilient(net, id, extack);
 	if (IS_ERR(nh)) {
 		err = PTR_ERR(nh);
 		goto errout_free;
 	}
 
-	nhg = rtnl_dereference(nh->nh_grp);
-	res_table = rtnl_dereference(nhg->res_table);
+	nhg = rtnl_net_dereference(net, nh->nh_grp);
+	res_table = rtnl_net_dereference(net, nhg->res_table);
 	if (bucket_index >= res_table->num_nh_buckets) {
 		NL_SET_ERR_MSG(extack, "Bucket index out of bounds");
 		err = -ENOENT;
@@ -3860,9 +3871,12 @@ static int rtm_get_nexthop_bucket(struct sk_buff *in_skb, struct nlmsghdr *nlh,
 		goto errout_free;
 	}
 
+	rtnl_net_lock(net);
+
 	return rtnl_unicast(skb, net, NETLINK_CB(in_skb).portid);
 
 errout_free:
+	rtnl_net_lock(net);
 	kfree_skb(skb);
 	return err;
 }
@@ -4107,7 +4121,8 @@ static const struct rtnl_msg_handler nexthop_rtnl_msg_handlers[] __initconst = {
 	 .dumpit = rtm_dump_nexthop,
 	 .flags = RTNL_FLAG_DOIT_PERNET | RTNL_FLAG_DUMP_PERNET},
 	{.msgtype = RTM_GETNEXTHOPBUCKET, .doit = rtm_get_nexthop_bucket,
-	 .dumpit = rtm_dump_nexthop_bucket},
+	 .dumpit = rtm_dump_nexthop_bucket,
+	 .flags = RTNL_FLAG_DOIT_PERNET | RTNL_FLAG_DUMP_PERNET},
 	{.protocol = PF_INET, .msgtype = RTM_NEWNEXTHOP,
 	 .doit = rtm_new_nexthop, .flags = RTNL_FLAG_DOIT_PERNET},
 	{.protocol = PF_INET, .msgtype = RTM_GETNEXTHOP,
