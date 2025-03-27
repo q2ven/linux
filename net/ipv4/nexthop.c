@@ -3952,14 +3952,14 @@ int register_nexthop_notifier(struct net *net, struct notifier_block *nb,
 {
 	int err;
 
-	rtnl_lock();
+	rtnl_net_lock(net);
 	err = nexthops_dump(net, nb, NEXTHOP_EVENT_REPLACE, extack);
 	if (err)
 		goto unlock;
 	err = blocking_notifier_chain_register(&net->nexthop.notifier_chain,
 					       nb);
 unlock:
-	rtnl_unlock();
+	rtnl_net_unlock(net);
 	return err;
 }
 EXPORT_SYMBOL(register_nexthop_notifier);
@@ -3980,9 +3980,9 @@ int unregister_nexthop_notifier(struct net *net, struct notifier_block *nb)
 {
 	int err;
 
-	rtnl_lock();
+	rtnl_net_lock(net);
 	err = __unregister_nexthop_notifier(net, nb);
-	rtnl_unlock();
+	rtnl_net_unlock(net);
 	return err;
 }
 EXPORT_SYMBOL(unregister_nexthop_notifier);
