@@ -2284,6 +2284,11 @@ static void __sk_destruct(struct rcu_head *head)
 	else
 		__netns_tracker_free(sock_net(sk), &sk->ns_tracker, false);
 
+#if IS_ENABLED(CONFIG_PROVE_LOCKING)
+	if (sk->sk_owner)
+		module_put(sk->sk_owner);
+#endif
+
 	sk_prot_free(sk->sk_prot_creator, sk);
 }
 
