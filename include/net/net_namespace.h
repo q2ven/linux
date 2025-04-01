@@ -342,6 +342,11 @@ static inline void net_passive_inc(struct net *net)
 	refcount_inc(&net->passive);
 }
 
+static inline bool net_passive_inc_not_zero(struct net *net)
+{
+	return refcount_inc_not_zero(&net->passive);
+}
+
 /* Returns true if the netns initialization is completed successfully */
 static inline bool net_initialized(const struct net *net)
 {

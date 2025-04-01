@@ -2127,38 +2127,43 @@ static void __move_netdevice_notifier_net(struct net *src_net,
 
 static void rtnl_net_dev_lock(struct net_device *dev)
 {
-	bool again;
-
-	do {
-		struct net *net;
-
-		again = false;
-
-		/* netns might be being dismantled. */
-		rcu_read_lock();
-		net = dev_net_rcu(dev);
-		net_passive_inc(net);
-		rcu_read_unlock();
-
-		rtnl_net_lock(net);
-
 #ifdef CONFIG_NET_NS
-		/* dev might have been moved to another netns. */
-		if (!net_eq(net, rcu_access_pointer(dev->nd_net.net))) {
-			rtnl_net_unlock(net);
-			net_passive_dec(net);
-			again = true;
-		}
+	struct net *net;
+
+again:
+	/* netns might be being dismantled. */
+	rcu_read_lock();
+	net = dev_net_rcu(dev);
+	if (!net_passive_inc_not_zero(net)) {
+		rcu_read_unlock();
+		msleep(1);
+		goto again;
+	}
+	rcu_read_unlock();
+
+	rtnl_net_lock(net);
+
+	/* dev might have been moved to another netns. */
+	if (!net_eq(net, rcu_access_pointer(dev->nd_net.net))) {
+		rtnl_net_unlock(net);
+		net_passive_dec(net);
+		goto again;
+	}
+#else
+	rtnl_net_lock(&init_net);
 #endif
-	} while (again);
 }
 
 static void rtnl_net_dev_unlock(struct net_device *dev)
 {
+#ifdef CONFIG_NET_NS
 	struct net *net = dev_net(dev);
 
 	rtnl_net_unlock(net);
 	net_passive_dec(net);
+#else
+	rtnl_net_unlock(&init_net);
+#endif
 }
 
 int register_netdevice_notifier_dev_net(struct net_device *dev,
