@@ -2532,7 +2532,7 @@ static int neigh_fill_info(struct sk_buff *skb, struct neighbour *neigh,
 	ndm->ndm_pad2    = 0;
 	ndm->ndm_flags	 = neigh_flags;
 	ndm->ndm_type	 = neigh->type;
-	ndm->ndm_ifindex = neigh->dev->ifindex;
+	ndm->ndm_ifindex = READ_ONCE(neigh->dev->ifindex);
 
 	if (nla_put(skb, NDA_DST, neigh->tbl->key_len, neigh->primary_key))
 		goto nla_put_failure;
@@ -2633,7 +2633,7 @@ static bool neigh_master_filtered(struct net_device *dev, int master_idx)
 	if (master_idx == -1)
 		return !!master;
 
-	if (!master || master->ifindex != master_idx)
+	if (!master || READ_ONCE(master->ifindex) != master_idx)
 		return true;
 
 	return false;
@@ -2641,7 +2641,7 @@ static bool neigh_master_filtered(struct net_device *dev, int master_idx)
 
 static bool neigh_ifindex_filtered(struct net_device *dev, int filter_idx)
 {
-	if (filter_idx && (!dev || dev->ifindex != filter_idx))
+	if (filter_idx && (!dev || READ_ONCE(dev->ifindex) != filter_idx))
 		return true;
 
 	return false;
