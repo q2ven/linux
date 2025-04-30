@@ -53,8 +53,8 @@ static void neigh_timer_handler(struct timer_list *t);
 static void __neigh_notify(struct neighbour *n, int type, int flags,
 			   u32 pid);
 static void neigh_update_notify(struct neighbour *neigh, u32 nlmsg_pid);
-static int pneigh_ifdown_and_unlock(struct neigh_table *tbl,
-				    struct net_device *dev);
+static void pneigh_ifdown_and_unlock(struct neigh_table *tbl,
+				     struct net_device *dev);
 
 #ifdef CONFIG_PROC_FS
 static const struct seq_operations neigh_stat_seq_ops;
@@ -769,13 +769,20 @@ struct pneigh_entry * pneigh_lookup(struct neigh_table *tbl,
 
 	write_lock_bh(&tbl->lock);
 	n->next = tbl->phash_buckets[hash_val];
-	tbl->phash_buckets[hash_val] = n;
+	rcu_assign_pointer(tbl->phash_buckets[hash_val], n);
 	write_unlock_bh(&tbl->lock);
 out:
 	return n;
 }
 EXPORT_SYMBOL(pneigh_lookup);
 
+static void __pneigh_delete(struct rcu_head *rcu)
+{
+	struct pneigh_entry *n = container_of(rcu, struct pneigh_entry, rcu);
+
+	netdev_put(n->dev, &n->dev_tracker);
+	kfree(n);
+}
 
 int pneigh_delete(struct neigh_table *tbl, struct net *net, const void *pkey,
 		  struct net_device *dev)
@@ -789,12 +796,11 @@ int pneigh_delete(struct neigh_table *tbl, struct net *net, const void *pkey,
 	     np = &n->next) {
 		if (!memcmp(n->key, pkey, key_len) && n->dev == dev &&
 		    net_eq(pneigh_net(n), net)) {
-			*np = n->next;
+			rcu_assign_pointer(*np, n->next);
 			write_unlock_bh(&tbl->lock);
 			if (tbl->pdestructor)
 				tbl->pdestructor(n);
-			netdev_put(n->dev, &n->dev_tracker);
-			kfree(n);
+			call_rcu(&n->rcu, __pneigh_delete);
 			return 0;
 		}
 	}
@@ -802,34 +808,36 @@ int pneigh_delete(struct neigh_table *tbl, struct net *net, const void *pkey,
 	return -ENOENT;
 }
 
-static int pneigh_ifdown_and_unlock(struct neigh_table *tbl,
-				    struct net_device *dev)
+static void pneigh_ifdown_and_unlock(struct neigh_table *tbl,
+				     struct net_device *dev)
 {
-	struct pneigh_entry *n, **np, *freelist = NULL;
+	struct pneigh_entry *n, **np;
+	struct list_head head;
 	u32 h;
 
 	for (h = 0; h <= PNEIGH_HASHMASK; h++) {
 		np = &tbl->phash_buckets[h];
 		while ((n = *np) != NULL) {
 			if (!dev || n->dev == dev) {
-				*np = n->next;
-				n->next = freelist;
-				freelist = n;
+				rcu_assign_pointer(*np, n->next);
+				list_add(&n->free_node, &head);
 				continue;
 			}
 			np = &n->next;
 		}
 	}
+
 	write_unlock_bh(&tbl->lock);
-	while ((n = freelist)) {
-		freelist = n->next;
-		n->next = NULL;
+
+	while (!list_empty(&head)) {
+		n = list_first_entry(&head, typeof(*n), free_node);
+		list_del(&n->free_node);
+
 		if (tbl->pdestructor)
 			tbl->pdestructor(n);
-		netdev_put(n->dev, &n->dev_tracker);
-		kfree(n);
+
+		call_rcu(&n->rcu, __pneigh_delete);
 	}
-	return -ENOENT;
 }
 
 static inline void neigh_parms_put(struct neigh_parms *parms)
