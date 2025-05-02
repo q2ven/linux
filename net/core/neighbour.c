@@ -717,7 +717,9 @@ static struct pneigh_entry *__pneigh_lookup_1(struct pneigh_entry *n,
 		    net_eq(pneigh_net(n), net) &&
 		    (n->dev == dev || !n->dev))
 			return n;
-		n = n->next;
+
+		n = rcu_dereference_check(n->next,
+					  lockdep_is_held(&n->tbl->lock));
 	}
 	return NULL;
 }
@@ -728,7 +730,7 @@ struct pneigh_entry *__pneigh_lookup(struct neigh_table *tbl,
 	unsigned int key_len = tbl->key_len;
 	u32 hash_val = pneigh_hash(pkey, key_len);
 
-	return __pneigh_lookup_1(tbl->phash_buckets[hash_val],
+	return __pneigh_lookup_1(rcu_dereference(tbl->phash_buckets[hash_val]),
 				 net, pkey, key_len, dev);
 }
 EXPORT_SYMBOL_GPL(__pneigh_lookup);
