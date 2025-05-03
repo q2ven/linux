@@ -1085,7 +1085,7 @@ static int arp_req_set_public(struct net *net, struct arpreq *r,
 	if (mask) {
 		__be32 ip = ((struct sockaddr_in *)&r->arp_pa)->sin_addr.s_addr;
 
-		if (!pneigh_lookup(&arp_tbl, net, &ip, dev, 1))
+		if (!pneigh_lookup(&arp_tbl, net, &ip, dev))
 			return -ENOBUFS;
 		return 0;
 	}

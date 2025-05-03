@@ -707,57 +707,46 @@ static u32 pneigh_hash(const void *pkey, unsigned int key_len)
 	return hash_val;
 }
 
-static struct pneigh_entry *__pneigh_lookup_1(struct pneigh_entry *n,
-					      struct net *net,
-					      const void *pkey,
-					      unsigned int key_len,
-					      struct net_device *dev)
+struct pneigh_entry *__pneigh_lookup(struct neigh_table *tbl,
+				     struct net *net, const void *pkey,
+				     struct net_device *dev)
 {
+	struct pneigh_entry *n;
+	unsigned int key_len;
+	u32 hash_val;
+
+	key_len = tbl->key_len;
+	hash_val = pneigh_hash(pkey, key_len);
+	n = rcu_dereference_rtnl(tbl->phash_buckets[hash_val]);
+
 	while (n) {
 		if (!memcmp(n->key, pkey, key_len) &&
 		    net_eq(pneigh_net(n), net) &&
 		    (n->dev == dev || !n->dev))
 			return n;
 
-		n = rcu_dereference_check(n->next,
-					  lockdep_is_held(&n->tbl->lock));
+		n = rcu_dereference_rtnl(n->next);
 	}
+
 	return NULL;
-}
-
-struct pneigh_entry *__pneigh_lookup(struct neigh_table *tbl,
-				     struct net *net, const void *pkey,
-				     struct net_device *dev)
-{
-	unsigned int key_len;
-	u32 hash_val;
-
-	key_len = tbl->key_len;
-	hash_val = pneigh_hash(pkey, key_len);
-
-	return __pneigh_lookup_1(rcu_dereference(tbl->phash_buckets[hash_val]),
-				 net, pkey, key_len, dev);
 }
 EXPORT_IPV6_MOD(__pneigh_lookup);
 
-struct pneigh_entry * pneigh_lookup(struct neigh_table *tbl,
-				    struct net *net, const void *pkey,
-				    struct net_device *dev, int creat)
+struct pneigh_entry *pneigh_lookup(struct neigh_table *tbl,
+				   struct net *net, const void *pkey,
+				   struct net_device *dev)
 {
 	struct pneigh_entry *n;
-	unsigned int key_len = tbl->key_len;
-	u32 hash_val = pneigh_hash(pkey, key_len);
-
-	read_lock_bh(&tbl->lock);
-	n = __pneigh_lookup_1(tbl->phash_buckets[hash_val],
-			      net, pkey, key_len, dev);
-	read_unlock_bh(&tbl->lock);
-
-	if (n || !creat)
-		goto out;
+	unsigned int key_len;
+	u32 hash_val;
 
 	ASSERT_RTNL();
 
+	n = __pneigh_lookup(tbl, net, pkey, dev);
+	if (n)
+		goto out;
+
+	key_len = tbl->key_len;
 	n = kzalloc(sizeof(*n) + key_len, GFP_KERNEL);
 	if (!n)
 		goto out;
@@ -774,6 +763,7 @@ struct pneigh_entry * pneigh_lookup(struct neigh_table *tbl,
 		goto out;
 	}
 
+	hash_val = pneigh_hash(pkey, key_len);
 	write_lock_bh(&tbl->lock);
 	n->next = tbl->phash_buckets[hash_val];
 	rcu_assign_pointer(tbl->phash_buckets[hash_val], n);
@@ -1995,7 +1985,7 @@ static int neigh_add(struct sk_buff *skb, struct nlmsghdr *nlh,
 		}
 
 		err = -ENOBUFS;
-		pn = pneigh_lookup(tbl, net, dst, dev, 1);
+		pn = pneigh_lookup(tbl, net, dst, dev);
 		if (pn) {
 			WRITE_ONCE(pn->flags, ndm_flags);
 			if (protocol)
