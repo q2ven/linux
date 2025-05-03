@@ -37,6 +37,7 @@
 #include <linux/log2.h>
 #include <linux/inetdevice.h>
 #include <net/addrconf.h>
+#include <net/ip.h>
 
 #include <trace/events/neigh.h>
 
@@ -725,15 +726,19 @@ static struct pneigh_entry *__pneigh_lookup_1(struct pneigh_entry *n,
 }
 
 struct pneigh_entry *__pneigh_lookup(struct neigh_table *tbl,
-		struct net *net, const void *pkey, struct net_device *dev)
+				     struct net *net, const void *pkey,
+				     struct net_device *dev)
 {
-	unsigned int key_len = tbl->key_len;
-	u32 hash_val = pneigh_hash(pkey, key_len);
+	unsigned int key_len;
+	u32 hash_val;
+
+	key_len = tbl->key_len;
+	hash_val = pneigh_hash(pkey, key_len);
 
 	return __pneigh_lookup_1(rcu_dereference(tbl->phash_buckets[hash_val]),
 				 net, pkey, key_len, dev);
 }
-EXPORT_SYMBOL_GPL(__pneigh_lookup);
+EXPORT_IPV6_MOD(__pneigh_lookup);
 
 struct pneigh_entry * pneigh_lookup(struct neigh_table *tbl,
 				    struct net *net, const void *pkey,
@@ -2988,14 +2993,17 @@ static int neigh_get(struct sk_buff *in_skb, struct nlmsghdr *nlh,
 	if (ndm->ndm_flags & NTF_PROXY) {
 		struct pneigh_entry *pn;
 
-		pn = pneigh_lookup(tbl, net, dst, dev, 0);
+		rcu_read_lock();
+		pn = __pneigh_lookup(tbl, net, dst, dev);
 		if (!pn) {
 			NL_SET_ERR_MSG(extack, "Proxy neighbour entry not found");
 			err = -ENOENT;
+			rcu_read_unlock();
 			goto err;
 		}
 
 		err = pneigh_fill_info(skb, pn, pid, seq, RTM_NEWNEIGH, 0, tbl);
+		rcu_read_unlock();
 		if (err)
 			goto err;
 	} else {
