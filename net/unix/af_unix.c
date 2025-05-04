@@ -1451,7 +1451,7 @@ restart:
 		if (!unix_may_send(sk, other))
 			goto out_unlock;
 
-		err = security_unix_may_send(sk->sk_socket, other->sk_socket);
+		err = security_unix_may_send(sk->sk_socket, other->sk_socket, NULL);
 		if (err)
 			goto out_unlock;
 
@@ -2087,7 +2087,7 @@ restart_locked:
 		goto out_unlock;
 	}
 
-	err = security_unix_may_send(sk->sk_socket, other->sk_socket);
+	err = security_unix_may_send(sk->sk_socket, other->sk_socket, skb);
 	if (err)
 		goto out_unlock;
 
@@ -2195,7 +2195,7 @@ static int queue_oob(struct sock *sk, struct msghdr *msg, struct sock *other,
 		goto out_unlock;
 	}
 
-	err = security_unix_may_send(sk->sk_socket, other->sk_socket);
+	err = security_unix_may_send(sk->sk_socket, other->sk_socket, skb);
 	if (err)
 		goto out_unlock;
 
@@ -2323,7 +2323,7 @@ static int unix_stream_sendmsg(struct socket *sock, struct msghdr *msg,
 			goto out_free;
 		}
 
-		err = security_unix_may_send(sock, other->sk_socket);
+		err = security_unix_may_send(sock, other->sk_socket, skb);
 		if (err) {
 			unix_state_unlock(other);
 			goto out_free;
