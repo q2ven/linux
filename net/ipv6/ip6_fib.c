@@ -304,8 +304,10 @@ EXPORT_SYMBOL_GPL(fib6_get_table);
 
 static void __net_init fib6_tables_init(struct net *net)
 {
+	spin_lock_bh(&net->ipv6.fib_table_hash_lock);
 	fib6_link_table(net, net->ipv6.fib6_main_tbl);
 	fib6_link_table(net, net->ipv6.fib6_local_tbl);
+	spin_unlock_bh(&net->ipv6.fib_table_hash_lock);
 }
 #else
 
