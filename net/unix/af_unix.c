@@ -2087,11 +2087,9 @@ restart_locked:
 		goto out_unlock;
 	}
 
-	if (sk->sk_type != SOCK_SEQPACKET) {
-		err = security_unix_may_send(sk->sk_socket, other->sk_socket);
-		if (err)
-			goto out_unlock;
-	}
+	err = security_unix_may_send(sk->sk_socket, other->sk_socket);
+	if (err)
+		goto out_unlock;
 
 	/* other == sk && unix_peer(other) != sk if
 	 * - unix_peer(sk) == NULL, destination address bound to sk
@@ -2196,6 +2194,10 @@ static int queue_oob(struct sock *sk, struct msghdr *msg, struct sock *other,
 		err = -EPERM;
 		goto out_unlock;
 	}
+
+	err = security_unix_may_send(sk->sk_socket, other->sk_socket);
+	if (err)
+		goto out_unlock;
 
 	unix_maybe_add_creds(skb, sk, other);
 	scm_stat_add(other, skb);
@@ -2318,6 +2320,12 @@ static int unix_stream_sendmsg(struct socket *sock, struct msghdr *msg,
 		if (UNIXCB(skb).fp && !other->sk_scm_rights) {
 			unix_state_unlock(other);
 			err = -EPERM;
+			goto out_free;
+		}
+
+		err = security_unix_may_send(sock, other->sk_socket);
+		if (err) {
+			unix_state_unlock(other);
 			goto out_free;
 		}
 
