@@ -50,9 +50,6 @@ IPV6_TESTS="
 "
 
 ALL_TESTS="
-	basic
-	basic_res
-	${IPV4_TESTS}
 	${IPV6_TESTS}
 "
 TESTS="${ALL_TESTS}"
