@@ -23,6 +23,7 @@
 #include <linux/skbuff.h>
 #include <linux/rcupdate.h>
 #include <linux/seq_file.h>
+#include <linux/srcu.h>
 #include <linux/bitmap.h>
 
 #include <linux/err.h>
@@ -241,6 +242,7 @@ struct neigh_table {
 	struct neigh_statistics	__percpu *stats;
 	struct neigh_hash_table __rcu *nht;
 	struct pneigh_entry	**phash_buckets;
+	struct srcu_struct	srcu;
 };
 
 static inline int neigh_parms_family(struct neigh_parms *p)

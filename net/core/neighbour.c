@@ -1736,6 +1736,9 @@ void neigh_table_init(int index, struct neigh_table *tbl)
 			  neigh_rand_reach_time(NEIGH_VAR(&tbl->parms, BASE_REACHABLE_TIME));
 	tbl->parms.qlen = 0;
 
+	if (init_srcu_struct(&tbl->srcu))
+		panic("cannot initialise neighbour table srcu");
+
 	tbl->stats = alloc_percpu(struct neigh_statistics);
 	if (!tbl->stats)
 		panic("cannot create neighbour cache statistics");
@@ -1787,6 +1790,8 @@ int neigh_table_clear(int index, struct neigh_table *tbl)
 {
 	RCU_INIT_POINTER(neigh_tables[index], NULL);
 	synchronize_rcu();
+	synchronize_srcu(&tbl->srcu);
+	cleanup_srcu_struct(&tbl->srcu);
 
 	/* It is not clean... Fix it to unload IPv6 module safely */
 	cancel_delayed_work_sync(&tbl->managed_work);
