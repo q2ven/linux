@@ -215,6 +215,38 @@ static void vmpressure_work_fn(struct work_struct *work)
 	} while ((vmpr = vmpressure_parent(vmpr)));
 }
 
+#if BITS_PER_LONG == 32
+static void vmpressure_update_socket_pressure(struct vmpressure *vmpr)
+{
+	/*
+	 * The allowed delta for time_before() is up to 2 ^ (BITS_PER_LONG - 1),
+	 * which is 24 days with CONFIG_HZ=1000, so once-per-day is enough.
+	 */
+	mod_delayed_work(system_unbound_wq, &vmpr->delayed_work,
+			 jiffies + 60 * 60 * 24 * HZ);
+}
+
+static void vmpressure_update_socket_pressure_fn(struct work_struct *work)
+{
+	struct mem_cgroup *memcg;
+	struct vmpressure *vmpr;
+
+	vmpr = container_of(to_delayed_work(work), struct vmpressure, delayed_work);
+	memcg = vmpressure_to_memcg(vmpr);
+
+	/*
+	 * When cgroup is not under memory pressure, socket_pressure
+	 * is updated by jiffies from one second ago so that
+	 * mem_cgroup_under_socket_pressure() will not trigger
+	 * false memory pressure.
+	 */
+	if (time_before(READ_ONCE(memcg->socket_pressure), jiffies))
+		WRITE_ONCE(memcg->socket_pressure, jiffies - HZ);
+
+	vmpressure_update_socket_pressure(vmpr);
+}
+#endif
+
 /**
  * vmpressure() - Account memory pressure through scanned/reclaimed ratio
  * @gfp:	reclaimer's gfp mask
@@ -462,6 +494,10 @@ void vmpressure_init(struct vmpressure *vmpr)
 	mutex_init(&vmpr->events_lock);
 	INIT_LIST_HEAD(&vmpr->events);
 	INIT_WORK(&vmpr->work, vmpressure_work_fn);
+#if BITS_PER_LONG == 32
+	INIT_DELAYED_WORK(&vmpr->delayed_work, vmpressure_update_socket_pressure_fn);
+	vmpressure_update_socket_pressure(vmpr);
+#endif
 }
 
 /**
@@ -478,4 +514,7 @@ void vmpressure_cleanup(struct vmpressure *vmpr)
 	 * goes away.
 	 */
 	flush_work(&vmpr->work);
+#if BITS_PER_LONG == 32
+	cancel_delayed_work_sync(&vmpr->delayed_work);
+#endif
 }
