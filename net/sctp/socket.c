@@ -4956,6 +4956,8 @@ static int sctp_init_sock(struct sock *sk)
 
 	pr_debug("%s: sk:%p\n", __func__, sk);
 
+	sk_sockets_allocated_inc(sk);
+
 	sp = sctp_sk(sk);
 
 	/* Initialize the SCTP per socket area.  */
@@ -5079,8 +5081,6 @@ static int sctp_init_sock(struct sock *sk)
 	sk->sk_destruct = sctp_destruct_sock;
 
 	SCTP_DBG_OBJCNT_INC(sock);
-
-	sk_sockets_allocated_inc(sk);
 	sock_prot_inuse_add(net, sk->sk_prot, 1);
 
 	return 0;
@@ -5094,6 +5094,8 @@ static void sctp_destroy_sock(struct sock *sk)
 	struct sctp_sock *sp;
 
 	pr_debug("%s: sk:%p\n", __func__, sk);
+
+	sk_sockets_allocated_dec(sk);
 
 	/* Release our hold on the endpoint. */
 	sp = sctp_sk(sk);
@@ -5110,7 +5112,6 @@ static void sctp_destroy_sock(struct sock *sk)
 
 	sctp_endpoint_free(sp->ep);
 
-	sk_sockets_allocated_dec(sk);
 	sock_prot_inuse_add(sock_net(sk), sk->sk_prot, -1);
 	SCTP_DBG_OBJCNT_DEC(sock);
 }
