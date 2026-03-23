@@ -302,6 +302,36 @@ static int nbd_disconnected(struct nbd_config *config)
 		test_bit(NBD_RT_DISCONNECT_REQUESTED, &config->runtime_flags);
 }
 
+static int nbd_sock_lock(struct sock *sk)
+{
+	if (!spin_trylock_bh(&sk->sk_lock.slock))
+		return -EAGAIN;
+
+	if (sock_owned_by_user_nocheck(sk)) {
+		spin_unlock_bh(&sk->sk_lock.slock);
+		return -EAGAIN;
+	}
+
+	sk->sk_lock.owned = 1;
+	spin_unlock_bh(&sk->sk_lock.slock);
+	return 0;
+}
+
+static void nbd_sock_shutdown(struct sock *sk)
+{
+	if (sk_is_unix_stream(sk)) {
+		kernel_sock_shutdown(nsock->sock, SHUT_RDWR);
+		return;
+	}
+
+	if (nbd_sock_lock(sk))
+		return;
+
+	inet_shutdown_locked(sk);
+
+	release_sock(sk);
+}
+
 static void nbd_mark_nsock_dead(struct nbd_device *nbd, struct nbd_sock *nsock,
 				int notify)
 {
@@ -315,7 +345,8 @@ static void nbd_mark_nsock_dead(struct nbd_device *nbd, struct nbd_sock *nsock,
 		}
 	}
 	if (!nsock->dead) {
-		kernel_sock_shutdown(nsock->sock, SHUT_RDWR);
+		nbd_sock_shutdown(nsock->sock->sk);
+
 		if (atomic_dec_return(&nbd->config->live_connections) == 0) {
 			if (test_and_clear_bit(NBD_RT_DISCONNECT_REQUESTED,
 					       &nbd->config->runtime_flags)) {
@@ -546,6 +577,25 @@ static enum blk_eh_timer_return nbd_xmit_timeout(struct request *req)
 done:
 	blk_mq_complete_request(req);
 	return BLK_EH_DONE;
+}
+
+static int nbd_sock_sendmsg(struct socket *sock, struct msghdr *msg)
+{
+	struct sock *sk = sock->sk;
+	int err;
+
+	if (sk_is_unix_stream(sk))
+		return sock_sendmsg(sock, msg);
+
+	err = nbd_sock_lock(sk);
+	if (err)
+		return err;
+
+	err = tcp_sendmsg_locked(sock, msg, msg_data_left(msg));
+
+	release_sock(sk);
+
+	return err;
 }
 
 static int __sock_xmit(struct nbd_device *nbd, struct socket *sock, int send,
@@ -1224,6 +1274,13 @@ static struct socket *nbd_get_socket(struct nbd_device *nbd, unsigned long fd,
 	    !sk_is_stream_unix(sock->sk)) {
 		dev_err(disk_to_dev(nbd->disk), "Unsupported socket: should be TCP or UNIX.\n");
 		*err = -EINVAL;
+		sockfd_put(sock);
+		return NULL;
+	}
+
+	if (READ_ONCE(sk->sk_state) != TCP_ESTABLISHED) {
+		dev_err(disk_to_dev(nbd->disk), "Unsupported socket: not connected yet.\n");
+		*err = -ENOTCONN;
 		sockfd_put(sock);
 		return NULL;
 	}

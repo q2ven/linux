@@ -898,21 +898,10 @@ int inet_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 }
 EXPORT_SYMBOL(inet_recvmsg);
 
-int inet_shutdown(struct socket *sock, int how)
+static int __inet_shutdown(struct sock *sk, int how)
 {
-	struct sock *sk = sock->sk;
 	int err = 0;
 
-	/* This should really check to make sure
-	 * the socket is a TCP socket. (WHY AC...)
-	 */
-	how++; /* maps 0->1 has the advantage of making bit 1 rcvs and
-		       1->2 bit 2 snds.
-		       2->3 */
-	if ((how & ~SHUTDOWN_MASK) || !how)	/* MAXINT->0 */
-		return -EINVAL;
-
-	lock_sock(sk);
 	if (sock->state == SS_CONNECTING) {
 		if ((1 << sk->sk_state) &
 		    (TCPF_SYN_SENT | TCPF_SYN_RECV | TCPF_CLOSE))
@@ -949,10 +938,42 @@ int inet_shutdown(struct socket *sock, int how)
 
 	/* Wake up anyone sleeping in poll. */
 	sk->sk_state_change(sk);
+
+	return err;
+}
+
+int inet_shutdown(struct socket *sock, int how)
+{
+	struct sock *sk = sock->sk;
+	int err;
+
+	/* This should really check to make sure
+	 * the socket is a TCP socket. (WHY AC...)
+	 */
+	how++; /* maps 0->1 has the advantage of making bit 1 rcvs and
+		       1->2 bit 2 snds.
+		       2->3 */
+	if ((how & ~SHUTDOWN_MASK) || !how)	/* MAXINT->0 */
+		return -EINVAL;
+
+	lock_sock(sk);
+	err = __inet_shutdown(sk, how);
 	release_sock(sk);
+
 	return err;
 }
 EXPORT_SYMBOL(inet_shutdown);
+
+int inet_shutdown_locked(struct socket *sock, int how)
+{
+	how++;
+
+	if ((how & ~SHUTDOWN_MASK) || !how)
+		return -EINVAL;
+
+	return __inet_shutdown(sk, how);
+}
+EXPORT_SYMBOL(inet_shutdown_locked);
 
 /*
  *	ioctl() calls you can issue on an INET socket. Most of these are
