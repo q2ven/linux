@@ -668,7 +668,7 @@ static inline int memcg_events_index(enum vm_event_item idx)
 
 struct memcg_vmstats_percpu {
 	/* Stats updates since the last flush */
-	unsigned long			stats_updates;
+	long			stats_updates;
 
 	/* Cached pointers for fast iteration in memcg_rstat_updated() */
 	struct memcg_vmstats_percpu __percpu	*parent_pcpu;
@@ -761,14 +761,22 @@ static inline void memcg_rstat_updated(struct mem_cgroup *memcg, long val,
 {
 	struct memcg_vmstats_percpu __percpu *statc_pcpu;
 	struct memcg_vmstats_percpu *statc;
-	unsigned long stats_updates;
+	long stats_updates;
 
 	if (!val)
 		return;
 
-	__css_rstat_updated(&memcg->css, cpu);
+	if (unlikely(!llist_on_list(this_cpu_ptr(&memcg->css.rstat_cpu->lnode))))
+		__css_rstat_updated(&memcg->css, cpu);
+
 	statc_pcpu = memcg->vmstats_percpu;
 	for (; statc_pcpu; statc_pcpu = statc->parent_pcpu) {
+		stats_updates = this_cpu_add_return(statc_pcpu->stats_updates,
+						    val);
+		if (likely(abs(stats_updates) < MEMCG_CHARGE_BATCH))
+			break;
+
+		val = this_cpu_xchg(statc_pcpu->stats_updates, 0);
 		statc = this_cpu_ptr(statc_pcpu);
 		/*
 		 * If @memcg is already flushable then all its ancestors are
@@ -778,13 +786,7 @@ static inline void memcg_rstat_updated(struct mem_cgroup *memcg, long val,
 		if (memcg_vmstats_needs_flush(statc->vmstats))
 			break;
 
-		stats_updates = this_cpu_add_return(statc_pcpu->stats_updates,
-						    abs(val));
-		if (stats_updates < MEMCG_CHARGE_BATCH)
-			continue;
-
-		stats_updates = this_cpu_xchg(statc_pcpu->stats_updates, 0);
-		atomic_long_add(stats_updates, &statc->vmstats->stats_updates);
+		atomic_long_add(abs(val), &statc->vmstats->stats_updates);
 	}
 }
 
