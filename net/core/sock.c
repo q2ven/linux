@@ -3581,7 +3581,7 @@ void __sk_charge(struct sock *sk, gfp_t gfp)
 	int amt;
 
 	gfp |= __GFP_NOFAIL;
-	if (mem_cgroup_from_sk(sk)) {
+	if (__mem_cgroup_sk_enabled(sk)) {
 		/* The socket has not been accepted yet, no need
 		 * to look at newsk->sk_wmem_queued.
 		 */

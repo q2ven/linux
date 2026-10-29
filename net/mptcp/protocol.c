@@ -795,7 +795,7 @@ account:
 	/* Possibly not accept()ed yet, keep track of memory not CG
 	 * accounted, mptcp_graft_subflows() will handle it.
 	 */
-	if (!mem_cgroup_from_sk(ssk))
+	if (!__mem_cgroup_sk_enabled(ssk))
 		msk->backlog_unaccounted += delta;
 }
 
@@ -2321,8 +2321,8 @@ static bool mptcp_can_spool_backlog(struct sock *sk, struct list_head *skbs)
 	/* After CG initialization, subflows should never add skb before
 	 * gaining the CG themself.
 	 */
-	DEBUG_NET_WARN_ON_ONCE(msk->backlog_unaccounted && sk->sk_socket &&
-			       mem_cgroup_from_sk(sk));
+	DEBUG_NET_WARN_ON_ONCE(mem_cgroup_sk_enabled(sk) &&
+			       msk->backlog_unaccounted && sk->sk_socket);
 
 	if (list_empty(&msk->backlog_list))
 		return false;
