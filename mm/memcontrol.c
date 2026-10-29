@@ -5751,7 +5751,7 @@ EXPORT_SYMBOL(memcg_sockets_enabled_key);
 
 void mem_cgroup_sk_alloc(struct sock *sk)
 {
-	struct mem_cgroup *memcg;
+	struct obj_cgroup *objcg;
 
 	if (!mem_cgroup_sockets_enabled)
 		return;
@@ -5761,39 +5761,41 @@ void mem_cgroup_sk_alloc(struct sock *sk)
 		return;
 
 	rcu_read_lock();
-	memcg = mem_cgroup_from_task(current);
-	if (mem_cgroup_is_root(memcg))
+	objcg = current_obj_cgroup();
+	if (!objcg || obj_cgroup_is_root(objcg))
 		goto out;
-	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys) && !memcg1_tcpmem_active(memcg))
-		goto out;
-	if (css_tryget(&memcg->css))
-		sk->sk_memcg = memcg;
+
+	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys)) {
+		struct mem_cgroup *memcg = obj_cgroup_memcg(objcg);
+
+		if (!memcg1_tcpmem_active(memcg))
+			goto out;
+	}
+
+	obj_cgroup_get(objcg);
+	sk->sk_objcg = objcg;
 out:
 	rcu_read_unlock();
 }
 
 void mem_cgroup_sk_free(struct sock *sk)
 {
-	struct mem_cgroup *memcg = mem_cgroup_from_sk(sk);
-
-	if (memcg)
-		css_put(&memcg->css);
+	obj_cgroup_put(sk->sk_objcg);
 }
 
 void mem_cgroup_sk_inherit(const struct sock *sk, struct sock *newsk)
 {
-	struct mem_cgroup *memcg;
+	struct obj_cgroup *objcg = sk->sk_objcg;
 
-	if (sk->sk_memcg == newsk->sk_memcg)
+	if (sk->sk_objcg == newsk->sk_objcg)
 		return;
 
 	mem_cgroup_sk_free(newsk);
 
-	memcg = mem_cgroup_from_sk(sk);
-	if (memcg)
-		css_get(&memcg->css);
+	if (objcg)
+		obj_cgroup_get(objcg);
 
-	newsk->sk_memcg = sk->sk_memcg;
+	newsk->sk_objcg = sk->sk_objcg;
 }
 
 /**
@@ -5808,17 +5810,24 @@ void mem_cgroup_sk_inherit(const struct sock *sk, struct sock *newsk)
 bool mem_cgroup_sk_charge(const struct sock *sk, unsigned int nr_pages,
 			  gfp_t gfp_mask)
 {
-	struct mem_cgroup *memcg = mem_cgroup_from_sk(sk);
+	struct mem_cgroup *memcg;
+	bool ret = false;
 
-	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys))
-		return memcg1_charge_skmem(memcg, nr_pages, gfp_mask);
+	memcg = get_mem_cgroup_from_objcg(sk->sk_objcg);
 
-	if (try_charge_memcg(memcg, gfp_mask, nr_pages) == 0) {
-		mod_memcg_state(memcg, MEMCG_SOCK, nr_pages);
-		return true;
+	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys)) {
+		ret = memcg1_charge_skmem(memcg, nr_pages, gfp_mask);
+		goto out;
 	}
 
-	return false;
+	if (try_charge(memcg, gfp_mask, nr_pages) == 0) {
+		mod_memcg_state(memcg, MEMCG_SOCK, nr_pages);
+		ret = true;
+	}
+out:
+	css_put(&memcg->css);
+
+	return ret;
 }
 
 /**
@@ -5828,16 +5837,21 @@ bool mem_cgroup_sk_charge(const struct sock *sk, unsigned int nr_pages,
  */
 void mem_cgroup_sk_uncharge(const struct sock *sk, unsigned int nr_pages)
 {
-	struct mem_cgroup *memcg = mem_cgroup_from_sk(sk);
+	struct mem_cgroup *memcg;
+
+	memcg = get_mem_cgroup_from_objcg(sk->sk_objcg);
 
 	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys)) {
 		memcg1_uncharge_skmem(memcg, nr_pages);
-		return;
+		goto out;
 	}
 
 	mod_memcg_state(memcg, MEMCG_SOCK, -nr_pages);
 
-	refill_stock(memcg, nr_pages);
+	if (!mem_cgroup_is_root(memcg))
+		refill_stock(memcg, nr_pages);
+out:
+	css_put(&memcg->css);
 }
 
 void mem_cgroup_flush_workqueue(void)

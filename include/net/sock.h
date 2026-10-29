@@ -333,7 +333,7 @@ struct sk_filter;
   *	@sk_security: used by security modules
   *	@sk_mark: generic packet mark
   *	@sk_cgrp_data: cgroup data for this cgroup
-  *	@sk_memcg: this socket's memory cgroup association
+  *	@sk_objcg: this socket's memory cgroup association
   *	@sk_write_pending: a write to stream socket waits to start
   *	@sk_disconnects: number of disconnect operations performed on this sock
   *	@sk_state_change: callback to indicate change in the state of the sock
@@ -460,7 +460,7 @@ struct sock {
 	int			sk_err;
 	struct socket		*sk_socket;
 #ifdef CONFIG_MEMCG
-	struct mem_cgroup	*sk_memcg;
+	struct obj_cgroup	*sk_objcg;
 #endif
 #ifdef CONFIG_XFRM
 	struct xfrm_policy __rcu *sk_policy[2];
@@ -2695,14 +2695,9 @@ static inline gfp_t gfp_memcg_charge(void)
 }
 
 #ifdef CONFIG_MEMCG
-static inline struct mem_cgroup *mem_cgroup_from_sk(const struct sock *sk)
-{
-	return sk->sk_memcg;
-}
-
 static inline bool __mem_cgroup_sk_enabled(const struct sock *sk)
 {
-	return !!sk->sk_memcg;
+	return !!sk->sk_objcg;
 }
 
 static inline bool mem_cgroup_sk_enabled(const struct sock *sk)
@@ -2712,30 +2707,35 @@ static inline bool mem_cgroup_sk_enabled(const struct sock *sk)
 
 static inline bool mem_cgroup_sk_under_memory_pressure(const struct sock *sk)
 {
-	struct mem_cgroup *memcg = mem_cgroup_from_sk(sk);
+	struct mem_cgroup *memcg;
+	bool pressure = false;
+
+	rcu_read_lock();
+
+	memcg = obj_cgroup_memcg(sk->sk_objcg);
 
 #ifdef CONFIG_MEMCG_V1
-	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys))
-		return !!memcg->tcpmem_pressure;
+	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys)) {
+		pressure = !!memcg->tcpmem_pressure;
+		goto out;
+	}
 #endif /* CONFIG_MEMCG_V1 */
 
 	do {
 		if (time_before64(get_jiffies_64(),
 				  mem_cgroup_get_socket_pressure(memcg))) {
-			memcg_memory_event(mem_cgroup_from_sk(sk),
+			memcg_memory_event(obj_cgroup_memcg(sk->sk_objcg),
 					   MEMCG_SOCK_THROTTLED);
-			return true;
+			pressure = true;
+			break;
 		}
 	} while ((memcg = parent_mem_cgroup(memcg)));
+out:
+	rcu_read_unlock();
 
-	return false;
+	return pressure;
 }
 #else
-static inline struct mem_cgroup *mem_cgroup_from_sk(const struct sock *sk)
-{
-	return NULL;
-}
-
 static inline bool __mem_cgroup_sk_enabled(const struct sock *sk)
 {
 	return false;
